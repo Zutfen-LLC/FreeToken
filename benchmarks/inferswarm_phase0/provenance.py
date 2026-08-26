@@ -196,7 +196,12 @@ def model_provenance(pin: ModelPin, *, expert_quant: Any = None) -> Dict[str, An
         # Resolved weight format, taken from the engine's own report when the server is up
         # (the flag text is not the format).
         "expert_quant_resolved": (
-            expert_quant if expert_quant is not None else unavailable("server not started yet")
+            expert_quant if expert_quant is not None
+            else unavailable(
+                "only knowable once an engine has loaded the banks; backfilled after the "
+                "campaign as model_expert_quant_resolved, and recorded per arm under "
+                "resolved_configuration[<arm>].instrumentation.runtime_config.model"
+            )
         ),
     }
 

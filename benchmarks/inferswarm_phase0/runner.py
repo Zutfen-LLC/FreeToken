@@ -275,9 +275,40 @@ class Campaign:
                 "finished_at": prov.utc_now_iso(),
                 "resolved_configuration": self.resolved_configuration,
                 "run_directory": str(run_root),
+                # The resolved weight format is only knowable once an engine has loaded the
+                # banks, so it is backfilled here from what the arms actually reported --
+                # not left saying "server not started yet" for the life of the artifact.
+                "model_expert_quant_resolved": self._observed_expert_quant(),
             },
         )
         return doc
+
+    def _observed_expert_quant(self) -> Dict[str, Any]:
+        """Resolved expert weight format per arm, and whether the arms agreed.
+
+        Criteria section 3 rule 4 holds the weight format constant across arms, so a
+        disagreement here is a campaign-invalidating fact, recorded rather than smoothed.
+        """
+        per_arm: Dict[str, Any] = {}
+        for arm_id, resolved in self.resolved_configuration.items():
+            config = (resolved.get("instrumentation") or {}).get("runtime_config") or {}
+            per_arm[arm_id] = (config.get("model") or {}).get("expert_quant")
+        if not per_arm:
+            return prov.unavailable("no arm reported a resolved configuration")
+        values = sorted({v for v in per_arm.values() if v is not None})
+        if not values:
+            return {"per_arm": per_arm, "value": None, "consistent_across_arms": None,
+                    "unavailable": "no arm's runtime report carried an expert_quant"}
+        return {
+            "per_arm": per_arm,
+            "value": values[0] if len(values) == 1 else None,
+            "consistent_across_arms": len(values) == 1,
+            "unavailable": (
+                None if len(values) == 1
+                else f"arms reported different expert weight formats {values}; criteria "
+                     "section 3 rule 4 holds the format constant, so this campaign is invalid"
+            ),
+        }
 
     def _run_arm(
         self,

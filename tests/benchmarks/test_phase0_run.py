@@ -294,3 +294,38 @@ def test_block_stats_reports_dispersion_not_just_a_mean():
 def test_block_stats_on_no_data_says_so():
     assert block_stats([]) == {"n": 0}
     assert block_stats([None, None]) == {"n": 0}
+
+
+def test_the_resolved_weight_format_is_backfilled_from_the_arms(tmp_path, mocked_server, monkeypatch):
+    """The expert format is only knowable once an engine has loaded the banks, so it must
+    not stay "server not started yet" for the life of the artifact."""
+    monkeypatch.setattr(
+        runner_mod, "fetch_instrumentation",
+        lambda origin, limit=8: {
+            "runtime_config": {"model": {"expert_quant": "nvfp4"}},
+            "prefill": {"enabled": True, "observed": 0, "records": []},
+        },
+    )
+    doc = _campaign(tmp_path, arms=[BASELINE_ARMS_BY_ID["B1"], BASELINE_ARMS_BY_ID["B4"]]).execute()
+    quant = doc["model_expert_quant_resolved"]
+    assert quant["value"] == "nvfp4"
+    assert quant["consistent_across_arms"] is True
+    assert quant["per_arm"] == {"B1": "nvfp4", "B4": "nvfp4"}
+
+
+def test_arms_disagreeing_on_the_weight_format_is_recorded_as_invalidating(tmp_path, mocked_server, monkeypatch):
+    """Criteria section 3 rule 4 holds the weight format constant across arms."""
+    formats = iter(["nvfp4", "fp8_block"])
+
+    monkeypatch.setattr(
+        runner_mod, "fetch_instrumentation",
+        lambda origin, limit=8: {
+            "runtime_config": {"model": {"expert_quant": next(formats)}},
+            "prefill": {"enabled": True, "observed": 0, "records": []},
+        },
+    )
+    doc = _campaign(tmp_path, arms=[BASELINE_ARMS_BY_ID["B1"], BASELINE_ARMS_BY_ID["B4"]]).execute()
+    quant = doc["model_expert_quant_resolved"]
+    assert quant["value"] is None
+    assert quant["consistent_across_arms"] is False
+    assert "campaign is invalid" in quant["unavailable"]
