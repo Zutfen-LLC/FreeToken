@@ -11,9 +11,6 @@ import json
 from pathlib import Path
 
 import pytest
-
-from .fakes import FAKE_UUID, SHA40, good_bench_bw_record, instrumentation_doc, write_manifest
-
 from inferswarm_phase0 import bench_bw as bench_bw_mod
 from inferswarm_phase0 import runner as runner_mod
 from inferswarm_phase0 import validity as V
@@ -22,6 +19,14 @@ from inferswarm_phase0.gpu import GpuSelection
 from inferswarm_phase0.manifest import load_manifest
 from inferswarm_phase0.protocol import build_protocol
 from inferswarm_phase0.runner import Campaign, ServeSettings
+
+from .fakes import (
+    FAKE_UUID,
+    SHA40,
+    good_bench_bw_record,
+    instrumentation_doc,
+    write_manifest,
+)
 
 SELECTION = GpuSelection(requested=FAKE_UUID, resolved_uuid=FAKE_UUID, physical_index=0)
 
@@ -245,7 +250,11 @@ def campaign_env(monkeypatch, resolved_gpu, tmp_path):
     monkeypatch.setattr(
         runner_mod.prov, "gpu_provenance",
         lambda selector=None, resolved_uuid=None: {
-            "gpus": [{"index": "0", "uuid": FAKE_UUID}], "topology": "GPU0\tX",
+            "gpus": [{
+                "index": "0", "uuid": FAKE_UUID, "name": "NVIDIA GeForce RTX 3060",
+                "memory.total": "12288 MiB", "selected": True,
+            }],
+            "topology": "GPU0\tX",
         },
     )
     monkeypatch.setattr(

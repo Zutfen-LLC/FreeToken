@@ -19,6 +19,13 @@ import json
 from pathlib import Path
 
 import pytest
+from inferswarm_phase0 import runner as runner_mod
+from inferswarm_phase0 import validity as V
+from inferswarm_phase0.artifacts import STATUS_COMPLETE, STATUS_INCOMPLETE, block_stats
+from inferswarm_phase0.baselines import BASELINE_ARMS_BY_ID, correctness_reference_arm
+from inferswarm_phase0.manifest import load_manifest
+from inferswarm_phase0.protocol import build_protocol
+from inferswarm_phase0.runner import Campaign, ServeSettings
 
 from .fakes import (
     FAKE_UUID,
@@ -28,14 +35,6 @@ from .fakes import (
     runtime_config,
     write_manifest,
 )
-
-from inferswarm_phase0 import validity as V
-from inferswarm_phase0.artifacts import STATUS_COMPLETE, STATUS_INCOMPLETE, block_stats
-from inferswarm_phase0.baselines import BASELINE_ARMS_BY_ID, correctness_reference_arm
-from inferswarm_phase0.manifest import load_manifest
-from inferswarm_phase0.protocol import build_protocol
-from inferswarm_phase0.runner import Campaign, ServeSettings
-from inferswarm_phase0 import runner as runner_mod
 
 ALL_CLASSES = ("W1", "W2", "W3", "W4")
 
@@ -95,7 +94,8 @@ def complete_provenance(monkeypatch, resolved_gpu):
         runner_mod.prov, "gpu_provenance",
         lambda selector=None, resolved_uuid=None: {
             "gpus": [{"index": "0", "uuid": FAKE_UUID,
-                      "name": "NVIDIA GeForce RTX 3060", "selected": True}],
+                      "name": "NVIDIA GeForce RTX 3060", "memory.total": "12288 MiB",
+                      "selected": True}],
             "topology": "GPU0\tX",
             "selected": {"requested": selector, "resolved_uuid": resolved_uuid},
         },
@@ -387,6 +387,52 @@ def test_arms_disagreeing_on_the_weight_format_invalidates(tmp_path, mocked_serv
     assert V.EXPERT_QUANT_MISMATCH in doc["campaign_invalidation_codes"]
     # ... and it is complete: completeness and validity are separate answers
     assert doc["execution_status"] == STATUS_COMPLETE
+
+
+@pytest.mark.parametrize("expert_quant", ["bf16", "fp8_block"])
+def test_a_live_non_nvfp4_format_invalidates_even_when_all_arms_agree(
+    tmp_path, mocked_server, monkeypatch, expert_quant
+):
+    monkeypatch.setattr(
+        runner_mod,
+        "fetch_instrumentation",
+        lambda origin, limit=8: instrumentation_doc(
+            runtime_config(model={"expert_quant": expert_quant})
+        ),
+    )
+    doc = _campaign(
+        tmp_path, arms=[BASELINE_ARMS_BY_ID["B1"], BASELINE_ARMS_BY_ID["B4"]]
+    ).execute()
+    assert doc["model_expert_quant_resolved"] == {
+        "per_arm": {"B1": expert_quant, "B4": expert_quant},
+        "value": expert_quant,
+        "consistent_across_arms": True,
+        "unavailable": None,
+    }
+    assert doc["validity"] == V.VALIDITY_INVALID
+    assert V.MODEL_EXPERT_QUANT_UNEXPECTED in doc["campaign_invalidation_codes"]
+    assert V.EXPERT_QUANT_MISMATCH not in doc["campaign_invalidation_codes"]
+
+
+def test_a_live_nvfp4_format_is_accepted(tmp_path, mocked_server):
+    doc = _campaign(tmp_path).execute()
+    assert doc["validity"] == V.VALIDITY_VALID
+    assert V.MODEL_EXPERT_QUANT_UNEXPECTED not in doc["campaign_invalidation_codes"]
+
+
+def test_a_smoke_run_with_another_format_stays_non_canonical(
+    tmp_path, mocked_server, monkeypatch
+):
+    monkeypatch.setattr(
+        runner_mod,
+        "fetch_instrumentation",
+        lambda origin, limit=8: instrumentation_doc(
+            runtime_config(model={"expert_quant": "bf16"})
+        ),
+    )
+    doc = _campaign(tmp_path, canonical=False).execute()
+    assert doc["validity"] == V.VALIDITY_NON_CANONICAL
+    assert V.MODEL_EXPERT_QUANT_UNEXPECTED not in doc["campaign_invalidation_codes"]
 
 
 @pytest.mark.parametrize(
@@ -778,6 +824,68 @@ def test_a_runtime_gpu_mismatch_invalidates(tmp_path, mocked_server, monkeypatch
     doc = _campaign(tmp_path).execute()
     assert doc["validity"] == V.VALIDITY_INVALID
     assert V.GPU_MISMATCH in doc["campaign_invalidation_codes"]
+
+
+@pytest.mark.parametrize(
+    "identity,code",
+    [
+        ({"name": "NVIDIA GeForce RTX 3060 Ti", "total_bytes": 12 << 30},
+         V.GPU_UNSUPPORTED_PHASE0_MODEL),
+        ({"name": "NVIDIA GeForce RTX 3090", "total_bytes": 24 << 30},
+         V.GPU_UNSUPPORTED_PHASE0_MODEL),
+        ({"name": "NVIDIA GeForce RTX 3060", "total_bytes": 8 << 30},
+         V.GPU_UNSUPPORTED_PHASE0_VRAM),
+    ],
+)
+def test_engine_reported_wrong_phase0_hardware_invalidates(
+    tmp_path, mocked_server, monkeypatch, identity, code
+):
+    monkeypatch.setattr(
+        runner_mod.gpu_mod,
+        "engine_gpus",
+        lambda origin: [{"index": 0, "uuid": FAKE_UUID, **identity}],
+    )
+    doc = _campaign(tmp_path).execute()
+    assert doc["validity"] == V.VALIDITY_INVALID
+    assert code in doc["campaign_invalidation_codes"]
+    verification = doc["resolved_configuration"]["B1"]["gpu_verification"]
+    assert verification["matches"] is True
+    assert verification["phase0_hardware"]["observed_identity"]["name"] == identity["name"]
+
+
+def test_preflight_refuses_a_known_wrong_gpu_before_measurement(
+    tmp_path, mocked_server, monkeypatch
+):
+    monkeypatch.setattr(
+        runner_mod.prov,
+        "gpu_provenance",
+        lambda selector=None, resolved_uuid=None: {
+            "gpus": [{
+                "index": "0", "uuid": FAKE_UUID, "name": "NVIDIA GeForce RTX 3060 Ti",
+                "memory.total": "12288 MiB", "selected": True,
+            }],
+            "topology": "GPU0\tX",
+        },
+    )
+    with pytest.raises(ValueError, match=V.GPU_UNSUPPORTED_PHASE0_MODEL):
+        _campaign(tmp_path).execute()
+    assert mocked_server["started"] == []
+
+
+def test_a_smoke_run_on_another_gpu_stays_non_canonical(
+    tmp_path, mocked_server, monkeypatch
+):
+    monkeypatch.setattr(
+        runner_mod.gpu_mod,
+        "engine_gpus",
+        lambda origin: [{
+            "index": 0, "uuid": FAKE_UUID, "name": "NVIDIA GeForce RTX 3090",
+            "total_bytes": 24 << 30,
+        }],
+    )
+    doc = _campaign(tmp_path, canonical=False).execute()
+    assert doc["validity"] == V.VALIDITY_NON_CANONICAL
+    assert V.GPU_UNSUPPORTED_PHASE0_MODEL not in doc["campaign_invalidation_codes"]
 
 
 def test_an_unprovable_runtime_gpu_invalidates(tmp_path, mocked_server, monkeypatch):

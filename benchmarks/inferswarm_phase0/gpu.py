@@ -20,10 +20,115 @@ So this module does three things and refuses to guess at any of them:
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Sequence
 
 from . import provenance as prov
+from . import validity as V
+
+# A marketed 12 GB RTX 3060 normally reports 12,288 MiB through nvidia-smi/CUDA.  Driver
+# reservations and decimal-vs-binary reporting can move the observed total slightly, so
+# canonical Phase 0 accepts the inclusive 11--13 GiB class rather than exact byte equality.
+# The upper bound is intentional: this experiment is not "at least 12 GB", and must reject
+# 16/24 GB cards just as decisively as an 8 GB RTX 3060.
+PHASE0_VRAM_MIN_BYTES = 11 << 30
+PHASE0_VRAM_MAX_BYTES = 13 << 30
+
+_PHASE0_MODEL = re.compile(
+    r"^(?:NVIDIA\s+)?(?:GeForce\s+)?RTX\s+3060$", re.IGNORECASE
+)
+_MEMORY_VALUE = re.compile(r"^\s*([0-9]+(?:\.[0-9]+)?)\s*([KMGT]i?B)\s*$", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class Phase0GpuIssue:
+    """A stable canonical-hardware refusal/invalidation plus its observed evidence."""
+
+    code: str
+    message: str
+    observed_name: Any
+    observed_total_memory: Any
+
+    def record(self) -> Dict[str, Any]:
+        return {
+            "code": self.code,
+            "message": self.message,
+            "observed_name": self.observed_name,
+            "observed_total_memory": self.observed_total_memory,
+        }
+
+
+def _memory_total_bytes(identity: Dict[str, Any]) -> int | None:
+    raw = identity.get("total_bytes")
+    if isinstance(raw, int) and not isinstance(raw, bool) and raw >= 0:
+        return raw
+    raw = identity.get("memory.total")
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        # nvidia-smi names this field in MiB even when a mocked/provider row gives a number.
+        return int(raw * (1 << 20))
+    if not isinstance(raw, str):
+        return None
+    match = _MEMORY_VALUE.fullmatch(raw)
+    if not match:
+        return None
+    value = float(match.group(1))
+    unit = match.group(2).lower()
+    factors = {
+        "kb": 10**3, "kib": 1 << 10,
+        "mb": 10**6, "mib": 1 << 20,
+        "gb": 10**9, "gib": 1 << 30,
+        "tb": 10**12, "tib": 1 << 40,
+    }
+    return int(value * factors[unit])
+
+
+def validate_phase0_gpu(identity: Dict[str, Any]) -> Phase0GpuIssue | None:
+    """Prove an observed identity is exactly an RTX 3060 in the 12-GB VRAM class."""
+    name = identity.get("name")
+    raw_memory = identity.get("total_bytes", identity.get("memory.total"))
+    normalized_name = " ".join(str(name).split()) if name is not None else ""
+    if not _PHASE0_MODEL.fullmatch(normalized_name):
+        return Phase0GpuIssue(
+            V.GPU_UNSUPPORTED_PHASE0_MODEL,
+            "canonical Phase 0 requires GPU model NVIDIA GeForce RTX 3060; "
+            f"observed name={name!r}",
+            name,
+            raw_memory,
+        )
+    total_bytes = _memory_total_bytes(identity)
+    if total_bytes is None or not PHASE0_VRAM_MIN_BYTES <= total_bytes <= PHASE0_VRAM_MAX_BYTES:
+        return Phase0GpuIssue(
+            V.GPU_UNSUPPORTED_PHASE0_VRAM,
+            "canonical Phase 0 requires an RTX 3060 in the 12-GB VRAM class "
+            f"({PHASE0_VRAM_MIN_BYTES}..{PHASE0_VRAM_MAX_BYTES} bytes inclusive); "
+            f"observed total={raw_memory!r}, parsed_bytes={total_bytes!r}",
+            name,
+            raw_memory,
+        )
+    return None
+
+
+def phase0_gpu_validation_record(identity: Dict[str, Any] | None) -> Dict[str, Any]:
+    """Artifact-ready hardware-class proof without dropping the observed identity."""
+    if not isinstance(identity, dict):
+        return {
+            "valid": False,
+            "code": V.GPU_PHASE0_IDENTITY_UNPROVEN,
+            "message": "the selected GPU identity was unavailable, so its Phase-0 hardware class cannot be proven",
+            "observed_identity": identity,
+        }
+    issue = validate_phase0_gpu(identity)
+    return {
+        "valid": issue is None,
+        "code": issue.code if issue else None,
+        "message": issue.message if issue else None,
+        "observed_identity": dict(identity),
+        "accepted_vram_bytes": {
+            "minimum_inclusive": PHASE0_VRAM_MIN_BYTES,
+            "maximum_inclusive": PHASE0_VRAM_MAX_BYTES,
+        },
+    }
 
 
 def _resolve_uuids(selector: str) -> "tuple[str, ...] | None":
@@ -172,11 +277,21 @@ def verify_engine_gpu(
         )
         return block
     want = selection.resolved_uuid.upper()
-    block["matches"] = any(u.upper() == want for u in reported_uuids)
+    matched = next(
+        (
+            g for g in reported
+            if isinstance(g, dict) and str(g.get("uuid", "")).upper() == want
+        ),
+        None,
+    )
+    block["matches"] = matched is not None
     if not block["matches"]:
         block["mismatch"] = (
             f"engine ran on {reported_uuids}, not the requested/resolved {selection.resolved_uuid}"
         )
+    else:
+        block["matched_identity"] = dict(matched)
+        block["phase0_hardware"] = phase0_gpu_validation_record(matched)
     return block
 
 
@@ -201,7 +316,6 @@ def bind_torch_device(selector: str | None):
     UUID is the card that will execute the kernels, not the card that was asked for.
     """
     import torch  # noqa: F401 -- imported for its side effect of initializing CUDA below
-
     from freetoken.gpu_select import assign_gpu, bind_assigned_gpu, gpu_identity
 
     selection = resolve_gpu(selector)

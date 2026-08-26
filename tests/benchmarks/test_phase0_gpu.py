@@ -7,11 +7,10 @@ against are all variations of one thing: a record that names a card the run did 
 from __future__ import annotations
 
 import pytest
-
-from .fakes import FAKE_UUID
-
 from inferswarm_phase0 import gpu as gpu_mod
 from inferswarm_phase0 import provenance as prov
+
+from .fakes import FAKE_UUID
 
 OTHER_UUID = "GPU-99999999-8888-7777-6666-555555555555"
 
@@ -99,6 +98,51 @@ def test_verification_without_a_resolved_uuid_is_unproven():
     )
     block = gpu_mod.verify_engine_gpu(selection, [{"uuid": FAKE_UUID}])
     assert block["matches"] is None
+
+
+# --- canonical Phase-0 hardware class ---------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "name",
+    ["NVIDIA GeForce RTX 3060", "GeForce RTX 3060", "RTX 3060"],
+)
+def test_phase0_gpu_accepts_normal_rtx3060_name_variations(name):
+    assert gpu_mod.validate_phase0_gpu({"name": name, "total_bytes": 12 << 30}) is None
+
+
+@pytest.mark.parametrize(
+    "name,total_bytes,code",
+    [
+        ("NVIDIA GeForce RTX 3060", 8 << 30, "gpu.unsupported_phase0_vram"),
+        ("NVIDIA GeForce RTX 3060 Ti", 12 << 30, "gpu.unsupported_phase0_model"),
+        ("NVIDIA GeForce RTX 3090", 24 << 30, "gpu.unsupported_phase0_model"),
+    ],
+)
+def test_phase0_gpu_rejects_adjacent_models_and_vram_classes(name, total_bytes, code):
+    issue = gpu_mod.validate_phase0_gpu({"name": name, "total_bytes": total_bytes})
+    assert issue is not None and issue.code == code
+
+
+@pytest.mark.parametrize(
+    "total_bytes,accepted",
+    [
+        ((11 << 30) - 1, False),
+        (11 << 30, True),
+        (13 << 30, True),
+        ((13 << 30) + 1, False),
+    ],
+)
+def test_phase0_gpu_vram_boundaries_are_inclusive(total_bytes, accepted):
+    issue = gpu_mod.validate_phase0_gpu({
+        "name": "NVIDIA GeForce RTX 3060", "total_bytes": total_bytes,
+    })
+    assert (issue is None) is accepted
+
+
+def test_phase0_gpu_parses_nvidia_smi_memory_total():
+    assert gpu_mod.validate_phase0_gpu({
+        "name": "NVIDIA GeForce RTX 3060", "memory.total": "12288 MiB",
+    }) is None
 
 
 # --- the nvidia-smi provenance query --------------------------------------------------------------

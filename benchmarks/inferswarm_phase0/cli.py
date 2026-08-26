@@ -21,21 +21,21 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import List, Sequence
+from typing import Sequence
 
-from . import HARNESS_VERSION
+from . import CANONICAL_MODEL_REPOSITORY, HARNESS_VERSION
+from . import provenance as prov
 from .baselines import BASELINE_ARMS, BASELINE_ARMS_BY_ID, correctness_reference_arm
 from .manifest import ManifestError, load_manifest, sha256_text
 from .protocol import build_protocol
 from .runner import Campaign, ServeSettings
-from . import provenance as prov
 
 
 def _add_common(p: argparse.ArgumentParser) -> None:
     p.add_argument("--model", required=True, help="local checkpoint directory (or .ftw)")
     p.add_argument(
         "--model-repository",
-        default="nvidia/Qwen3.6-35B-A3B-NVFP4",
+        default=CANONICAL_MODEL_REPOSITORY,
         help="upstream model repository (criteria section 1.1)",
     )
     p.add_argument(

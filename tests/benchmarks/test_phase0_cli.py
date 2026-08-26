@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 import pytest
-
+from inferswarm_phase0 import CANONICAL_MODEL_REPOSITORY
 from inferswarm_phase0.cli import main
 from inferswarm_phase0.manifest import CLASS_SPECS, REQUIRED_CLASSES, sha256_text
 
@@ -114,6 +114,45 @@ def test_canonical_sweep_refuses_a_symbolic_model_revision(tmp_path, capsys):
     assert "not a 40-hex commit SHA" in capsys.readouterr().err
 
 
+def test_canonical_exact_model_repository_is_accepted(tmp_path, capsys):
+    argv = _argv(tmp_path, "--model-repository", CANONICAL_MODEL_REPOSITORY)
+    assert main(argv) == 0
+    doc = json.loads(capsys.readouterr().out)
+    assert not any("model repository" in reason for reason in doc["preflight_refusals"])
+
+
+def test_canonical_alternate_model_repository_is_a_dry_run_refusal(tmp_path, capsys):
+    argv = _argv(tmp_path, "--model-repository", "Qwen/Qwen3.6-35B-A3B-FP8")
+    assert main(argv) == 0
+    output = capsys.readouterr()
+    doc = json.loads(output.out)
+    assert any(CANONICAL_MODEL_REPOSITORY in reason for reason in doc["preflight_refusals"])
+    assert "alternate models require --dev-smoke" in output.err
+
+
+def test_canonical_alternate_model_repository_is_rejected_before_execution(tmp_path, capsys):
+    argv = _argv(tmp_path, "--model-repository", "Qwen/Qwen3.6-35B-A3B-FP8")
+    argv.remove("--dry-run")
+    assert main(argv) == 2
+    error = capsys.readouterr().err
+    assert CANONICAL_MODEL_REPOSITORY in error
+    assert "alternate models require --dev-smoke" in error
+
+
+def test_alternate_model_repository_is_allowed_only_for_dev_smoke(tmp_path, capsys):
+    argv = _argv(
+        tmp_path,
+        "--dev-smoke",
+        "--model-repository",
+        "Qwen/Qwen3.6-35B-A3B-FP8",
+        canonical=False,
+    )
+    assert main(argv) == 0
+    doc = json.loads(capsys.readouterr().out)
+    assert doc["canonical"] is False
+    assert doc["preflight_refusals"] == []
+
+
 def test_canonical_sweep_refuses_a_partial_arm_set(tmp_path, capsys):
     with pytest.raises(SystemExit, match="all of B1-B5"):
         main(_argv(tmp_path, "--arms", "B1,B2"))
@@ -145,6 +184,22 @@ def test_reference_subcommand_requires_a_resolved_backend_and_fixed_cache(tmp_pa
     # 'auto' is not a choice argparse accepts here at all
     with pytest.raises(SystemExit):
         main(base + ["--nvfp4-backend", "auto", "--moe-cache-size", "512"])
+
+
+def test_canonical_correctness_reference_requires_the_exact_model_repository(tmp_path, capsys):
+    argv = [
+        "reference", "--model", str(tmp_path / "model"),
+        "--model-repository", "Qwen/Qwen3.6-35B-A3B-FP8",
+        "--manifest", _manifest_file(tmp_path),
+        "--model-revision", SHA40, "--inferswarm-commit", "b" * 40,
+        "--gpu", "GPU-abc", "--out-root", str(tmp_path / "runs"), "--dry-run",
+        "--nvfp4-backend", "triton", "--moe-cache-size", "512",
+    ]
+    assert main(argv) == 0
+    output = capsys.readouterr()
+    doc = json.loads(output.out)
+    assert any(CANONICAL_MODEL_REPOSITORY in reason for reason in doc["preflight_refusals"])
+    assert "alternate models require --dev-smoke" in output.err
 
 
 def test_hash_subcommand_prints_a_freezable_digest(tmp_path, capsys):

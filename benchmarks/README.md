@@ -97,6 +97,10 @@ python benchmarks/phase0_baseline.py sweep \
 - **Pinned model revision.** `--model-revision` must be the exact upstream commit SHA.
   Branch names, tags and `main` are refused for a canonical run: no Phase-0 measurement may
   begin until the revision is recorded, and inventing one is a fabricated provenance record.
+- **Fixed model and loaded format.** Canonical sweep and correctness-reference runs require
+  the exact repository `nvidia/Qwen3.6-35B-A3B-NVFP4`; another repository requires
+  `--dev-smoke`. Every live arm must additionally report `model.expert_quant = nvfp4` from
+  the engine. Agreement across arms is not sufficient if they all loaded another format.
 - **Physical GPU by stable UUID.** `--gpu` is **required** for a canonical run and takes
   what `ft serve --gpu` takes. Prefer the UUID from `nvidia-smi -L`: indices move between
   boots, and the criteria require the sweep and the later candidate to use the *same
@@ -106,6 +110,11 @@ python benchmarks/phase0_baseline.py sweep \
   the microbenchmarks — so they cannot silently disagree. After each server is ready the
   UUID the *engine* reports for itself (`/v1/stats` `gpus`, filled from its own bound
   device) is compared with the resolved one; a mismatch invalidates the campaign.
+  The selected `nvidia-smi` row is also checked before measurement, and the matching live
+  engine identity is checked again, for the exact model `NVIDIA GeForce RTX 3060` and an
+  inclusive total-memory range of 11--13 GiB. The bounded range tolerates normal reporting
+  variance around a 12 GB card while deliberately excluding 8, 16, and 24 GB devices;
+  adjacent names such as RTX 3060 Ti are rejected.
 - **A fresh `ft bench bw` profile is a session-level prerequisite**, not a B2 side effect.
   It runs **once, before the sweep traversal**, in either ordering direction, because two
   arms read it: B2 resolves its per-decode-step fetch split from it, and B3's

@@ -27,5 +27,14 @@ def resolved_gpu(monkeypatch):
 
     monkeypatch.setattr(gpu_mod, "_resolve_uuids", lambda selector: (FAKE_UUID,))
     monkeypatch.setattr(gpu_mod, "_smi_index_for", lambda uuid: 0)
-    monkeypatch.setattr(gpu_mod, "engine_gpus", lambda origin: [{"index": 0, "uuid": FAKE_UUID}])
+    monkeypatch.setattr(
+        gpu_mod,
+        "engine_gpus",
+        lambda origin: [{
+            "index": 0,
+            "uuid": FAKE_UUID,
+            "name": "NVIDIA GeForce RTX 3060",
+            "total_bytes": 12 << 30,
+        }],
+    )
     return FAKE_UUID

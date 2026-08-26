@@ -14,9 +14,10 @@ arm definition), and this module offers no way to lower ``--moe-cache-size`` /
 **Three gates, in this order, and nothing measures before all three pass.**
 
 1. *Preflight refusals* (``preflight``): a canonical run refuses to start on a dirty
-   FreeToken checkout, on a model revision the local snapshot contradicts, on missing
-   required provenance, or on a ``--gpu`` that cannot be resolved to a stable UUID. These
-   raise: there is no artifact to write, because no measurement is permitted.
+   FreeToken checkout, on the wrong model repository, on a model revision the local snapshot
+   contradicts, on missing required provenance, or unless the selected UUID's captured
+   identity proves an RTX 3060 in the 12-GB class. These raise: there is no artifact to write,
+   because no measurement is permitted.
 2. *The session-level ``ft bench bw`` prerequisite* (``refresh_bench_bw``): run once, before
    the sweep traversal, in either ordering direction -- B2 *and* B3 read the profile. A
    failure aborts a canonical campaign before any server starts.
@@ -35,7 +36,7 @@ from datetime import date as _date
 from pathlib import Path
 from typing import Any, Dict, List, Sequence
 
-from . import HARNESS_VERSION
+from . import CANONICAL_MODEL_REPOSITORY, HARNESS_VERSION
 from . import bench_bw as bench_bw_mod
 from . import gpu as gpu_mod
 from . import provenance as prov
@@ -233,23 +234,33 @@ class Campaign:
         return bench_bw_mod.consuming_arms(self.arms)
 
     def dry_run_document(self) -> Dict[str, Any]:
-        """Everything the campaign would do, without touching a GPU.
+        """Everything the campaign would do, without starting a server or measuring.
 
         Used by ``--dry-run`` and by the tests: the exact per-arm command lines, the
-        protocol, and an unambiguous canonical/non-canonical verdict.
+        protocol, and an unambiguous canonical/non-canonical verdict. It reads the already
+        used nvidia-smi provenance path so a known hardware mismatch is visible here too;
+        it does not initialize CUDA or run a workload.
         """
         port = 0  # a placeholder; the real port is chosen at spawn time
         steps = self.steps()
         consumers = self.bench_bw_consumers()
+        gpu_provenance = prov.gpu_provenance(
+            self.settings.gpu, self.gpu_selection.resolved_uuid
+        )
+        phase0_gpu_preflight = self._phase0_gpu_preflight(gpu_provenance)
         return {
             "canonical": self.canonical and self.protocol.canonical and self.manifest.canonical,
             "canonical_blockers": self._canonical_blockers(),
             # What would stop this plan from ever starting, checked now rather than after a
             # model load: a plan that reads "CANONICAL" while it would be refused is exactly
             # the thing a dry run exists to prevent.
-            "preflight_refusals": self.preflight_refusals(),
+            "preflight_refusals": self.preflight_refusals(
+                gpu_provenance=gpu_provenance,
+                phase0_gpu_preflight=phase0_gpu_preflight,
+            ),
             "protocol": self.protocol.record(),
             "gpu_selection": self.gpu_selection.record(),
+            "phase0_gpu_preflight": phase0_gpu_preflight,
             "bench_bw_prerequisite": {
                 "runs_before_the_sweep": bool(consumers) and self.refresh_bench_bw,
                 "consuming_arms": consumers,
@@ -339,18 +350,45 @@ class Campaign:
 
     # ---- preflight ----------------------------------------------------------------------
 
-    def preflight_refusals(self) -> List[str]:
+    def _phase0_gpu_preflight(self, gpu_provenance: Dict[str, Any]) -> Dict[str, Any]:
+        rows = gpu_provenance.get("gpus")
+        if not isinstance(rows, list):
+            return gpu_mod.phase0_gpu_validation_record(None)
+        want = self.gpu_selection.resolved_uuid
+        identity = next(
+            (
+                row for row in rows
+                if isinstance(row, dict)
+                and want
+                and str(row.get("uuid", "")).upper() == want.upper()
+            ),
+            None,
+        )
+        return gpu_mod.phase0_gpu_validation_record(identity)
+
+    def preflight_refusals(
+        self,
+        *,
+        gpu_provenance: Dict[str, Any] | None = None,
+        phase0_gpu_preflight: Dict[str, Any] | None = None,
+    ) -> List[str]:
         """Everything a canonical run would refuse to start on, cheaply enough for a dry run.
 
-        Deliberately excludes the provenance-completeness check, which needs the full
-        provenance document (an nvidia-smi sweep and a torch-importing subprocess);
-        ``preflight`` adds that one. Everything here is a file read or a string check, so
-        ``--dry-run`` can show a reviewer that a plan which *looks* canonical would in fact
-        be refused.
+        Deliberately excludes the full provenance-completeness check, which includes a
+        torch-importing subprocess; ``preflight`` adds that one. The supplied GPU block is
+        captured through the existing nvidia-smi provenance path. Thus ``--dry-run`` can
+        show a reviewer that a plan which *looks* canonical would in fact be refused without
+        initializing CUDA or running a workload.
         """
         if not self.canonical:
             return []
         reasons: List[str] = []
+        if self.settings.model_repository != CANONICAL_MODEL_REPOSITORY:
+            reasons.append(
+                "canonical Phase 0 requires model repository "
+                f"{CANONICAL_MODEL_REPOSITORY}; alternate models require --dev-smoke "
+                f"(observed {self.settings.model_repository!r})"
+            )
         dirty = prov.check_clean_working_tree(prov.git_commit(prov.freetoken_repo_root()))
         if dirty:
             reasons.append(dirty)
@@ -371,6 +409,18 @@ class Campaign:
                 "physical RTX 3060 Phase 0 ran on (criteria section 2.1). "
                 f"{self.gpu_selection.unavailable}"
             )
+        else:
+            if phase0_gpu_preflight is None:
+                gpu_provenance = gpu_provenance or prov.gpu_provenance(
+                    self.settings.gpu, self.gpu_selection.resolved_uuid
+                )
+                phase0_gpu_preflight = self._phase0_gpu_preflight(gpu_provenance)
+            if phase0_gpu_preflight.get("valid") is not True:
+                reasons.append(
+                    f"{phase0_gpu_preflight.get('code')}: "
+                    + str(phase0_gpu_preflight.get("message") or "Phase-0 GPU class is unproven")
+                    + "; alternate GPUs require --dev-smoke"
+                )
         if self.bench_bw_consumers() and self.bench_bw_dtype != "nvfp4":
             reasons.append(
                 "canonical Phase-0 sweep requires --bench-bw-dtype nvfp4; alternate "
@@ -386,7 +436,12 @@ class Campaign:
         """
         if not self.canonical:
             return
-        for reason in self.preflight_refusals():
+        gpu_provenance = provenance.get("gpu") if isinstance(provenance, dict) else None
+        phase0_gpu_preflight = self._phase0_gpu_preflight(gpu_provenance or {})
+        for reason in self.preflight_refusals(
+            gpu_provenance=gpu_provenance,
+            phase0_gpu_preflight=phase0_gpu_preflight,
+        ):
             raise ValueError(f"canonical run refused: {reason}")
 
         missing = prov.missing_required(provenance)
@@ -498,6 +553,7 @@ class Campaign:
             "bench_bw": self.bench_bw_record,
             "workload_manifest": self.manifest.record(),
             "provenance_missing_required": missing,
+            "phase0_gpu_preflight": self._phase0_gpu_preflight(provenance.get("gpu") or {}),
             **provenance,
         }
         writer = RunWriter(run_root, header)
@@ -606,6 +662,14 @@ class Campaign:
                     "2.3 requires the resolved value, and a hole is not one",
                     arm_id=arm.id,
                 )
+        expert_quant = _lookup(config, "model.expert_quant")
+        if self.canonical and expert_quant is not None and expert_quant != "nvfp4":
+            self.validity.add(
+                V.MODEL_EXPERT_QUANT_UNEXPECTED,
+                "canonical Phase 0 requires model.expert_quant='nvfp4'; "
+                f"the live engine reported {expert_quant!r}",
+                arm_id=arm.id,
+            )
         if arm.id == "B2" and backend_resolved == "hybrid":
             fraction = _lookup(config, "moe.hybrid_fetch_fraction_resolved")
             if not bench_bw_mod.is_positive_finite(fraction) or float(fraction) > 1.0:
@@ -621,6 +685,15 @@ class Campaign:
     def _check_arm_gpu(self, arm: Arm, verification: Dict[str, Any]) -> None:
         matches = verification.get("matches")
         if matches is True:
+            if self.canonical:
+                hardware = verification.get("phase0_hardware") or {}
+                if hardware.get("valid") is not True:
+                    code = str(hardware.get("code") or V.GPU_UNPROVEN)
+                    self.validity.add(
+                        code,
+                        str(hardware.get("message") or "the engine-reported Phase-0 GPU class is unproven"),
+                        arm_id=arm.id,
+                    )
             return
         if matches is False:
             self.validity.add(

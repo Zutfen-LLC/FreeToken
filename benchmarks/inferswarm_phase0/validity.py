@@ -52,6 +52,7 @@ BENCH_BW_NVFP4_CALIBRATION_UNUSABLE = "bench_bw.nvfp4_calibration_unusable"
 INSTRUMENTATION_UNAVAILABLE = "runtime.instrumentation_unavailable"
 RUNTIME_CONFIG_MISSING = "runtime.config_missing"
 RUNTIME_CONFIG_MISSING_FIELD = "runtime.config_missing_field"
+MODEL_EXPERT_QUANT_UNEXPECTED = "model.expert_quant_unexpected"
 
 # criteria section 2.1 (B3 must coincide with B1 or B2)
 B3_RESOLUTION_UNEXPECTED = "sweep.b3_resolution_unexpected"
@@ -75,6 +76,9 @@ PREFILL_UNUSABLE = "prefill.unusable_timing"
 # criteria section 2.1 (one specific physical RTX 3060) and the benchmark contract
 GPU_UNPROVEN = "gpu.unproven"
 GPU_MISMATCH = "gpu.mismatch"
+GPU_UNSUPPORTED_PHASE0_MODEL = "gpu.unsupported_phase0_model"
+GPU_UNSUPPORTED_PHASE0_VRAM = "gpu.unsupported_phase0_vram"
+GPU_PHASE0_IDENTITY_UNPROVEN = "gpu.phase0_identity_unproven"
 
 # criteria section 1.1 (pinned upstream revision) + the benchmark contract's provenance
 MODEL_REVISION_MISMATCH = "provenance.model_revision_mismatch"

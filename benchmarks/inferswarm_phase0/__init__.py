@@ -24,9 +24,13 @@ in CPU-only CI. The one GPU-touching module (``expert_microbench``) imports torc
 
 from __future__ import annotations
 
+# The checkpoint family fixed by the Phase-0/1 experiment.  The revision remains an
+# independently supplied, exact upstream commit SHA; only the repository is fixed here.
+CANONICAL_MODEL_REPOSITORY = "nvidia/Qwen3.6-35B-A3B-NVFP4"
+
 # Bumped whenever the harness changes in a way that could move a number. Recorded in every
 # run artifact so two result directories can be told apart by more than their date.
-HARNESS_VERSION = "0.2.0"
+HARNESS_VERSION = "0.3.0"
 
 # The artifact schema the runner writes. A consumer must refuse an unknown major version
 # rather than guess at field meanings.
