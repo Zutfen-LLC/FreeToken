@@ -26,9 +26,11 @@ from __future__ import annotations
 
 # Bumped whenever the harness changes in a way that could move a number. Recorded in every
 # run artifact so two result directories can be told apart by more than their date.
-HARNESS_VERSION = "0.1.0"
+HARNESS_VERSION = "0.2.0"
 
 # The artifact schema the runner writes. A consumer must refuse an unknown major version
 # rather than guess at field meanings.
-RUN_SCHEMA = "inferswarm.phase0.run/1"
+# /2: `status` split into `execution_status` (did every generation return?) and
+# `validity` (is this a valid canonical campaign?), plus `campaign_invalidations`.
+RUN_SCHEMA = "inferswarm.phase0.run/2"
 REPETITION_SCHEMA = "inferswarm.phase0.repetition/1"

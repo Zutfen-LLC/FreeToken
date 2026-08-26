@@ -77,8 +77,15 @@ def test_dry_run_shows_the_exact_serve_command_per_arm(tmp_path, capsys):
     b5 = " ".join(by_id["B5"]["serve_command"])
     assert "--moe-backend cpu" in b5 and "--nvfp4-backend triton" in b5
     assert "--gpu GPU-abc" in b5
-    assert by_id["B2"]["bench_bw_command"] is not None
-    assert by_id["B1"]["bench_bw_command"] is None
+    # The `ft bench bw` refresh is no longer a per-arm side effect: it is one session-level
+    # prerequisite that runs before the traversal, because B2 AND B3 read the profile.
+    assert by_id["B2"]["consumes_bench_bw"] is True
+    assert by_id["B3"]["consumes_bench_bw"] is True
+    assert by_id["B1"]["consumes_bench_bw"] is False
+    prerequisite = doc["bench_bw_prerequisite"]
+    assert prerequisite["runs_before_the_sweep"] is True
+    assert prerequisite["consuming_arms"] == ["B2", "B3"]
+    assert "--gpu" in prerequisite["command"]
 
 
 def test_dry_run_records_the_execution_order(tmp_path, capsys):
@@ -124,6 +131,7 @@ def test_reference_subcommand_requires_a_resolved_backend_and_fixed_cache(tmp_pa
         "reference", "--model", str(tmp_path / "model"),
         "--manifest", _manifest_file(tmp_path),
         "--model-revision", SHA40, "--inferswarm-commit", "b" * 40,
+        "--gpu", "GPU-abc",
         "--out-root", str(tmp_path / "runs"), "--dry-run",
     ]
     assert main(base + ["--nvfp4-backend", "triton", "--moe-cache-size", "512"]) == 0
@@ -142,3 +150,59 @@ def test_hash_subcommand_prints_a_freezable_digest(tmp_path, capsys):
     assert main(["hash", str(fixture)]) == 0
     printed = capsys.readouterr().out.split()[0]
     assert printed == sha256_text("some prompt\n")
+
+
+# --- the canonical prerequisites the CLI must refuse outright -------------------------------
+
+def test_canonical_sweep_refuses_no_bench_bw(tmp_path):
+    """B2's fetch split AND B3's auto backend pick both read the profile, so skipping the
+    refresh is refused rather than quietly downgraded."""
+    with pytest.raises(SystemExit, match="--no-bench-bw is refused"):
+        main(_argv(tmp_path, "--no-bench-bw"))
+
+
+def test_a_smoke_run_may_skip_bench_bw_and_stays_non_canonical(tmp_path, capsys):
+    argv = _argv(tmp_path, "--dev-smoke", "--no-bench-bw", canonical=False)
+    assert main(argv) == 0
+    doc = json.loads(capsys.readouterr().out)
+    assert doc["canonical"] is False
+    assert doc["bench_bw_prerequisite"]["runs_before_the_sweep"] is False
+
+
+def test_canonical_sweep_requires_a_gpu(tmp_path, capsys):
+    argv = [a for a in _argv(tmp_path)]
+    i = argv.index("--gpu")
+    del argv[i:i + 2]
+    assert main(argv) == 2
+    assert "--gpu is required for a canonical run" in capsys.readouterr().err
+
+
+def test_canonical_sweep_refuses_an_abbreviated_inferswarm_commit(tmp_path, capsys):
+    argv = _argv(tmp_path)
+    argv[argv.index("--inferswarm-commit") + 1] = "abc1234"
+    assert main(argv) == 2
+    assert "not a 40-hex commit SHA" in capsys.readouterr().err
+
+
+def test_canonical_sweep_refuses_a_missing_inferswarm_commit(tmp_path, capsys):
+    argv = _argv(tmp_path)
+    i = argv.index("--inferswarm-commit")
+    del argv[i:i + 2]
+    assert main(argv) == 2
+    assert "--inferswarm-commit is required" in capsys.readouterr().err
+
+
+def test_the_dry_run_shows_the_reference_arm_is_forced_greedy(tmp_path, capsys):
+    base = [
+        "reference", "--model", str(tmp_path / "model"),
+        "--manifest", _manifest_file(tmp_path),
+        "--model-revision", SHA40, "--inferswarm-commit", "b" * 40,
+        "--gpu", "GPU-abc",
+        "--out-root", str(tmp_path / "runs"), "--dry-run",
+        "--nvfp4-backend", "triton", "--moe-cache-size", "512",
+    ]
+    assert main(base) == 0
+    doc = json.loads(capsys.readouterr().out)
+    assert doc["arms"][0]["request_sampling"] == {
+        "temperature": 0.0, "top_p": 1.0, "top_k": -1
+    }

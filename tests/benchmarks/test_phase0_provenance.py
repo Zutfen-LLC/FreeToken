@@ -124,3 +124,87 @@ def test_git_commit_reports_the_repo_it_could_not_read(tmp_path):
     field = prov.git_commit(tmp_path)
     assert field["value"] is None
     assert str(tmp_path) in field["unavailable"]
+
+
+# --- the InferSwarm commit ---------------------------------------------------------------
+
+@pytest.mark.parametrize("commit", ["main", "phase0", "abc1234", "g" * 40, "", None])
+def test_canonical_runs_reject_an_inferswarm_commit_that_is_not_a_full_sha(commit):
+    """A non-empty string is not a provenance record: 'main' moves and a short SHA is
+    ambiguous, and the benchmark contract requires the exact commit a result belongs to."""
+    with pytest.raises(ValueError):
+        prov.validate_inferswarm_commit(commit, canonical=True)
+
+
+def test_canonical_runs_accept_a_full_inferswarm_sha():
+    prov.validate_inferswarm_commit("b" * 40, canonical=True)
+    # git prints lower-case, but a pasted upper-case SHA names the same commit
+    prov.validate_inferswarm_commit("B" * 40, canonical=True)
+
+
+def test_non_canonical_runs_do_not_require_an_inferswarm_commit():
+    prov.validate_inferswarm_commit(None, canonical=False)
+
+
+# --- reconciling the pin with the local checkpoint ----------------------------------------
+
+def _snapshot(tmp_path, repo="nvidia--Qwen3.6-35B-A3B-NVFP4", sha="c" * 40):
+    path = tmp_path / "hub" / f"models--{repo}" / "snapshots" / sha
+    path.mkdir(parents=True)
+    return path
+
+
+def test_a_snapshot_sha_that_disagrees_with_the_revision_is_a_refusal(tmp_path):
+    pin = prov.ModelPin("nvidia/Qwen3.6-35B-A3B-NVFP4", "d" * 40, str(_snapshot(tmp_path)))
+    reason = prov.check_snapshot_revision(pin)
+    assert "disagrees with --model-revision" in reason
+
+
+def test_a_matching_snapshot_sha_is_accepted(tmp_path):
+    pin = prov.ModelPin("nvidia/Qwen3.6-35B-A3B-NVFP4", "c" * 40, str(_snapshot(tmp_path)))
+    assert prov.check_snapshot_revision(pin) is None
+
+
+def test_the_repository_is_cross_checked_from_the_cache_directory(tmp_path):
+    """models--<org>--<name> is one level above snapshots/, costs nothing to read, and
+    downloads nothing -- so a same-shaped path from another model is caught."""
+    path = _snapshot(tmp_path, repo="someone-else--OtherModel")
+    pin = prov.ModelPin("nvidia/Qwen3.6-35B-A3B-NVFP4", "c" * 40, str(path))
+    assert "disagrees with --model-repository" in prov.check_snapshot_revision(pin)
+    identity = prov._snapshot_identity(str(path))
+    assert identity["repository"] == "someone-else/OtherModel"
+
+
+def test_a_non_snapshot_path_records_that_it_cannot_be_cross_checked(tmp_path):
+    """An unverifiable path is not the same as a contradicted one; guessing either way
+    would be worse than saying so."""
+    local = tmp_path / "checkpoint"
+    local.mkdir()
+    pin = prov.ModelPin("nvidia/Qwen3.6-35B-A3B-NVFP4", "c" * 40, str(local))
+    assert prov.check_snapshot_revision(pin) is None
+    identity = prov._snapshot_identity(str(local))
+    assert "cannot be cross-checked" in identity["unavailable"]
+
+
+# --- a dirty FreeToken checkout ----------------------------------------------------------
+
+def test_a_dirty_tree_is_refused_and_names_the_paths():
+    """Recording the modified filenames does not make a run reproducible -- the contents
+    are what changed, and they are nowhere in the artifact."""
+    reason = prov.check_clean_working_tree(
+        {"value": "a" * 40, "dirty": True,
+         "dirty_paths": [" M python/freetoken/engine/engine.py", "?? scratch.py"]}
+    )
+    assert "cannot be reproduced from commit" in reason
+    assert "engine.py" in reason and "scratch.py" in reason
+    assert "--dev-smoke" in reason
+
+
+def test_a_clean_tree_is_accepted():
+    assert prov.check_clean_working_tree(
+        {"value": "a" * 40, "dirty": False, "dirty_paths": []}
+    ) is None
+
+
+def test_an_unreadable_commit_block_is_not_treated_as_dirty():
+    assert prov.check_clean_working_tree(prov.unavailable("not a git checkout")) is None

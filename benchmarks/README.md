@@ -64,12 +64,21 @@ chunked prefill (`Scheduler._accumulate_prefill`). The harness reads the result 
 generation. When instrumentation is off, the field is an explicit null with a reason — never
 a TTFT-derived substitute.
 
+The prefill record is attributed to *this* request by uid where possible: the response id is
+`chatcmpl-<uid>` and every instrumentation record is stamped with the same uid, so the match
+is request identity rather than "newest record above a sequence floor". Where the id shape is
+unrecognized the sequence rule still applies, but more than one candidate is reported as
+**ambiguous** rather than resolved by taking the newest — which would attribute another
+request's interval to this one.
+
 `GET /v1/instrumentation` also serves the engine's **resolved** configuration: which MoE
 backend `auto` actually selected, whether `--nvfp4-backend` was inert for the executing
 expert path, whether `_auto_cpu_layers` locked any layers, the resolved cache slots and
-bytes, and whether the Marlin 992-slot cap applies and whether it bound. These are read
-back off the running engine rather than re-derived, so the record cannot disagree with what
-executed.
+bytes, the resolved hybrid fetch fraction, the resolved `--max-prefill-length` and
+`--cache-type`, and whether the Marlin 992-slot cap applies and whether it bound. These are
+read back off the running engine rather than re-derived, so the record cannot disagree with
+what executed. A canonical run requires the fields criteria section 2.3 lists to be present
+and non-null; a hole where a resolved value should be invalidates the campaign.
 
 ### Running the sweep
 
@@ -88,9 +97,32 @@ python benchmarks/phase0_baseline.py sweep \
 - **Pinned model revision.** `--model-revision` must be the exact upstream commit SHA.
   Branch names, tags and `main` are refused for a canonical run: no Phase-0 measurement may
   begin until the revision is recorded, and inventing one is a fabricated provenance record.
-- **Physical GPU by stable UUID.** `--gpu` takes what `ft serve --gpu` takes. Prefer the
-  UUID from `nvidia-smi -L`: `nvidia-smi` indices move between boots, and the criteria
-  require the sweep and the later candidate to use the *same physical card*.
+- **Physical GPU by stable UUID.** `--gpu` is **required** for a canonical run and takes
+  what `ft serve --gpu` takes. Prefer the UUID from `nvidia-smi -L`: indices move between
+  boots, and the criteria require the sweep and the later candidate to use the *same
+  physical card*. An index is accepted but is immediately resolved to its UUID through
+  `freetoken.gpu_select` (the same selector `ft serve` uses) and **both** are recorded; the
+  resolved UUID is then what every child process is given — the servers, `ft bench bw` and
+  the microbenchmarks — so they cannot silently disagree. After each server is ready the
+  UUID the *engine* reports for itself (`/v1/stats` `gpus`, filled from its own bound
+  device) is compared with the resolved one; a mismatch invalidates the campaign.
+- **A fresh `ft bench bw` profile is a session-level prerequisite**, not a B2 side effect.
+  It runs **once, before the sweep traversal**, in either ordering direction, because two
+  arms read it: B2 resolves its per-decode-step fetch split from it, and B3's
+  `--moe-backend auto` reads the same profile to decide whether to upgrade offload to
+  hybrid. In a reversed session B3 runs first, so a B2-local refresh would let it consume a
+  stale profile. `--no-bench-bw` is **refused** for a canonical sweep; a failed command, an
+  unreadable profile, or a profile benched on another card aborts the campaign *before any
+  server starts*. The artifact records the command, both timestamps, the return code, the
+  selected GPU UUID, the resolved profile path, the profile's contents and its sha256.
+- **A clean FreeToken checkout.** A canonical run refuses to start from a dirty working
+  tree and names the modified paths: a dirty tree cannot be reproduced from its commit SHA,
+  and recording only the filenames does not make it reproducible.
+- **`--inferswarm-commit` must be a full 40-hex SHA** for a canonical run, for the same
+  reason `--model-revision` must be. If the checkpoint path is a Hugging Face
+  `.../snapshots/<sha>` layout, that SHA and the `models--<org>--<name>` cache entry are
+  cross-checked against `--model-revision` / `--model-repository` and a disagreement is a
+  refusal; a non-snapshot path records "cannot cross-check" instead of guessing.
 - **Frozen workload manifest.** `--manifest` points at a version-controlled JSON file
   pinning, per class, the fixture (or inline content), its sha256, the output-token count,
   the sampling parameters, `ignore_eos`, and the chat-template settings. Schema:
@@ -108,8 +140,8 @@ python benchmarks/phase0_baseline.py sweep \
   developer smoke tests only, require `--dev-smoke`, and stamp the run NON-CANONICAL
   everywhere it is recorded.
 - **`--dry-run`** prints the whole plan — every arm's exact `ft serve` command line, the
-  execution order, and an unambiguous CANONICAL / NON-CANONICAL banner — without touching a
-  GPU.
+  bandwidth-profile prerequisite and which arms consume it, the execution order, and an
+  unambiguous CANONICAL / NON-CANONICAL banner — without touching a GPU.
 
 ### Correctness reference
 
@@ -124,8 +156,15 @@ python benchmarks/phase0_baseline.py reference \
     --moe-cache-size 992          # fixed; >= num_experts, and <= 992 under marlin
 ```
 
-It runs `--moe-backend offload --moe-cpu-layers 0 --sampling-defaults none` (framework
-defaults → greedy) and always stores full output text. Its self-consistency check is two
+It runs `--moe-backend offload --moe-cpu-layers 0 --sampling-defaults none` and always
+stores full output text. Its request sampling is **forced greedy**
+(`temperature 0.0 / top_p 1.0 / top_k -1`) on the same frozen prompt fixture the sweep uses,
+and the override is recorded per repetition alongside the manifest's own values.
+`--sampling-defaults none` is not sufficient on its own: the manifest states sampling
+explicitly in every request body and a request-level value beats a server default, so a
+manifest whose frozen *performance* sampling is deliberately realistic would otherwise make
+the correctness reference sampled — and FreeToken exposes no seed to make that reproducible.
+The performance sweep keeps the manifest's frozen sampling untouched. Its self-consistency check is two
 independent runs with different `--session-id`s, compared on the recorded `output_sha256`
 per class. Note that identical HTTP text hashes are **not** the deeper C1/C2/C3 Phase-1
 correctness instrumentation (per-layer outputs, router selections, step-0 logits); they are
@@ -134,35 +173,74 @@ the reproducible fixture those gates will later be applied to.
 ### Hardware profile
 
 ```bash
-python benchmarks/phase0_baseline.py profile --gpu GPU-xxxx --expert-microbench --out profile.json
+python benchmarks/phase0_baseline.py profile --gpu GPU-xxxx \
+    --expert-microbench --device-bandwidth --out profile.json
 ```
 
 Captures GPU/VRAM identity, driver, compute capability, PCIe link generation and width
 (current *and* max), `nvidia-smi topo -m`, CPU/RAM/OS, and the bandwidth measurements from
 `ft bench bw` (STREAM-style CPU DRAM, pinned↔device copy, the real CPU MoE GEMV and the real
-`OffloadMoeCache.copy_missing` PCIe gather). `--expert-microbench` adds single-expert NVFP4
-decode-GEMV latency — the one Phase-0 hardware number no existing FreeToken benchmark
-provides. It is **diagnostic only**: per the benchmark contract a microbenchmark never
+`OffloadMoeCache.copy_missing` PCIe gather).
+
+- **`--device-bandwidth`** measures the card's own **VRAM** bandwidth, which is what issue
+  #2's "memory bandwidth" asks for and which `ft bench bw` does *not* measure — its ceilings
+  are host DRAM and the PCIe link. A device-resident buffer is copied device-to-device with
+  a working set far beyond L2 (512 MiB per buffer by default), timed with CUDA events after
+  warmup; every repetition is reported individually, and the byte accounting is stated both
+  ways (read+write and read-only) so neither has to be reverse-engineered.
+- **`--expert-microbench`** adds **true single-expert** NVFP4 decode-GEMV latency at
+  `top_k = 1` — one routed expert per call, timed directly. It optionally also reports the
+  grouped `top_k` routed-expert step, clearly named as a grouped/batched diagnostic and
+  **never divided by `top_k`**: expert work inside a grouped call executes concurrently, so
+  `step_ms / top_k` is an amortized throughput-like quantity, not a latency.
+
+Both bind the process to the requested GPU through FreeToken's own `gpu_select` binding path
+and record the UUID of the device they actually bound; a mismatch is refused rather than
+mislabelled. Both are **diagnostic only**: per the benchmark contract a microbenchmark never
 constitutes evidence about end-to-end inference and is never combined into one.
 
 ### Artifacts
 
 ```
 phase0-runs/<YYYY-MM-DD>-<session-id>-<short-name>/
-    run.json            provenance, configuration, protocol, resolved per-arm config
+    run.json            verdict, provenance, configuration, protocol, resolved per-arm config
     repetitions.jsonl   ONE LINE PER GENERATION, warmups included and tagged
     failures.jsonl      every failed generation, with its reason
-    SUMMARY.md          human summary; status derived from expected vs observed counts
+    SUMMARY.md          human summary; leads with the campaign verdict and its reasons
     server-logs/        one ft serve log per arm
 ```
 
 Every measured repetition is preserved with its raw timings; no repetition is ever
-discarded, and only averages are never emitted. The run status is computed from
-expected-vs-observed repetition counts and the failure list, so an incomplete campaign
-reads `INCOMPLETE` at the top of both `run.json` and `SUMMARY.md` — a successful-looking
-summary cannot hide a missing repetition. The harness computes **no** cross-configuration
-ratio and selects no baseline: `CANONICAL_PERFORMANCE_BASELINE` is chosen by a human from
-the completed campaign, and computing ratios mid-campaign is prohibited.
+discarded, and averages are never emitted in place of the data.
+
+**Execution completeness and campaign validity are two different answers, and the artifact
+keeps them apart.**
+
+- `execution_status` — `COMPLETE` / `INCOMPLETE` — is computed from expected-vs-observed
+  repetition counts and the failure list, so a successful-looking summary cannot hide a
+  missing repetition.
+- `validity` — `VALID` / `INVALID` / `NON_CANONICAL` — answers whether this is a valid
+  canonical Phase-0 baseline campaign. A campaign that produced every repetition it planned
+  is still `INVALID` when a precommitted requirement failed, and `campaign_invalidations`
+  lists each one as a structured record with a stable reason code (missing or failed
+  bandwidth refresh, unavailable instrumentation, a missing resolved-configuration field,
+  an expert-quant or held-constant disagreement across arms, a B3 resolution outside B1/B2,
+  a prompt outside its frozen class shape, a completion length that is not the requested
+  one, a stale / missing / ambiguous / shared-batch / unusable prefill record, an unproven
+  or mismatched physical GPU, …).
+- `label` is the InferSwarm evidence label and describes an **observation**: repetitions
+  that really happened are `MEASURED` whatever the campaign verdict is. That never promotes
+  the campaign to a valid baseline.
+
+The first line of both `run.json` and `SUMMARY.md` is one of `VALID CANONICAL CAMPAIGN`,
+`INVALID CANONICAL ATTEMPT`, `NON-CANONICAL DEVELOPER RUN`, `INCOMPLETE RUN`, with the
+reasons immediately below it — derived from the *overall* campaign state, not from the
+repetition protocol alone (`--allow-missing-provenance`, for instance, leaves the protocol
+untouched and still makes the campaign non-canonical).
+
+The harness computes **no** cross-configuration ratio and selects no baseline:
+`CANONICAL_PERFORMANCE_BASELINE` is chosen by a human from the completed campaign, and
+computing ratios mid-campaign is prohibited.
 
 ### Where results live
 

@@ -183,6 +183,7 @@ def stream_generation(
     stamps: List[float] = []
     pieces: List[str] = []
     usage: Dict[str, Any] | None = None
+    response_id: str | None = None
     t0 = time.perf_counter()
     try:
         resp = urllib.request.urlopen(req, timeout=timeout)
@@ -203,6 +204,8 @@ def stream_generation(
                 break
             now = time.perf_counter()
             chunk = json.loads(payload)
+            if response_id is None and chunk.get("id"):
+                response_id = str(chunk["id"])
             if chunk.get("usage"):
                 usage = chunk["usage"]
             for choice in chunk.get("choices", []):
@@ -214,7 +217,27 @@ def stream_generation(
     if usage is None:
         raise GenerationError("stream ended without a usage chunk; is this a FreeToken server?")
     return {"t0": t0, "t_end": time.perf_counter(), "stamps": stamps,
-            "text": "".join(pieces), "usage": usage}
+            "text": "".join(pieces), "usage": usage,
+            "response_id": response_id, "request_uid": request_uid(response_id)}
+
+
+def request_uid(response_id: str | None) -> int | None:
+    """The scheduler uid behind an OpenAI response id, or None when it is not one.
+
+    ``/v1/chat/completions`` ids are ``chatcmpl-<uid>`` where ``uid`` is the frontend's own
+    request id (``python/freetoken/server/openai_api.py``), and the instrumentation prefill
+    log stamps each record with the same ``uid`` (``StatsTracker.record``). That is enough
+    request identity to attribute a prefill record to *this* generation instead of inferring
+    it from "newest record above a sequence floor" -- and it needs no API change. Returns
+    None on any other id shape, and the caller then falls back to the sequence rule.
+    """
+    if not response_id:
+        return None
+    _, _, tail = response_id.rpartition("-")
+    try:
+        return int(tail)
+    except ValueError:
+        return None
 
 
 def measure_generation(
@@ -278,17 +301,105 @@ def measure_generation(
         "output_preview": text[:text_preview_chars],
         "output_text": text if store_text else None,
         "output_text_stored": bool(store_text),
+        "response_id": result.get("response_id"),
+        "request_uid": result.get("request_uid"),
         # Named so nobody reaches for the obvious wrong division; see the module docstring.
         "prefill_tps_from_ttft_deliberately_absent": (
             "TTFT includes transport, tokenization, template rendering, queueing, sampling "
             "and the SSE hop; prompt_tokens/TTFT is not prefill throughput"
         ),
     }
-    record.update(_observe_after(origin, prefill_seq_floor, prompt_tokens))
+    record.update(
+        _observe_after(
+            origin, prefill_seq_floor, prompt_tokens, result.get("request_uid")
+        )
+    )
     return record
 
 
-def _observe_after(origin: str, prefill_seq_floor: int, prompt_tokens: int) -> Dict[str, Any]:
+# Stable prefill status codes, mirrored in validity.py. A canonical run requires
+# ``PREFILL_OK``; every other value is a campaign-invalidating condition, because a Phase-0
+# record without prefill throughput is not the record the criteria asked for.
+PREFILL_OK = "ok"
+PREFILL_UNAVAILABLE = "instrumentation_unavailable"
+PREFILL_DISABLED = "instrumentation_disabled"
+PREFILL_MISSING = "no_fresh_record"
+PREFILL_AMBIGUOUS = "ambiguous_records"
+PREFILL_SHARED_BATCH = "shared_batch"
+PREFILL_UNUSABLE = "unusable_timing"
+
+
+def _prefill_status(code: str, reason: str, **extra: Any) -> Dict[str, Any]:
+    return {"ok": code == PREFILL_OK, "code": code, "reason": reason or None, **extra}
+
+
+def select_prefill_record(
+    prefill_block: Dict[str, Any], prefill_seq_floor: int, request_uid: int | None
+) -> tuple[Dict[str, Any] | None, Dict[str, Any]]:
+    """Pick THE prefill record belonging to this generation, or say why there isn't one.
+
+    Two attribution routes, preferred in this order:
+
+    ``uid``
+        The response id carries the frontend's request uid and each prefill record is
+        stamped with the same uid, so the record is matched by request identity. Exact, and
+        immune to a concurrent request landing in the log between the floor read and here.
+
+    ``sequence``
+        Fallback when the id shape is unrecognized: records newer than the floor read before
+        this generation. Here ``len(fresh) != 1`` is **not** resolved by taking the newest --
+        "probably this one" is how a measurement gets attributed to another request. It is
+        reported as ambiguous, which invalidates a canonical block.
+
+    Returns ``(record | None, status)``. The status carries a stable code either way.
+    """
+    records = [r for r in prefill_block.get("records", []) if isinstance(r, dict)]
+    if request_uid is not None:
+        matched = [r for r in records if r.get("uid") == request_uid]
+        if len(matched) == 1:
+            return dict(matched[0]), _prefill_status(
+                PREFILL_OK, "", attribution="uid", request_uid=request_uid
+            )
+        if not matched:
+            return None, _prefill_status(
+                PREFILL_MISSING,
+                f"no prefill record carries this request's uid {request_uid}; refusing to "
+                "attribute another request's measurement to it",
+                attribution="uid",
+                request_uid=request_uid,
+            )
+        return None, _prefill_status(
+            PREFILL_AMBIGUOUS,
+            f"{len(matched)} prefill records carry uid {request_uid}; the interval cannot be "
+            "attributed unambiguously",
+            attribution="uid",
+            request_uid=request_uid,
+            candidates=len(matched),
+        )
+
+    fresh = [r for r in records if int(r.get("seq", 0)) > prefill_seq_floor]
+    if not fresh:
+        return None, _prefill_status(
+            PREFILL_MISSING,
+            f"instrumentation is enabled but no prefill record newer than seq "
+            f"{prefill_seq_floor} appeared; refusing to attribute a stale record",
+            attribution="sequence",
+        )
+    if len(fresh) > 1:
+        return None, _prefill_status(
+            PREFILL_AMBIGUOUS,
+            f"{len(fresh)} prefill records appeared above seq {prefill_seq_floor} and the "
+            "response id carried no usable request uid; selecting the newest would be a "
+            "guess, so no record is attributed",
+            attribution="sequence",
+            candidates=len(fresh),
+        )
+    return dict(fresh[0]), _prefill_status(PREFILL_OK, "", attribution="sequence")
+
+
+def _observe_after(
+    origin: str, prefill_seq_floor: int, prompt_tokens: int, request_uid: int | None = None
+) -> Dict[str, Any]:
     """VRAM and prefill observations taken right after a generation completes."""
     out: Dict[str, Any] = {}
     try:
@@ -302,48 +413,58 @@ def _observe_after(origin: str, prefill_seq_floor: int, prompt_tokens: int) -> D
     instr = fetch_instrumentation(origin)
     prefill_block = instr.get("prefill") if isinstance(instr, dict) else None
     if not isinstance(prefill_block, dict):
-        out["prefill"] = None
-        out["prefill_unavailable"] = (
+        reason = (
             instr.get("unavailable", "no prefill block in /v1/instrumentation")
             if isinstance(instr, dict) else "no instrumentation document"
         )
+        out["prefill"] = None
+        out["prefill_unavailable"] = reason
+        out["prefill_status"] = _prefill_status(PREFILL_UNAVAILABLE, reason)
         return out
     if not prefill_block.get("enabled"):
-        out["prefill"] = None
-        out["prefill_unavailable"] = (
+        reason = (
             "server was not started with FREETOKEN_INSTRUMENT_PREFILL=1; prefill was not "
             "measured, and TTFT is not a substitute"
         )
-        return out
-    fresh = [r for r in prefill_block.get("records", []) if int(r.get("seq", 0)) > prefill_seq_floor]
-    if not fresh:
         out["prefill"] = None
-        out["prefill_unavailable"] = (
-            f"instrumentation is enabled but no prefill record newer than seq "
-            f"{prefill_seq_floor} appeared; refusing to attribute a stale record"
-        )
+        out["prefill_unavailable"] = reason
+        out["prefill_status"] = _prefill_status(PREFILL_DISABLED, reason)
         return out
-    rec = dict(fresh[-1])
-    if len(fresh) > 1:
-        rec["ambiguous_candidates"] = len(fresh)
+
+    rec, status = select_prefill_record(prefill_block, prefill_seq_floor, request_uid)
+    if rec is None:
+        out["prefill"] = None
+        # "stale" is named explicitly: a missing fresh record is exactly the case where a
+        # previous generation's record would otherwise be reported as this one's.
+        out["prefill_unavailable"] = status["reason"]
+        out["prefill_status"] = status
+        return out
+
     gpu_ms = float(rec.get("gpu_ms") or 0.0)
     new_tokens = int(rec.get("new_tokens") or 0)
     if rec.get("shared_batch"):
-        rec["prefill_tok_s"] = None
-        rec["prefill_tok_s_unavailable"] = (
+        reason = (
             "the prefill batch carried more than one request; the interval belongs to the "
             "batch and cannot be attributed to this request"
         )
+        rec["prefill_tok_s"] = None
+        rec["prefill_tok_s_unavailable"] = reason
+        status = _prefill_status(PREFILL_SHARED_BATCH, reason, **{
+            k: v for k, v in status.items() if k in ("attribution", "request_uid")
+        })
     elif gpu_ms > 0 and new_tokens > 0:
         rec["prefill_tok_s"] = new_tokens / (gpu_ms / 1e3)
     else:
+        reason = f"gpu_ms={gpu_ms} new_tokens={new_tokens}; nothing to divide"
         rec["prefill_tok_s"] = None
-        rec["prefill_tok_s_unavailable"] = (
-            f"gpu_ms={gpu_ms} new_tokens={new_tokens}; nothing to divide"
-        )
+        rec["prefill_tok_s_unavailable"] = reason
+        status = _prefill_status(PREFILL_UNUSABLE, reason, **{
+            k: v for k, v in status.items() if k in ("attribution", "request_uid")
+        })
     rec["prompt_tokens_reported_by_usage"] = prompt_tokens
     rec["measurement_boundary"] = prefill_block.get("measurement")
     out["prefill"] = rec
+    out["prefill_status"] = status
     return out
 
 

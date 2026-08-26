@@ -209,8 +209,103 @@ def test_request_body_states_every_generation_field():
         ("W4", 128, True), ("W4", 900, False),
     ],
 )
-def test_prompt_token_bounds_are_observed_not_enforced(class_id, tokens, fits):
-    """A prompt outside its class band is recorded as a deviation, not silently rewritten
-    and not treated as a crash: the tokenizer decides the real count."""
+def test_prompt_token_bounds_are_observed_never_rewritten(class_id, tokens, fits):
+    """A prompt outside its class band is recorded as a deviation and the prompt is never
+    silently rewritten -- the tokenizer decides the real count. What the *runner* then does
+    with the deviation on a canonical run (invalidate the campaign) is tested in
+    test_phase0_run.py."""
     result = check_prompt_tokens(class_id, tokens)
     assert (result is None) is fits
+
+
+# --- the frozen shape rule ------------------------------------------------------------------
+
+def test_the_frozen_class_shape_rule_is_recorded_in_the_artifact(tmp_path):
+    """The criteria state W1/W2 as bounds and W3/W4 as '~'. '~' is not machine-checkable, so
+    the harness freezes the tolerance in version control and reproduces it in every run
+    artifact -- rather than picking one after seeing a fixture's token count."""
+    from inferswarm_phase0.manifest import CLASS_SHAPE_RULE
+
+    manifest = load_manifest(_full_set(tmp_path), canonical=True)
+    rule = manifest.record()["class_shape_rule"]
+    assert rule == CLASS_SHAPE_RULE
+    assert "<= 2000" in rule["W1"] and "<= 1000" in rule["W2"]
+    assert "+/-15%" in rule["W3"] and "+/-25%" in rule["W4"]
+    assert "ignore_eos" in rule["output"]
+
+
+def test_the_frozen_tolerances_match_the_class_specs():
+    from inferswarm_phase0.manifest import CLASS_SPECS
+
+    assert (CLASS_SPECS["W3"].prompt_target_tokens, CLASS_SPECS["W3"].prompt_tolerance) == (16000, 0.15)
+    assert (CLASS_SPECS["W4"].prompt_target_tokens, CLASS_SPECS["W4"].prompt_tolerance) == (128, 0.25)
+    assert CLASS_SPECS["W1"].prompt_target_tokens is None  # a bound, not a target
+    assert CLASS_SPECS["W2"].prompt_target_tokens is None
+
+
+# --- the exact output length ----------------------------------------------------------------
+
+def test_an_exact_completion_length_passes():
+    from inferswarm_phase0.manifest import check_completion_tokens
+
+    assert check_completion_tokens("W2", 512, 512) is None
+
+
+@pytest.mark.parametrize("completion", [511, 513, 0])
+def test_a_completion_length_that_is_not_the_requested_one_is_a_deviation(completion):
+    from inferswarm_phase0.manifest import check_completion_tokens
+
+    reason = check_completion_tokens("W2", completion, 512)
+    assert "ignore_eos=true" in reason
+    assert str(completion) in reason
+
+
+def test_an_uncheckable_completion_length_is_a_deviation_not_a_pass():
+    from inferswarm_phase0.manifest import check_completion_tokens
+
+    assert "cannot be checked" in check_completion_tokens("W2", None, 512)
+    assert "cannot be checked" in check_completion_tokens("W2", 512, None)
+
+
+# --- CORRECTNESS_REFERENCE sampling ------------------------------------------------------------
+
+def _sampled_workload():
+    from inferswarm_phase0.manifest import Workload
+
+    return Workload(
+        class_id="W2", prompt="hi", content_sha256="x", output_tokens=512,
+        sampling={"temperature": 0.7, "top_p": 0.8, "top_k": 20}, ignore_eos=True,
+        greedy=False, chat_template_kwargs={}, role="user", fixture_path=None,
+    )
+
+
+def test_a_sampled_manifest_still_produces_a_greedy_reference_request():
+    """--sampling-defaults none is not enough: the body states sampling explicitly and a
+    request-level value beats a server default, so a realistic performance sampling would
+    otherwise make the correctness reference sampled -- and FreeToken exposes no seed."""
+    body = _sampled_workload().greedy_reference_body("qwen")
+    assert body["temperature"] == 0.0
+    assert body["top_p"] == 1.0
+    assert body["top_k"] == -1
+
+
+def test_the_reference_override_keeps_the_frozen_prompt_and_output_length():
+    workload = _sampled_workload()
+    body = workload.greedy_reference_body("qwen")
+    assert body["messages"][0]["content"] == workload.prompt
+    assert body["max_tokens"] == 512
+    # ignore_eos keeps the reference's output length exact, which is what makes two
+    # reference runs comparable token for token (criteria section 5.3)
+    assert body["ignore_eos"] is True
+
+
+def test_the_performance_sweep_keeps_the_manifests_frozen_sampling():
+    body = _sampled_workload().request_body("qwen")
+    assert body["temperature"] == 0.7 and body["top_p"] == 0.8 and body["top_k"] == 20
+
+
+def test_the_canonical_greedy_values_mirror_sampling_params():
+    from inferswarm_phase0.manifest import CANONICAL_GREEDY_SAMPLING, _validate_sampling
+
+    _, greedy = _validate_sampling({"sampling": dict(CANONICAL_GREEDY_SAMPLING)}, "W2")
+    assert greedy is True

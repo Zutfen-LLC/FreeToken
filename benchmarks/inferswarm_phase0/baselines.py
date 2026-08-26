@@ -52,6 +52,13 @@ class Arm:
     # B2's hybrid split is resolved from a `ft bench bw` profile; the criteria require a
     # fresh one for this GPU + expert format before the arm runs.
     requires_bench_bw: bool = False
+    # Whether this arm's engine can READ the bandwidth profile. Wider than
+    # ``requires_bench_bw``: B3's ``--moe-backend auto`` consults the same profile to decide
+    # whether to upgrade offload to hybrid (``engine._adjust_config`` ->
+    # ``bench_profile.load_backend_recommendation``), so a stale profile changes what B3
+    # resolves to even though the criteria table names the refresh only under B2. Both
+    # therefore have to run after the session-level refresh, in either traversal order.
+    consumes_bench_bw: bool = False
     notes: str = ""
 
     def moe_flags(self) -> List[str]:
@@ -89,6 +96,7 @@ BASELINE_ARMS: tuple[Arm, ...] = (
         nvfp4_backend="triton",
         extra_flags=("--moe-cache-auto",),
         requires_bench_bw=True,
+        consumes_bench_bw=True,
         description="hybrid CPU/GPU decode + Triton NVFP4",
         notes=(
             "hybrid loads expert banks with decode_target=cpu, so the loader keeps the native "
@@ -104,10 +112,14 @@ BASELINE_ARMS: tuple[Arm, ...] = (
         moe_backend="auto",
         nvfp4_backend="auto",
         extra_flags=("--moe-cache-auto",),
+        consumes_bench_bw=True,
         description="auto MoE backend + hardware-selected NVFP4 backend",
         notes=(
             "The resolved MoE backend is recorded from the engine, and must coincide with B1 "
-            "or B2 (criteria section 2.1)."
+            "or B2 (criteria section 2.1). `auto` READS the same `ft bench bw` profile B2's "
+            "fetch split comes from -- load_backend_recommendation upgrades the offload "
+            "default to hybrid when the benched CPU/PCIe ratio clears the threshold -- so a "
+            "stale profile changes what this arm resolves to."
         ),
     ),
     Arm(

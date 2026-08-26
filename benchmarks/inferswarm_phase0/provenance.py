@@ -160,7 +160,24 @@ def _snapshot_identity(local_path: str | None) -> Dict[str, Any]:
     if "snapshots" in parts:
         idx = len(parts) - 1 - parts[::-1].index("snapshots")
         if idx + 1 < len(parts):
-            return {"value": parts[idx + 1], "source": "huggingface snapshot directory name"}
+            out: Dict[str, Any] = {
+                "value": parts[idx + 1],
+                "source": "huggingface snapshot directory name",
+            }
+            # The cache repo directory is `models--<org>--<name>` one level above
+            # `snapshots/`. Reading it costs nothing, downloads nothing, and is an
+            # independent check that this checkout is the declared repository and not a
+            # same-shaped path from another model.
+            if idx >= 1 and parts[idx - 1].startswith("models--"):
+                out["repository"] = parts[idx - 1][len("models--"):].replace("--", "/")
+                out["repository_source"] = "huggingface cache directory name"
+            else:
+                out["repository"] = None
+                out["repository_unavailable"] = (
+                    "the snapshot's parent is not a models--<org>--<name> cache directory, "
+                    "so the repository cannot be cross-checked from the filesystem"
+                )
+            return out
     return unavailable(
         "path is not a huggingface snapshots/<revision> directory; revision cannot be "
         "cross-checked from the filesystem"
@@ -182,6 +199,74 @@ def validate_revision(revision: str | None, *, canonical: bool) -> None:
             "and 'main' are not revisions -- resolve the exact upstream commit and pass it. "
             "Never invent one."
         )
+
+
+def validate_inferswarm_commit(commit: str | None, *, canonical: bool) -> None:
+    """Reject an InferSwarm commit that is not a full 40-hex SHA, for a canonical run.
+
+    A non-empty string is not a provenance record: "main", "phase0" or a short SHA all name
+    something that moves or is ambiguous, and the benchmark contract requires the exact
+    InferSwarm commit a result belongs to.
+    """
+    if not canonical:
+        return
+    if not commit:
+        raise ValueError(
+            "--inferswarm-commit is required for a canonical run: this repository cannot "
+            "know which InferSwarm commit the campaign belongs to (BENCHMARKING.md, "
+            "required provenance)"
+        )
+    if not _HEX40.match(commit.strip().lower()):
+        raise ValueError(
+            f"--inferswarm-commit {commit!r} is not a 40-hex commit SHA. Branch names, tags "
+            "and abbreviated SHAs are not commits -- pass the full one. Never invent one."
+        )
+
+
+def check_snapshot_revision(pin: ModelPin) -> str | None:
+    """Reconcile the declared revision/repository with the local HF snapshot layout.
+
+    Returns the reason a canonical run must be refused, or None. When the path is not a
+    Hugging Face snapshot the answer is None with an explicit "cannot cross-check" recorded
+    in ``model.snapshot_identity`` -- an unverifiable path is not the same as a contradicted
+    one, and guessing either way would be worse than saying so.
+    """
+    identity = _snapshot_identity(pin.local_path)
+    snapshot = identity.get("value")
+    if not snapshot:
+        return None
+    if pin.revision and snapshot.strip().lower() != pin.revision.strip().lower():
+        return (
+            f"the local checkpoint resolves to snapshot {snapshot}, which disagrees with "
+            f"--model-revision {pin.revision}. One of the two is wrong; a Phase-0 record "
+            "cannot be reproduced from a revision the checkpoint does not have."
+        )
+    repository = identity.get("repository")
+    if repository and pin.repository and repository.lower() != pin.repository.strip().lower():
+        return (
+            f"the local checkpoint lives under the Hugging Face cache entry for "
+            f"{repository!r}, which disagrees with --model-repository {pin.repository!r}"
+        )
+    return None
+
+
+def check_clean_working_tree(commit_block: Dict[str, Any]) -> str | None:
+    """Refuse a canonical measurement from a modified FreeToken checkout.
+
+    A dirty tree cannot be reproduced from its commit SHA, and recording the modified
+    filenames does not make it reproducible -- the *contents* are what changed and they are
+    nowhere in the artifact. Returns the refusal reason, or None when the tree is clean.
+    """
+    if not isinstance(commit_block, dict) or not commit_block.get("dirty"):
+        return None
+    paths = commit_block.get("dirty_paths") or []
+    listed = "; ".join(str(p) for p in paths[:20]) or "(git reported no paths)"
+    more = f" (+{len(paths) - 20} more)" if len(paths) > 20 else ""
+    return (
+        "the FreeToken working tree is dirty, so this measurement cannot be reproduced from "
+        f"commit {commit_block.get('value')}. Modified paths: {listed}{more}. Commit or stash "
+        "them, or run with --dev-smoke (which produces a NON-CANONICAL record)."
+    )
 
 
 def model_provenance(pin: ModelPin, *, expert_quant: Any = None) -> Dict[str, Any]:
@@ -257,24 +342,54 @@ def _ram_total_bytes() -> Any:
     return unavailable("could not read MemTotal from /proc/meminfo")
 
 
+# ``index`` first: without it a numeric --gpu selector cannot be correlated with a row, so
+# "which of these cards ran the benchmark" stays unanswerable from the record alone.
 _SMI_FIELDS = (
-    "uuid", "name", "memory.total", "driver_version", "compute_cap",
+    "index", "uuid", "name", "memory.total", "driver_version", "compute_cap",
     "pcie.link.gen.current", "pcie.link.gen.max",
     "pcie.link.width.current", "pcie.link.width.max",
 )
 
 
-def gpu_provenance(gpu_selector: str | None = None) -> Dict[str, Any]:
+def _selects(selector: str | None, entry: Dict[str, str], resolved_uuid: str | None) -> bool:
+    """Whether this nvidia-smi row is the card the campaign declared.
+
+    A resolved UUID wins outright. Failing that, a selector is compared against both the row's
+    UUID (as a prefix, the form ``nvidia-smi -L`` accepts) and its index -- and the index is
+    only in the row because ``_SMI_FIELDS`` now asks for it.
+    """
+    if resolved_uuid and entry.get("uuid"):
+        return entry["uuid"].upper() == resolved_uuid.upper()
+    if not selector:
+        return False
+    spec = selector.strip()
+    uuid = entry.get("uuid", "")
+    return bool(
+        (uuid and spec.upper().startswith("GPU-") and uuid.upper().startswith(spec.upper()))
+        or spec == entry.get("index", "")
+    )
+
+
+def gpu_provenance(
+    gpu_selector: str | None = None, resolved_uuid: str | None = None
+) -> Dict[str, Any]:
     """Every visible GPU's stable identity and PCIe link state, plus the topology matrix.
 
-    ``gpu_selector`` is the ``ft serve --gpu`` value (a UUID or an nvidia-smi index); the
-    matching entry is marked ``selected`` so a multi-GPU box cannot leave the reader
-    guessing which card the run used.
+    ``gpu_selector`` is the ``ft serve --gpu`` value (a UUID or an nvidia-smi index) and
+    ``resolved_uuid`` is what ``gpu.resolve_gpu`` turned it into. The matching entry is
+    marked ``selected`` so a multi-GPU box cannot leave the reader guessing which card the
+    run used -- but note that a *selected* row is a statement about the flag, not proof of
+    execution. The proof is ``gpu.verify_engine_gpu``, which compares the resolved UUID with
+    the identity the running engine reports for itself.
     """
     query = _run(
         ["nvidia-smi", f"--query-gpu={','.join(_SMI_FIELDS)}", "--format=csv,noheader"]
     )
-    selected = gpu_selector or unavailable("--gpu not supplied; the runtime chose")
+    selected = (
+        {"requested": gpu_selector, "resolved_uuid": resolved_uuid}
+        if gpu_selector
+        else unavailable("--gpu not supplied; the runtime chose")
+    )
     if query is None:
         return {
             "gpus": unavailable("nvidia-smi unavailable or failed"),
@@ -289,9 +404,7 @@ def gpu_provenance(gpu_selector: str | None = None) -> Dict[str, Any]:
         if len(cells) != len(_SMI_FIELDS):
             continue
         entry = dict(zip(_SMI_FIELDS, cells))
-        entry["selected"] = bool(
-            gpu_selector and gpu_selector.strip() in (entry["uuid"], entry.get("index", ""))
-        )
+        entry["selected"] = _selects(gpu_selector, entry, resolved_uuid)
         gpus.append(entry)
     topo = _run(["nvidia-smi", "topo", "-m"])
     return {

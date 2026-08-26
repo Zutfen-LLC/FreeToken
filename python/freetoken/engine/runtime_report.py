@@ -181,6 +181,13 @@ def _moe_block(engine, cache) -> Dict[str, Any]:
         "hybrid_max_fetch_resolved": (
             getattr(cache, "hybrid_max_fetch", None) if cache is not None else None
         ),
+        # The bandwidth-matched split `--moe-hybrid-max-fetch auto` resolved to, read off
+        # the constructed cache. 0.0 means the fixed-cap fallback applies (no usable
+        # `ft bench bw` profile), which is a different configuration from a benched split
+        # and must not be reported as one.
+        "hybrid_fetch_fraction_resolved": (
+            getattr(cache, "hybrid_fetch_fraction", None) if cache is not None else None
+        ),
         "prefill_overlap_resolved": config.moe_prefill_overlap,
         "prefill_hit_d2d": config.moe_prefill_hit_d2d,
         "collect_stats": config.moe_collect_stats,
@@ -228,6 +235,13 @@ def _runtime_block(engine) -> Dict[str, Any]:
         "cuda_graph_bs": list(config.cuda_graph_bs or []) or None,
         "num_pages": int(getattr(engine, "num_pages", 0) or 0) or None,
         "expert_load": config.expert_load,
+        # Both live on SchedulerConfig, not EngineConfig, and both are held-constant values
+        # the criteria (section 2.3) require as RESOLVED values rather than as flag text:
+        # --max-prefill-length is the chunked-prefill chunk cap (dest max_extend_tokens),
+        # and --cache-type is rewritten by _adjust_config for SWA/GDN models, so the flag
+        # the user passed is frequently not what the cache manager was built with.
+        "max_prefill_length_resolved": getattr(config, "max_extend_tokens", None),
+        "cache_type_resolved": getattr(config, "cache_type", None),
     }
     # Whether capture ACTUALLY happened (criteria section 2.3), not whether it was asked for:
     # GraphRunner.graph_map holds one entry per captured batch size and stays empty when

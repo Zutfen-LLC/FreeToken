@@ -1,20 +1,33 @@
-"""Campaign assembly: server command construction, the run loop, and the run artifact.
+"""Campaign assembly: preflight gates, the run loop, and the run artifact.
 
 Held-constant configuration (criteria section 3) is passed explicitly on every arm --
 ``--memory-ratio``, ``--kv-reserve-tokens``, ``--max-running-requests``,
 ``--cuda-graph-max-bs``, ``--max-seq-len-override``, ``--sampling-defaults`` -- so no arm can
 differ in something the criteria hold fixed, and so the record does not depend on a default
-that may change between FreeToken versions.
+that may change between FreeToken versions. That the arms *actually* agreed is then checked
+against the resolved configuration each engine reports, not assumed from the flags.
 
 Anti-starvation, mechanically: the sweep arms always carry ``--moe-cache-auto`` (from the
 arm definition), and this module offers no way to lower ``--moe-cache-size`` /
 ``--moe-cache-rate`` below the auto-resolved value on a performance arm.
+
+**Three gates, in this order, and nothing measures before all three pass.**
+
+1. *Preflight refusals* (``preflight``): a canonical run refuses to start on a dirty
+   FreeToken checkout, on a model revision the local snapshot contradicts, on missing
+   required provenance, or on a ``--gpu`` that cannot be resolved to a stable UUID. These
+   raise: there is no artifact to write, because no measurement is permitted.
+2. *The session-level ``ft bench bw`` prerequisite* (``refresh_bench_bw``): run once, before
+   the sweep traversal, in either ordering direction -- B2 *and* B3 read the profile. A
+   failure aborts a canonical campaign before any server starts.
+3. *Per-observation validity* (``validity.CampaignValidity``): everything only knowable while
+   running -- workload shape, output length, prefill attribution, the resolved configuration,
+   the physical GPU the engine actually bound, B3's resolution, cross-arm agreement. These do
+   not abort; they are collected, and they make the finished campaign ``INVALID``.
 """
 
 from __future__ import annotations
 
-import json
-import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
@@ -23,6 +36,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Sequence
 
 from . import HARNESS_VERSION
+from . import bench_bw as bench_bw_mod
+from . import gpu as gpu_mod
+from . import provenance as prov
+from . import validity as V
 from .artifacts import RunWriter, run_dir_name
 from .baselines import Arm
 from .client import (
@@ -35,9 +52,72 @@ from .client import (
     start_server,
     stop_server,
 )
-from .manifest import Manifest, Workload, check_prompt_tokens
+from .manifest import (
+    CANONICAL_GREEDY_SAMPLING,
+    Manifest,
+    Workload,
+    check_completion_tokens,
+    check_prompt_tokens,
+)
 from .protocol import BlockTally, Protocol, iter_blocks, plan
-from . import provenance as prov
+
+# Resolved-configuration fields a canonical record must carry (criteria section 2.3). Every
+# one is READ BACK off the live engine; none is re-derived here. A missing or null field is
+# campaign-invalidating rather than an empty cell, because "auto is not a configuration
+# record" and neither is a hole where the resolved value should be.
+REQUIRED_RUNTIME_FIELDS: tuple[str, ...] = (
+    "model.expert_quant",
+    "moe.backend_requested",
+    "moe.backend_resolved",
+    "moe.cpu_threads",
+    "moe.cpu_layers_resolved",
+    "nvfp4.requested",
+    "nvfp4.resolved",
+    "cache.policy_requested",
+    "cache.resolved_slots",
+    "cache.kv_reserve_tokens",
+    "runtime.attention_backend",
+    "runtime.page_size",
+    "runtime.memory_ratio",
+    "runtime.max_running_req",
+    "runtime.max_seq_len",
+    "runtime.num_pages",
+    "runtime.cuda_graph_max_bs",
+    "runtime.cuda_graph_capture_happened",
+    "runtime.max_prefill_length_resolved",
+    "runtime.cache_type_resolved",
+)
+
+# Only meaningful once the engine has resolved to hybrid: the bandwidth-matched fetch split
+# is what the fresh `ft bench bw` profile exists to set, so on a hybrid arm its absence means
+# the profile was not consumed.
+REQUIRED_RUNTIME_FIELDS_HYBRID: tuple[str, ...] = (
+    "moe.hybrid_max_fetch_resolved",
+    "moe.hybrid_fetch_fraction_resolved",
+)
+
+# Values criteria section 3 holds identical across arms. Deliberately NOT the resolved cache
+# slots or KV page count: those legitimately differ per backend, and section 3 rule 2 asks
+# for them to be reported, not equalized.
+# ``model.expert_quant`` is deliberately absent: it is held constant by the same rule
+# (section 3 rule 4) but has its own dedicated code (EXPERT_QUANT_MISMATCH) and its own
+# backfilled per-arm record, and reporting it twice would just make the summary noisier.
+HELD_CONSTANT_FIELDS: tuple[str, ...] = (
+    "moe.cpu_threads",
+    "runtime.attention_backend",
+    "runtime.page_size",
+    "runtime.memory_ratio",
+    "runtime.max_running_req",
+    "runtime.max_seq_len",
+    "runtime.cuda_graph_max_bs",
+    "runtime.max_prefill_length_resolved",
+    "runtime.cache_type_resolved",
+    "cache.kv_reserve_tokens",
+)
+
+# Criteria section 2.1: B3 records which MoE backend `--moe-backend auto` resolves to, and it
+# "must coincide with B1 or B2".
+B3_REFERENCE_ARMS = ("B1", "B2")
 
 
 @dataclass(frozen=True)
@@ -68,12 +148,18 @@ class ServeSettings:
         return {"FREETOKEN_INSTRUMENT_PREFILL": "1"} if self.instrument_prefill else {}
 
 
-def serve_command(arm: Arm, settings: ServeSettings, port: int) -> List[str]:
+def serve_command(
+    arm: Arm, settings: ServeSettings, port: int, *, gpu: str | None = None
+) -> List[str]:
     """The full ``ft serve`` command line for one arm.
 
     Ordering is stable (arm flags first, held-constant flags after) so two runs of the same
     arm produce byte-identical commands, which is what makes the recorded command line a
     reproduction recipe rather than a description.
+
+    ``gpu`` overrides ``settings.gpu`` with the *resolved* UUID, so the server, ``ft bench
+    bw`` and the microbenchmark all name the same physical card rather than three selectors
+    that merely ought to agree.
     """
     cmd = [
         settings.python_executable, "-m", "freetoken.cli", "serve",
@@ -89,36 +175,19 @@ def serve_command(arm: Arm, settings: ServeSettings, port: int) -> List[str]:
         cmd += ["--kv-reserve-tokens", str(settings.kv_reserve_tokens)]
     if settings.max_seq_len_override is not None:
         cmd += ["--max-seq-len-override", str(settings.max_seq_len_override)]
-    if settings.gpu:
-        cmd += ["--gpu", settings.gpu]
+    selector = gpu or settings.gpu
+    if selector:
+        cmd += ["--gpu", selector]
     return cmd
 
 
-def bench_bw_command(settings: ServeSettings, dtype: str = "nvfp4") -> List[str]:
-    """``ft bench bw`` for the selected GPU and expert format (criteria section 2.1, B2)."""
-    cmd = [settings.python_executable, "-m", "freetoken.cli", "bench", "bw", "--dtype", dtype]
-    if settings.gpu:
-        cmd += ["--gpu", settings.gpu]
-    return cmd
-
-
-def run_bench_bw(settings: ServeSettings, dtype: str = "nvfp4") -> Dict[str, Any]:
-    """Refresh the bandwidth profile B2's fetch split is resolved from, and record it."""
-    cmd = bench_bw_command(settings, dtype)
-    started = prov.utc_now_iso()
-    try:
-        completed = subprocess.run(cmd, capture_output=True, text=True, timeout=3600, check=False)
-    except (OSError, subprocess.SubprocessError) as e:
-        return {"command": cmd, "started_at": started, "ok": False, "error": repr(e)}
-    return {
-        "command": cmd,
-        "started_at": started,
-        "finished_at": prov.utc_now_iso(),
-        "ok": completed.returncode == 0,
-        "returncode": completed.returncode,
-        "stdout_tail": completed.stdout[-4000:],
-        "stderr_tail": completed.stderr[-4000:],
-    }
+def _lookup(doc: Any, dotted: str) -> Any:
+    node = doc
+    for part in dotted.split("."):
+        if not isinstance(node, dict) or part not in node:
+            return None
+        node = node[part]
+    return node
 
 
 @dataclass
@@ -134,7 +203,19 @@ class Campaign:
     store_output_text: bool = False
     refresh_bench_bw: bool = True
     echo_server_output: bool = True
+    bench_bw_dtype: str = "nvfp4"
     resolved_configuration: Dict[str, Any] = field(default_factory=dict)
+    validity: V.CampaignValidity = field(init=False)
+    gpu_selection: gpu_mod.GpuSelection = field(init=False)
+    bench_bw_record: Dict[str, Any] | None = field(default=None, init=False)
+    # Checks that need every arm's resolved configuration at once (B3's resolution, the
+    # held-constant comparison). Kept out of ``resolved_configuration`` so that map stays
+    # exactly "one entry per arm".
+    cross_arm_checks: Dict[str, Any] = field(default_factory=dict, init=False)
+
+    def __post_init__(self) -> None:
+        self.validity = V.CampaignValidity(canonical_intent=self.canonical)
+        self.gpu_selection = gpu_mod.resolve_gpu(self.settings.gpu)
 
     # ---- planning / dry run -----------------------------------------------------------
 
@@ -144,6 +225,13 @@ class Campaign:
     def steps(self):
         return plan(self.protocol, [a.id for a in self.arms], self.class_ids())
 
+    def serve_gpu(self) -> str | None:
+        """The selector every child process gets: the resolved UUID when one exists."""
+        return self.gpu_selection.resolved_uuid or self.settings.gpu
+
+    def bench_bw_consumers(self) -> List[str]:
+        return bench_bw_mod.consuming_arms(self.arms)
+
     def dry_run_document(self) -> Dict[str, Any]:
         """Everything the campaign would do, without touching a GPU.
 
@@ -152,10 +240,31 @@ class Campaign:
         """
         port = 0  # a placeholder; the real port is chosen at spawn time
         steps = self.steps()
+        consumers = self.bench_bw_consumers()
         return {
             "canonical": self.canonical and self.protocol.canonical and self.manifest.canonical,
             "canonical_blockers": self._canonical_blockers(),
+            # What would stop this plan from ever starting, checked now rather than after a
+            # model load: a plan that reads "CANONICAL" while it would be refused is exactly
+            # the thing a dry run exists to prevent.
+            "preflight_refusals": self.preflight_refusals(),
             "protocol": self.protocol.record(),
+            "gpu_selection": self.gpu_selection.record(),
+            "bench_bw_prerequisite": {
+                "runs_before_the_sweep": bool(consumers) and self.refresh_bench_bw,
+                "consuming_arms": consumers,
+                "command": (
+                    bench_bw_mod.bench_bw_command(
+                        self.settings.python_executable, self.serve_gpu(), self.bench_bw_dtype
+                    )
+                    if consumers else None
+                ),
+                "note": (
+                    "Session-level, not B2-local: B2 resolves its fetch split from the "
+                    "profile and B3's --moe-backend auto reads the same profile, so in a "
+                    "reversed session B3 would otherwise consume a stale one."
+                ),
+            },
             "arms": [
                 {
                     "id": arm.id,
@@ -164,11 +273,14 @@ class Campaign:
                     "notes": arm.notes,
                     "moe_flags": arm.moe_flags(),
                     "requires_bench_bw": arm.requires_bench_bw,
-                    "bench_bw_command": (
-                        bench_bw_command(self.settings) if arm.requires_bench_bw else None
+                    "consumes_bench_bw": arm.consumes_bench_bw,
+                    "serve_command": serve_command(
+                        arm, self.settings, port, gpu=self.serve_gpu()
                     ),
-                    "serve_command": serve_command(arm, self.settings, port),
                     "env_overrides": self.settings.env_overrides(),
+                    "request_sampling": (
+                        dict(CANONICAL_GREEDY_SAMPLING) if arm.role == "correctness" else None
+                    ),
                 }
                 for arm in self.arms
             ],
@@ -198,24 +310,142 @@ class Campaign:
         missing = self.manifest.missing_classes()
         if missing:
             blockers.append(f"workload manifest is missing classes {missing}")
+        if self.canonical and not self.refresh_bench_bw and self.bench_bw_consumers():
+            blockers.append(
+                "the `ft bench bw` refresh was skipped, so B2's fetch split and B3's auto "
+                "backend pick would read a profile this campaign did not produce"
+            )
         # Stable order, no duplicates: the list is read by humans and asserted on by tests.
         return list(dict.fromkeys(blockers))
 
     # ---- provenance --------------------------------------------------------------------
 
+    def model_pin(self) -> prov.ModelPin:
+        return prov.ModelPin(
+            repository=self.settings.model_repository,
+            revision=self.settings.model_revision or "",
+            local_path=self.settings.model_path,
+        )
+
     def provenance_document(self) -> Dict[str, Any]:
         return {
             "software": prov.software_provenance(self.inferswarm_commit, HARNESS_VERSION),
-            "model": prov.model_provenance(
-                prov.ModelPin(
-                    repository=self.settings.model_repository,
-                    revision=self.settings.model_revision or "",
-                    local_path=self.settings.model_path,
-                )
-            ),
+            "model": prov.model_provenance(self.model_pin()),
             "host": prov.host_provenance(),
-            "gpu": prov.gpu_provenance(self.settings.gpu),
+            "gpu": prov.gpu_provenance(self.settings.gpu, self.gpu_selection.resolved_uuid),
+            "gpu_selection": self.gpu_selection.record(),
         }
+
+    # ---- preflight ----------------------------------------------------------------------
+
+    def preflight_refusals(self) -> List[str]:
+        """Everything a canonical run would refuse to start on, cheaply enough for a dry run.
+
+        Deliberately excludes the provenance-completeness check, which needs the full
+        provenance document (an nvidia-smi sweep and a torch-importing subprocess);
+        ``preflight`` adds that one. Everything here is a file read or a string check, so
+        ``--dry-run`` can show a reviewer that a plan which *looks* canonical would in fact
+        be refused.
+        """
+        if not self.canonical:
+            return []
+        reasons: List[str] = []
+        dirty = prov.check_clean_working_tree(prov.git_commit(prov.freetoken_repo_root()))
+        if dirty:
+            reasons.append(dirty)
+        for check, value in (
+            (prov.validate_inferswarm_commit, self.inferswarm_commit),
+            (prov.validate_revision, self.settings.model_revision),
+        ):
+            try:
+                check(value, canonical=True)
+            except ValueError as e:
+                reasons.append(str(e))
+        mismatch = prov.check_snapshot_revision(self.model_pin())
+        if mismatch:
+            reasons.append(mismatch)
+        if not self.gpu_selection.proven:
+            reasons.append(
+                "--gpu must resolve to a stable GPU UUID so the record names the one "
+                "physical RTX 3060 Phase 0 ran on (criteria section 2.1). "
+                f"{self.gpu_selection.unavailable}"
+            )
+        return reasons
+
+    def preflight(self, provenance: Dict[str, Any]) -> None:
+        """Refusals that must happen before *any* measurement. Raises ``ValueError``.
+
+        A canonical run that cannot satisfy one of these has nothing to record: it is not an
+        invalid campaign, it is a campaign that must not begin.
+        """
+        if not self.canonical:
+            return
+        for reason in self.preflight_refusals():
+            raise ValueError(f"canonical run refused: {reason}")
+
+        missing = prov.missing_required(provenance)
+        if missing:
+            raise ValueError(
+                "canonical run refused: required provenance is missing -> "
+                + "; ".join(missing)
+                + ". Supply it or run with --dev-smoke (which produces a NON-CANONICAL record)."
+            )
+
+    def run_bench_bw_prerequisite(self) -> Dict[str, Any]:
+        """The session-level ``ft bench bw`` refresh. Runs before the sweep traversal.
+
+        Returns the record that goes in the artifact. For a canonical campaign a skipped
+        refresh, a failed command, or an unreadable / wrong-GPU profile raises **before any
+        server starts**: B2's fetch split and B3's auto backend pick would otherwise be
+        resolved from a profile this campaign cannot vouch for, and the numbers would look
+        exactly like valid ones.
+        """
+        consumers = self.bench_bw_consumers()
+        if not consumers:
+            return {
+                "skipped": True,
+                "reason": "no arm in this campaign reads the `ft bench bw` profile",
+                "consuming_arms": [],
+            }
+        if not self.refresh_bench_bw:
+            reason = (
+                "the `ft bench bw` refresh was skipped (--no-bench-bw), so "
+                f"{consumers} would resolve from a profile this campaign did not produce"
+            )
+            if self.canonical:
+                raise ValueError(f"canonical run refused: {reason}")
+            self.validity.add(V.BENCH_BW_SKIPPED, reason)
+            return {**bench_bw_mod.skipped_record(reason), "consuming_arms": consumers}
+
+        print(
+            f"[phase0] session prerequisite: refreshing `ft bench bw` before {consumers}",
+            flush=True,
+        )
+        result = bench_bw_mod.run_bench_bw(
+            python_executable=self.settings.python_executable,
+            selection=self.gpu_selection,
+            dtype=self.bench_bw_dtype,
+        )
+        record = {**result.record, "consuming_arms": consumers}
+        if not result.ok:
+            reason = result.failure_reason
+            if self.canonical:
+                raise ValueError(
+                    "canonical campaign aborted before any generation: " + reason
+                )
+            self.validity.add(V.BENCH_BW_FAILED, reason)
+            return record
+        if not result.profile_usable:
+            reason = result.failure_reason or "the refreshed profile could not be pinned"
+            code = (
+                V.BENCH_BW_PROFILE_GPU_MISMATCH
+                if (record.get("profile") or {}).get("gpu_matches") is False
+                else V.BENCH_BW_PROFILE_UNREADABLE
+            )
+            if self.canonical:
+                raise ValueError("canonical campaign aborted before any generation: " + reason)
+            self.validity.add(code, reason)
+        return record
 
     # ---- execution ----------------------------------------------------------------------
 
@@ -223,12 +453,16 @@ class Campaign:
         """Run the whole campaign and write the artifacts. Returns the run document."""
         provenance = self.provenance_document()
         missing = prov.missing_required(provenance)
-        if missing and self.canonical:
-            raise ValueError(
-                "canonical run refused: required provenance is missing -> "
-                + "; ".join(missing)
-                + ". Supply it or run with --dev-smoke (which produces a NON-CANONICAL record)."
+        self.preflight(provenance)
+        self.validity.canonical_blockers = self._canonical_blockers()
+        if missing and not self.canonical:
+            self.validity.add(
+                V.PROVENANCE_MISSING, "required provenance is missing -> " + "; ".join(missing)
             )
+
+        # Gate 2, before the run directory exists: nothing measures until the bandwidth
+        # profile every consuming arm will read is fresh, readable, and this GPU's.
+        self.bench_bw_record = self.run_bench_bw_prerequisite()
 
         run_root = self.out_root / run_dir_name(
             _date.today().isoformat(), self.protocol.session_id, self.short_name
@@ -236,8 +470,9 @@ class Campaign:
         header = {
             "started_at": prov.utc_now_iso(),
             "finished_at": None,
-            "canonical": self.canonical and self.protocol.canonical and self.manifest.canonical,
-            "canonical_blockers": self._canonical_blockers(),
+            # No bare `canonical` key here: `validity` (VALID / INVALID / NON_CANONICAL) is
+            # the verdict, and a boolean beside it is exactly the field a reader would
+            # mistake for one. What this run ASKED to be is validity.canonical_intent.
             "protocol": self.protocol.record(),
             "serve_settings": {
                 "memory_ratio": self.settings.memory_ratio,
@@ -247,8 +482,10 @@ class Campaign:
                 "max_seq_len_override": self.settings.max_seq_len_override,
                 "sampling_defaults": self.settings.sampling_defaults,
                 "gpu": self.settings.gpu,
+                "gpu_resolved_uuid": self.gpu_selection.resolved_uuid,
                 "instrument_prefill": self.settings.instrument_prefill,
             },
+            "bench_bw": self.bench_bw_record,
             "workload_manifest": self.manifest.record(),
             "provenance_missing_required": missing,
             **provenance,
@@ -269,16 +506,21 @@ class Campaign:
             arm_steps = [s for s in steps if s.arm_id == arm_id]
             self._run_arm(arm, arm_steps, by_class, writer, tallies)
 
+        expert_quant = self._observed_expert_quant()
+        self._check_cross_arm(expert_quant)
+
         doc = writer.finalize(
             list(tallies.values()),
+            self.validity,
             extra={
                 "finished_at": prov.utc_now_iso(),
                 "resolved_configuration": self.resolved_configuration,
+                "cross_arm_checks": self.cross_arm_checks,
                 "run_directory": str(run_root),
                 # The resolved weight format is only knowable once an engine has loaded the
                 # banks, so it is backfilled here from what the arms actually reported --
                 # not left saying "server not started yet" for the life of the artifact.
-                "model_expert_quant_resolved": self._observed_expert_quant(),
+                "model_expert_quant_resolved": expert_quant,
             },
         )
         return doc
@@ -310,6 +552,181 @@ class Campaign:
             ),
         }
 
+    # ---- validity checks -----------------------------------------------------------------
+
+    def _runtime_config(self, arm_id: str) -> Dict[str, Any] | None:
+        resolved = self.resolved_configuration.get(arm_id) or {}
+        instrumentation = resolved.get("instrumentation")
+        if not isinstance(instrumentation, dict):
+            return None
+        config = instrumentation.get("runtime_config")
+        return config if isinstance(config, dict) else None
+
+    def _check_arm_runtime(self, arm: Arm, instrumentation: Dict[str, Any] | None) -> None:
+        """Instrumentation availability and the required resolved fields, for one arm."""
+        if not isinstance(instrumentation, dict) or instrumentation.get("unavailable"):
+            reason = (
+                (instrumentation or {}).get("unavailable")
+                or "/v1/instrumentation returned no document"
+            )
+            self.validity.add(
+                V.INSTRUMENTATION_UNAVAILABLE,
+                f"the resolved configuration could not be read: {reason}",
+                arm_id=arm.id,
+            )
+            return
+        config = instrumentation.get("runtime_config")
+        if not isinstance(config, dict) or not config:
+            self.validity.add(
+                V.RUNTIME_CONFIG_MISSING,
+                "the server served /v1/instrumentation but carried no runtime_config: "
+                + str(instrumentation.get("runtime_config_unavailable") or "reason not given"),
+                arm_id=arm.id,
+            )
+            return
+        required = list(REQUIRED_RUNTIME_FIELDS)
+        if _lookup(config, "moe.backend_resolved") == "hybrid":
+            required += list(REQUIRED_RUNTIME_FIELDS_HYBRID)
+        for path in required:
+            if _lookup(config, path) is None:
+                self.validity.add(
+                    V.RUNTIME_CONFIG_MISSING_FIELD,
+                    f"required resolved field {path!r} is missing or null; criteria section "
+                    "2.3 requires the resolved value, and a hole is not one",
+                    arm_id=arm.id,
+                )
+
+    def _check_arm_gpu(self, arm: Arm, verification: Dict[str, Any]) -> None:
+        matches = verification.get("matches")
+        if matches is True:
+            return
+        if matches is False:
+            self.validity.add(
+                V.GPU_MISMATCH,
+                f"the engine did not run on the declared physical GPU: "
+                f"{verification.get('mismatch')}",
+                arm_id=arm.id,
+            )
+            return
+        self.validity.add(
+            V.GPU_UNPROVEN,
+            "the physical GPU this arm ran on could not be proven: "
+            + str(verification.get("unavailable") or "reason not given"),
+            arm_id=arm.id,
+        )
+
+    def _check_b3_resolution(self) -> Dict[str, Any] | None:
+        """B3's resolved configuration must be a legitimate B1/B2 path (criteria section 2.1).
+
+        An unexpected resolution is preserved, never silently accepted: it means the runtime
+        picked something outside the predeclared sweep, and until that is understood the
+        campaign is not a measurement of the sweep that was declared.
+        """
+        if "B3" not in {a.id for a in self.arms}:
+            return None
+        b3 = self._runtime_config("B3")
+        if b3 is None:
+            return {"checked": False, "reason": "B3 reported no resolved configuration"}
+        resolved = _lookup(b3, "moe.backend_resolved")
+        reference: Dict[str, Any] = {}
+        for arm_id in B3_REFERENCE_ARMS:
+            config = self._runtime_config(arm_id)
+            if config is not None:
+                reference[arm_id] = _lookup(config, "moe.backend_resolved")
+        block: Dict[str, Any] = {
+            "checked": True,
+            "b3_backend_resolved": resolved,
+            "b3_nvfp4_resolved": _lookup(b3, "nvfp4.resolved"),
+            "reference_arms": reference,
+        }
+        if not reference:
+            block["checked"] = False
+            block["reason"] = (
+                "neither B1 nor B2 reported a resolved backend, so there is nothing to "
+                "coincide with"
+            )
+            return block
+        expected = {v for v in reference.values() if v is not None}
+        block["expected"] = sorted(expected)
+        block["reference_nvfp4"] = {
+            arm_id: _lookup(self._runtime_config(arm_id) or {}, "nvfp4.resolved")
+            for arm_id in reference
+        }
+        if resolved is None:
+            self.validity.add(
+                V.B3_RESOLUTION_UNEXPECTED,
+                "B3 did not report which MoE backend `--moe-backend auto` resolved to; the "
+                "criteria require that value to be recorded (section 2.1)",
+                arm_id="B3",
+            )
+            block["coincides"] = False
+            return block
+        block["coincides"] = resolved in expected
+        if not block["coincides"]:
+            self.validity.add(
+                V.B3_RESOLUTION_UNEXPECTED,
+                f"B3's `--moe-backend auto` resolved to {resolved!r}, which coincides with "
+                f"neither B1 nor B2 ({sorted(expected)}). Criteria section 2.1 requires it "
+                "to; the data is preserved, but the campaign is not a measurement of the "
+                "declared sweep until this is understood.",
+                arm_id="B3",
+            )
+            return block
+        # Coinciding on the MoE backend is not enough: B3 also resolves --nvfp4-backend
+        # auto, and if that lands somewhere the matching declared arm did not, B3 is not the
+        # same executing path even though the backend name matches.
+        twins = [a for a, backend in reference.items() if backend == resolved]
+        twin_nvfp4 = {block["reference_nvfp4"].get(a) for a in twins}
+        block["nvfp4_coincides"] = block["b3_nvfp4_resolved"] in twin_nvfp4
+        if not block["nvfp4_coincides"]:
+            self.validity.add(
+                V.B3_RESOLUTION_UNEXPECTED,
+                f"B3 resolved the same MoE backend as {twins} but a different NVFP4 expert "
+                f"path: B3 reports {block['b3_nvfp4_resolved']!r}, {twins} report "
+                f"{sorted(str(v) for v in twin_nvfp4)}. The data is preserved, but B3 is not "
+                "an observation of the declared configuration until this is understood.",
+                arm_id="B3",
+            )
+        return block
+
+    def _check_held_constant(self) -> Dict[str, Any]:
+        """Every criteria-fixed held-constant value, compared across the arms that ran."""
+        observed: Dict[str, Dict[str, Any]] = {}
+        for arm in self.arms:
+            config = self._runtime_config(arm.id)
+            if config is None:
+                continue
+            observed[arm.id] = {path: _lookup(config, path) for path in HELD_CONSTANT_FIELDS}
+        report: Dict[str, Any] = {"per_arm": observed, "disagreements": []}
+        if len(observed) < 2:
+            report["note"] = "fewer than two arms reported a resolved configuration"
+            return report
+        for path in HELD_CONSTANT_FIELDS:
+            values = {arm_id: fields.get(path) for arm_id, fields in observed.items()}
+            distinct = {_hashable(v) for v in values.values()}
+            if len(distinct) > 1:
+                report["disagreements"].append({"field": path, "per_arm": values})
+                self.validity.add(
+                    V.HELD_CONSTANT_MISMATCH,
+                    f"held-constant value {path!r} differs across arms: {values}. Criteria "
+                    "section 3 requires it identical on every arm.",
+                )
+        return report
+
+    def _check_cross_arm(self, expert_quant: Dict[str, Any]) -> None:
+        if expert_quant.get("consistent_across_arms") is False:
+            self.validity.add(
+                V.EXPERT_QUANT_MISMATCH,
+                str(expert_quant.get("unavailable")
+                    or "arms reported different expert weight formats"),
+            )
+        self.cross_arm_checks = {
+            "b3_resolution": self._check_b3_resolution(),
+            "held_constant": self._check_held_constant(),
+        }
+
+    # ---- the run loop --------------------------------------------------------------------
+
     def _run_arm(
         self,
         arm: Arm,
@@ -318,14 +735,9 @@ class Campaign:
         writer: RunWriter,
         tallies: Dict[tuple, BlockTally],
     ) -> None:
-        bench_bw = None
-        if arm.requires_bench_bw and self.refresh_bench_bw:
-            print(f"[phase0] {arm.id}: refreshing `ft bench bw` profile", flush=True)
-            bench_bw = run_bench_bw(self.settings)
-
         port = free_port()
         origin = f"http://127.0.0.1:{port}"
-        command = serve_command(arm, self.settings, port)
+        command = serve_command(arm, self.settings, port, gpu=self.serve_gpu())
         log_path = writer.server_log_path(arm.id)
         print(f"[phase0] {arm.id}: {' '.join(command)}", flush=True)
         handle = None
@@ -340,6 +752,9 @@ class Campaign:
             )
             instrumentation = fetch_instrumentation(origin)
             model_id = _model_id(origin)
+            gpu_verification = gpu_mod.verify_engine_gpu(
+                self.gpu_selection, gpu_mod.engine_gpus(origin)
+            )
             self.resolved_configuration[arm.id] = {
                 "arm": {
                     "id": arm.id,
@@ -349,16 +764,29 @@ class Campaign:
                 },
                 "serve_command": command,
                 "env_overrides": self.settings.env_overrides(),
-                "bench_bw": bench_bw,
+                "bench_bw": self.bench_bw_record,
                 "instrumentation": instrumentation,
                 "served_model_id": model_id,
+                "gpu_verification": gpu_verification,
+                # Confirmed from the server, not assumed from the env override the harness
+                # passed: FREETOKEN_INSTRUMENT_PREFILL only takes effect in the process that
+                # actually read it.
+                "prefill_instrumentation_enabled": bool(
+                    ((instrumentation or {}).get("prefill") or {}).get("enabled")
+                ) if isinstance(instrumentation, dict) else None,
+                "request_sampling": (
+                    dict(CANONICAL_GREEDY_SAMPLING) if arm.role == "correctness" else None
+                ),
             }
+            self._check_arm_runtime(arm, instrumentation)
+            self._check_arm_gpu(arm, gpu_verification)
             for step in steps:
                 workload = by_class[step.class_id]
                 self._run_step(arm, step, workload, origin, model_id, writer, tallies)
         except ServerError as e:
             reason = f"{arm.id}: {e}"
             print(f"[phase0] {reason}", flush=True)
+            self.validity.add(V.SERVER_FAILED, reason, arm_id=arm.id)
             for step in steps:
                 record = {
                     "arm_id": arm.id, "class_id": step.class_id,
@@ -385,7 +813,15 @@ class Campaign:
         tallies: Dict[tuple, BlockTally],
     ) -> None:
         tally = tallies[(arm.id, step.class_id)]
-        body = workload.request_body(model_id)
+        # CORRECTNESS_REFERENCE is greedy by construction (criteria section 5.3), whatever
+        # the manifest's frozen performance sampling says. The performance sweep keeps the
+        # manifest's sampling untouched -- that is what "frozen" means for W1-W4.
+        reference = arm.role == "correctness"
+        body = (
+            workload.greedy_reference_body(model_id)
+            if reference
+            else workload.request_body(model_id)
+        )
         floor = prefill_seq_floor(origin)
         started = time.time()
         try:
@@ -393,7 +829,7 @@ class Campaign:
                 origin,
                 body,
                 prefill_seq_floor=floor,
-                store_text=self.store_output_text or arm.role == "correctness",
+                store_text=self.store_output_text or reference,
             )
         except (GenerationError, OSError, ValueError) as e:
             record = {
@@ -404,10 +840,17 @@ class Campaign:
             }
             writer.write_failure(record)
             tally.failures.append({"execution_index": step.execution_index, "error": repr(e)})
+            self.validity.add(
+                V.GENERATION_FAILED, f"{arm.id}/{step.class_id} rep {step.repetition}: {e!r}",
+                arm_id=arm.id, class_id=step.class_id, execution_index=step.execution_index,
+            )
             print(f"[phase0] {arm.id}/{step.class_id} rep {step.repetition} FAILED: {e!r}", flush=True)
             return
 
         deviation = check_prompt_tokens(step.class_id, metrics["prompt_tokens"])
+        length_deviation = check_completion_tokens(
+            step.class_id, metrics.get("completion_tokens"), body.get("max_tokens")
+        )
         record = {
             "session_id": self.protocol.session_id,
             "execution_index": step.execution_index,
@@ -420,16 +863,25 @@ class Campaign:
             "started_at_unix": started,
             "finished_at_unix": time.time(),
             "prompt_sha256": workload.content_sha256,
-            "sampling": dict(workload.sampling),
-            "greedy": workload.greedy,
+            "sampling": {k: body[k] for k in ("temperature", "top_p", "top_k") if k in body},
+            "manifest_sampling": dict(workload.sampling),
+            "sampling_overridden_for_correctness_reference": reference,
+            "sampling_override_reason": (
+                "CORRECTNESS_REFERENCE must be greedy (criteria section 5.3); the manifest's "
+                "frozen performance sampling is recorded above as manifest_sampling and is "
+                "unchanged for the performance sweep"
+            ) if reference else None,
+            "greedy": True if reference else workload.greedy,
             "ignore_eos": workload.ignore_eos,
             "seed": None,
             "seed_unavailable": "FreeToken's SamplingParams exposes no seed parameter",
             "batch_size": 1,
             "prompt_token_deviation": deviation,
+            "completion_length_deviation": length_deviation,
             **metrics,
         }
         writer.write_repetition(record)
+        self._check_observation(arm, step, record, deviation, length_deviation)
         if step.measured:
             tally.observed_measured += 1
         else:
@@ -439,6 +891,73 @@ class Campaign:
             f"decode {metrics['decode_tok_s']:.2f} tok/s, TTFT {metrics['ttft_ms']:.1f} ms",
             flush=True,
         )
+
+    def _check_observation(
+        self,
+        arm: Arm,
+        step: Any,
+        record: Dict[str, Any],
+        deviation: str | None,
+        length_deviation: str | None,
+    ) -> None:
+        """Per-generation validity. The observation is kept either way; only the verdict moves.
+
+        Warmups are checked too: a warmup whose prompt lands outside the frozen class shape
+        is the same fixture the measured repetitions use, so the violation is the block's,
+        not the repetition's.
+        """
+        where = dict(arm_id=arm.id, class_id=step.class_id, execution_index=step.execution_index)
+        if deviation:
+            self.validity.add(
+                V.PROMPT_SHAPE_VIOLATION,
+                f"{deviation}. The observation is preserved and the prompt was NOT rewritten; "
+                "the frozen class shape is part of the experimental contract, so the block is "
+                "not a valid observation of this class.",
+                **where,
+            )
+        if length_deviation:
+            self.validity.add(V.COMPLETION_LENGTH_MISMATCH, length_deviation, **where)
+
+        # Prefill is required of the observations the campaign is made of. A warmup is
+        # discarded by construction (criteria section 10), so its prefill record is not part
+        # of the Phase-0 data and is not held to the same bar -- unlike the fixture's shape
+        # and length, which are the block's and are checked above for every generation.
+        if not step.measured:
+            return
+        status = record.get("prefill_status") or {}
+        if status.get("ok"):
+            if (record.get("prefill") or {}).get("prefill_tok_s") is None:
+                self.validity.add(
+                    V.PREFILL_UNUSABLE,
+                    "a prefill record was attributed but yielded no prefill_tok_s: "
+                    + str((record.get("prefill") or {}).get("prefill_tok_s_unavailable")),
+                    **where,
+                )
+            return
+        code = str(status.get("code") or "")
+        mapped = {
+            "instrumentation_unavailable": V.PREFILL_UNAVAILABLE,
+            "instrumentation_disabled": V.PREFILL_DISABLED,
+            "no_fresh_record": V.PREFILL_MISSING,
+            "ambiguous_records": V.PREFILL_AMBIGUOUS,
+            "shared_batch": V.PREFILL_SHARED_BATCH,
+            "unusable_timing": V.PREFILL_UNUSABLE,
+        }.get(code, V.PREFILL_UNAVAILABLE)
+        self.validity.add(
+            mapped,
+            "canonical Phase-0 records require measured prefill throughput: "
+            + str(status.get("reason") or record.get("prefill_unavailable") or "no reason given"),
+            **where,
+        )
+
+
+def _hashable(value: Any) -> Any:
+    """Make a resolved value comparable in a set (a resolved layer set arrives as a list)."""
+    if isinstance(value, list):
+        return ("list", tuple(_hashable(v) for v in value))
+    if isinstance(value, dict):
+        return ("dict", tuple(sorted((k, _hashable(v)) for k, v in value.items())))
+    return value
 
 
 def _model_id(origin: str) -> str:

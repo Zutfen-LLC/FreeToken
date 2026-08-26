@@ -17,7 +17,8 @@ from inferswarm_phase0.baselines import (
     correctness_reference_arm,
     validate_cache_floor,
 )
-from inferswarm_phase0.runner import ServeSettings, bench_bw_command, serve_command
+from inferswarm_phase0.bench_bw import bench_bw_command
+from inferswarm_phase0.runner import ServeSettings, serve_command
 
 # criteria section 2.1, verbatim: "Configuration (as passed, not as defaulted)"
 CRITERIA_TABLE = {
@@ -66,9 +67,13 @@ def test_every_arm_states_the_cache_policy_explicitly(arm_id):
     assert "--moe-cache-auto" in BASELINE_ARMS_BY_ID[arm_id].moe_flags()
 
 
-def test_only_b2_requires_a_fresh_bench_bw_profile():
+def test_only_b2_is_named_by_the_criteria_but_b3_reads_the_profile_too():
+    """The criteria table names the fresh profile under B2. B3's `--moe-backend auto` reads
+    the SAME profile (engine._adjust_config -> load_backend_recommendation), so a refresh
+    that fired only for B2 would let a reversed session's B3 consume a stale one."""
     assert [arm.id for arm in BASELINE_ARMS if arm.requires_bench_bw] == ["B2"]
-    cmd = bench_bw_command(_settings(gpu="GPU-abc"), "nvfp4")
+    assert [arm.id for arm in BASELINE_ARMS if arm.consumes_bench_bw] == ["B2", "B3"]
+    cmd = bench_bw_command("python", "GPU-abc", "nvfp4")
     assert cmd[-4:] == ["--dtype", "nvfp4", "--gpu", "GPU-abc"]
 
 
@@ -111,6 +116,16 @@ def test_serve_command_pins_every_held_constant_value():
         "--port 9001",
     ):
         assert flag in joined, flag
+
+
+def test_serve_command_can_be_pinned_to_the_resolved_uuid():
+    """The campaign hands every child process the RESOLVED UUID, so the server, `ft bench
+    bw` and the microbenchmarks name one physical card instead of three selectors that
+    merely ought to agree."""
+    cmd = serve_command(
+        BASELINE_ARMS_BY_ID["B1"], _settings(gpu="0"), 9001, gpu="GPU-resolved"
+    )
+    assert cmd[cmd.index("--gpu") + 1] == "GPU-resolved"
 
 
 def test_serve_command_is_stable_for_the_same_inputs():

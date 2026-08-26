@@ -51,7 +51,9 @@ def _add_common(p: argparse.ArgumentParser) -> None:
         default=None,
         help=(
             "the physical GPU to serve on, as `ft serve --gpu`: a stable GPU UUID "
-            "(preferred -- nvidia-smi indices move between boots) or an index"
+            "(preferred -- nvidia-smi indices move between boots) or an index. REQUIRED for "
+            "a canonical run, and resolved to a UUID before anything starts so the server, "
+            "`ft bench bw` and the microbenchmarks provably touch the same card"
         ),
     )
     p.add_argument("--manifest", required=True, help="frozen workload manifest (JSON)")
@@ -119,6 +121,14 @@ def _campaign(args: argparse.Namespace, arms) -> Campaign:
         dev_smoke=args.dev_smoke,
     )
     prov.validate_revision(args.model_revision, canonical=canonical)
+    prov.validate_inferswarm_commit(args.inferswarm_commit, canonical=canonical)
+    if canonical and not args.gpu:
+        raise ValueError(
+            "--gpu is required for a canonical run: criteria section 2.1 fixes Phase 0 to "
+            "ONE physical RTX 3060 -- the same card the Phase-1 candidate later uses as GPU "
+            "0 -- and a run that lets the runtime choose cannot name which card it measured. "
+            "Pass the stable GPU UUID from `nvidia-smi -L`."
+        )
     return Campaign(
         arms=arms,
         manifest=manifest,
@@ -135,16 +145,37 @@ def _campaign(args: argparse.Namespace, arms) -> Campaign:
 
 def _emit_dry_run(campaign: Campaign) -> int:
     doc = campaign.dry_run_document()
-    banner = (
-        "CANONICAL Phase-0 protocol"
-        if doc["canonical"]
-        else "NON-CANONICAL developer smoke test - NOT a Phase-0 baseline"
-    )
+    refusals = doc["preflight_refusals"]
+    if refusals:
+        banner = "CANONICAL Phase-0 protocol - WOULD BE REFUSED, see below"
+    elif doc["canonical"]:
+        banner = "CANONICAL Phase-0 protocol"
+    else:
+        banner = "NON-CANONICAL developer smoke test - NOT a Phase-0 baseline"
     print(f"=== {banner} ===", file=sys.stderr)
     for blocker in doc["canonical_blockers"]:
         print(f"  - {blocker}", file=sys.stderr)
+    for refusal in refusals:
+        print(f"  ! this run would be refused: {refusal}", file=sys.stderr)
     print(json.dumps(doc, indent=2))
     return 0
+
+
+def _exit_code(doc: dict) -> int:
+    """0 only for a run that is both complete and not an invalid canonical attempt.
+
+    An INVALID campaign exits non-zero even when every generation returned: the artifact is
+    real and is kept, but nothing downstream should treat it as a baseline.
+    """
+    complete = doc.get("execution_status") == "COMPLETE"
+    return 0 if complete and doc.get("validity") != "INVALID" else 1
+
+
+def _report(doc: dict) -> None:
+    print(f"\n[phase0] {doc['headline']}: {doc['run_directory']}", flush=True)
+    for item in doc.get("campaign_invalidations") or []:
+        where = "/".join(str(item[k]) for k in ("arm_id", "class_id") if item.get(k)) or "campaign"
+        print(f"[phase0]   INVALIDATING {item['code']} ({where}): {item['message']}", flush=True)
 
 
 def cmd_sweep(args: argparse.Namespace) -> int:
@@ -159,12 +190,22 @@ def cmd_sweep(args: argparse.Namespace) -> int:
             "a canonical sweep runs all of B1-B5 (criteria section 2.2 selects the winner "
             "from the full sweep); pass --dev-smoke to run a subset as a smoke test"
         )
+    if args.no_bench_bw and campaign.canonical:
+        raise SystemExit(
+            "--no-bench-bw is refused for a canonical sweep. The `ft bench bw` refresh is a "
+            "session-level prerequisite, not a B2 convenience: B2 resolves its per-step "
+            "fetch split from the profile AND B3's `--moe-backend auto` reads the same "
+            "profile to decide whether to upgrade offload to hybrid. Skipping it would let "
+            "both arms resolve from a profile this campaign did not produce. Pass "
+            "--dev-smoke to run a clearly-marked NON-CANONICAL developer smoke test."
+        )
     campaign.refresh_bench_bw = not args.no_bench_bw
+    campaign.bench_bw_dtype = args.bench_bw_dtype
     if args.dry_run:
         return _emit_dry_run(campaign)
     doc = campaign.execute()
-    print(f"\n[phase0] {doc['status']}: {doc['run_directory']}", flush=True)
-    return 0 if doc["status"] == "COMPLETE" else 1
+    _report(doc)
+    return _exit_code(doc)
 
 
 def cmd_reference(args: argparse.Namespace) -> int:
@@ -173,11 +214,18 @@ def cmd_reference(args: argparse.Namespace) -> int:
     # The reference is captured for reproducibility, so its text is always stored, and it is
     # run twice by default: criteria section 5.3 requires two independent reference runs of
     # every fixture to produce identical token sequences BEFORE any candidate is compared.
+    #
+    # Its request sampling is FORCED greedy (temperature 0.0 / top_p 1.0 / top_k -1) by the
+    # runner, on the same frozen prompt fixture the sweep uses. `--sampling-defaults none`
+    # alone is not enough: the manifest states sampling explicitly in every request body, and
+    # a request-level value beats a server default -- so a manifest whose frozen performance
+    # sampling is deliberately realistic would otherwise make the correctness reference
+    # sampled, and FreeToken exposes no seed to make that reproducible (criteria section 5.3).
     campaign.store_output_text = True
     if args.dry_run:
         return _emit_dry_run(campaign)
     doc = campaign.execute()
-    print(f"\n[phase0] {doc['status']}: {doc['run_directory']}", flush=True)
+    _report(doc)
     print(
         "[phase0] This is CORRECTNESS_REFERENCE material, not a performance baseline. "
         "Its self-consistency check (criteria section 5.3) compares two independent runs of "
@@ -191,7 +239,7 @@ def cmd_reference(args: argparse.Namespace) -> int:
         "They are the reproducible fixture those gates will later be applied to.",
         flush=True,
     )
-    return 0 if doc["status"] == "COMPLETE" else 1
+    return _exit_code(doc)
 
 
 def cmd_profile(args: argparse.Namespace) -> int:
@@ -205,6 +253,10 @@ def cmd_profile(args: argparse.Namespace) -> int:
         hidden=args.hidden,
         intermediate=args.intermediate,
         top_k=args.top_k,
+        include_grouped=not args.no_grouped_topk,
+        device_bandwidth=args.device_bandwidth,
+        device_bandwidth_bytes=args.device_bandwidth_mib << 20,
+        device_bandwidth_reps=args.device_bandwidth_reps,
     )
     out = json.dumps(doc, indent=2)
     if args.out:
@@ -234,7 +286,19 @@ def build_parser() -> argparse.ArgumentParser:
     sweep = sub.add_parser("sweep", help="the B1-B5 baseline sweep")
     _add_common(sweep)
     sweep.add_argument("--arms", default=None, help="comma list (default: all of B1-B5)")
-    sweep.add_argument("--no-bench-bw", action="store_true", help="skip B2's `ft bench bw` refresh")
+    sweep.add_argument(
+        "--no-bench-bw",
+        action="store_true",
+        help=(
+            "skip the session-level `ft bench bw` refresh. REFUSED for a canonical sweep "
+            "(B2 and B3 both read the profile); usable only with --dev-smoke"
+        ),
+    )
+    sweep.add_argument(
+        "--bench-bw-dtype",
+        default="nvfp4",
+        help="expert format the `ft bench bw` refresh benches (criteria section 2.1: this GPU + format)",
+    )
     sweep.set_defaults(func=cmd_sweep)
 
     ref = sub.add_parser("reference", help="CORRECTNESS_REFERENCE capture")
@@ -261,11 +325,38 @@ def build_parser() -> argparse.ArgumentParser:
     profile.add_argument(
         "--expert-microbench",
         action="store_true",
-        help="also run the single-expert NVFP4 GEMV latency microbenchmark (diagnostic only)",
+        help=(
+            "also run the TRUE single-expert NVFP4 GEMV latency microbenchmark (top_k=1), "
+            "plus a separately-labelled grouped top-k step diagnostic (diagnostic only)"
+        ),
     )
     profile.add_argument("--hidden", type=int, default=2048, help="microbench hidden size H")
     profile.add_argument("--intermediate", type=int, default=512, help="microbench MoE intermediate I")
-    profile.add_argument("--top-k", type=int, default=8, help="microbench routed experts per token")
+    profile.add_argument(
+        "--top-k", type=int, default=8,
+        help="routed experts per token for the GROUPED diagnostic; the single-expert "
+             "measurement is always top_k=1",
+    )
+    profile.add_argument(
+        "--no-grouped-topk", action="store_true",
+        help="skip the grouped top-k step diagnostic and measure only the single expert",
+    )
+    profile.add_argument(
+        "--device-bandwidth", action="store_true",
+        help=(
+            "also measure the selected GPU's device (VRAM) memory bandwidth -- issue #2's "
+            "'memory bandwidth', which `ft bench bw` does NOT measure (it measures host DRAM "
+            "and the PCIe link)"
+        ),
+    )
+    profile.add_argument(
+        "--device-bandwidth-mib", type=int, default=512,
+        help="device-bandwidth working set per buffer, in MiB (must exceed L2 by a wide margin)",
+    )
+    profile.add_argument(
+        "--device-bandwidth-reps", type=int, default=30,
+        help="device-bandwidth measured repetitions (all are reported individually)",
+    )
     profile.set_defaults(func=cmd_profile)
 
     h = sub.add_parser("hash", help="sha256 of fixture file(s), for freezing into a manifest")

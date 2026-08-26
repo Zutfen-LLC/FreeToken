@@ -9,14 +9,20 @@ Layout (created locally; **nothing here is written into the InferSwarm repositor
         SUMMARY.md          human-readable; states expected vs observed reps per block
         server-logs/        one ft serve log per arm
 
-Two rules shape this module:
+Three rules shape this module:
 
 * **Raw repetitions are the artifact.** ``repetitions.jsonl`` keeps every measured
   generation with its full inter-token gap list, so variance, CV, medians and a bootstrap
   can be computed later. Averages are never emitted in place of the data.
-* **A successful-looking summary must be impossible while repetitions are missing.** The
-  run status is computed from expected-vs-observed counts and the failure list, so an
-  incomplete campaign says ``INCOMPLETE`` at the top of both ``run.json`` and ``SUMMARY.md``.
+* **A successful-looking summary must be impossible while repetitions are missing.**
+  ``execution_status`` is computed from expected-vs-observed counts and the failure list, so
+  an incomplete campaign says ``INCOMPLETE RUN`` at the top of both ``run.json`` and
+  ``SUMMARY.md``.
+* **Completeness is not validity.** ``validity`` is a separate field with its own inputs
+  (``validity.CampaignValidity``): a campaign that produced every repetition it planned is
+  still ``INVALID`` when a precommitted prerequisite failed. The first line of both files is
+  one of ``VALID CANONICAL CAMPAIGN`` / ``INVALID CANONICAL ATTEMPT`` / ``NON-CANONICAL
+  DEVELOPER RUN`` / ``INCOMPLETE RUN``, with the reasons immediately below it.
 
 Copying a completed run into ``inferswarm/docs/benchmarks/results/YYYY-MM-DD-short-name/``
 is a deliberate human step, done once the numbers have been read.
@@ -31,9 +37,21 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Sequence
 
 from . import REPETITION_SCHEMA, RUN_SCHEMA
+from .validity import (
+    EXECUTION_COMPLETE,
+    EXECUTION_INCOMPLETE,
+    VALIDITY_INVALID,
+    VALIDITY_NON_CANONICAL,
+    VALIDITY_VALID,
+    CampaignValidity,
+    headline,
+)
 
-STATUS_COMPLETE = "COMPLETE"
-STATUS_INCOMPLETE = "INCOMPLETE"
+# Kept under their old names because "did every generation return?" is still exactly what
+# they mean -- but they are now the value of ``execution_status``, never of a single field
+# called ``status`` that a reader could mistake for a verdict on the campaign.
+STATUS_COMPLETE = EXECUTION_COMPLETE
+STATUS_INCOMPLETE = EXECUTION_INCOMPLETE
 
 
 def run_dir_name(date: str, session_id: str, short_name: str) -> str:
@@ -80,20 +98,43 @@ class RunWriter:
     def measured(self) -> List[Dict[str, Any]]:
         return [r for r in self._reps if r.get("measured")]
 
-    def finalize(self, tallies: Sequence[Any], extra: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    def finalize(
+        self,
+        tallies: Sequence[Any],
+        validity: CampaignValidity,
+        extra: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any]:
+        """Write ``run.json`` + ``SUMMARY.md``, with execution and validity kept apart.
+
+        ``execution_status`` answers "did every planned generation return?". ``validity``
+        answers "is this a valid canonical Phase-0 baseline campaign?". They are computed
+        from different inputs and neither implies the other: a campaign can run all 200
+        measured generations and still be ``INVALID`` because, say, the fresh bandwidth
+        profile was missing or a prompt fell outside its frozen class shape.
+        """
         tally_records = [t.record() for t in tallies]
         incomplete = [t for t in tally_records if not t["complete"]]
-        status = STATUS_COMPLETE if (not incomplete and not self._failures) else STATUS_INCOMPLETE
+        execution_status = (
+            EXECUTION_COMPLETE if (not incomplete and not self._failures) else EXECUTION_INCOMPLETE
+        )
+        verdict = validity.verdict()
         doc = {
             "schema": RUN_SCHEMA,
-            "status": status,
-            "label": "MEASURED" if status == STATUS_COMPLETE else "INCOMPLETE",
+            # First three keys on purpose: a reader (or a `head` of the file) sees the
+            # verdict before any number.
+            "headline": headline(execution_status, verdict),
+            "execution_status": execution_status,
+            **validity.record(),
+            "label": "MEASURED" if execution_status == EXECUTION_COMPLETE else "INCOMPLETE",
             "label_note": (
                 "Per InferSwarm BENCHMARKING.md every number carries a label. Raw "
                 "repetitions in repetitions.jsonl are MEASURED observations of this "
-                "configuration; the per-block statistics in SUMMARY.md are CALCULATED from "
-                "them. This harness computes no cross-configuration ratio and selects no "
-                "baseline."
+                "configuration -- they really happened -- and the per-block statistics in "
+                "SUMMARY.md are CALCULATED from them. MEASURED describes an observation, "
+                "never the campaign: an INVALID campaign contains real observations of a "
+                "run that violated the precommitted protocol, and is not a Phase-0 "
+                "baseline. This harness computes no cross-configuration ratio and selects "
+                "no baseline."
             ),
             **self.header,
             **(extra or {}),
@@ -155,28 +196,81 @@ def _fmt(value: Any, digits: int = 2) -> str:
     return str(value)
 
 
+def _verdict_banner(doc: Dict[str, Any]) -> List[str]:
+    """The first screen. Four mutually exclusive states, and the reasons underneath.
+
+    Keyed off the OVERALL campaign verdict, never off ``protocol.canonical`` alone: a run
+    can leave the repetition protocol untouched and still be non-canonical (for example
+    ``--allow-missing-provenance``), and a run can satisfy the protocol perfectly and still
+    be an invalid canonical attempt.
+    """
+    execution = doc.get("execution_status")
+    verdict = doc.get("validity")
+    invalidations = doc.get("campaign_invalidations") or []
+    blockers = doc.get("canonical_blockers") or []
+    banner = doc.get("headline") or headline(str(execution), str(verdict))
+
+    lines = [f"# {banner}", ""]
+    if execution != EXECUTION_COMPLETE:
+        lines += [
+            "> **INCOMPLETE RUN.** Blocks below did not produce their full repetition "
+            "count, or a generation failed. Nothing here is a baseline, and no verdict "
+            "about the configurations can be read from it.",
+            "",
+        ]
+    if verdict == VALIDITY_INVALID:
+        lines += [
+            "> **INVALID CANONICAL ATTEMPT.** This run asked to be a canonical Phase-0 "
+            "campaign and at least one precommitted requirement was not satisfied. The "
+            "observations below really happened and are preserved in full, but they are "
+            "**not** a valid Phase-0 baseline and must not be published as one.",
+            "",
+        ]
+    elif verdict == VALIDITY_NON_CANONICAL:
+        lines += [
+            "> **NON-CANONICAL DEVELOPER RUN.** This was never a baseline attempt: the "
+            "canonical protocol, manifest or provenance requirements were relaxed on "
+            "purpose. These numbers must not be published as a Phase-0 baseline.",
+            "",
+        ]
+    elif verdict == VALIDITY_VALID and execution == EXECUTION_COMPLETE:
+        lines += [
+            "> **VALID CANONICAL CAMPAIGN.** Every planned generation returned and every "
+            "precommitted prerequisite, held-constant rule, workload-shape rule, "
+            "instrumentation requirement and provenance requirement was satisfied.",
+            "",
+        ]
+
+    if blockers:
+        lines.append("**Why this run is not canonical:**")
+        lines.append("")
+        lines += [f"- {b}" for b in blockers]
+        lines.append("")
+    if invalidations:
+        lines.append(f"**Campaign-invalidating conditions ({len(invalidations)}):**")
+        lines.append("")
+        lines.append("| code | where | detail |")
+        lines.append("|---|---|---|")
+        for item in invalidations[:50]:
+            where = "/".join(
+                str(item.get(k)) for k in ("arm_id", "class_id") if item.get(k)
+            ) or "campaign"
+            index = item.get("execution_index")
+            if index is not None:
+                where += f" #{index}"
+            detail = str(item.get("message", "")).replace("|", "\\|")
+            lines.append(f"| `{item.get('code')}` | {where} | {detail} |")
+        if len(invalidations) > 50:
+            lines.append(f"| ... | ... | {len(invalidations) - 50} more in `run.json` |")
+        lines.append("")
+    return lines
+
+
 def render_summary(doc: Dict[str, Any], measured: Iterable[Dict[str, Any]]) -> str:
-    """SUMMARY.md. The status line is derived, so it cannot flatter an incomplete run."""
+    """SUMMARY.md. The verdict is derived, so it cannot flatter an incomplete or invalid run."""
     measured = list(measured)
-    lines: List[str] = []
-    status = doc.get("status")
-    lines.append(f"# Phase-0 baseline run - {status}")
-    lines.append("")
-    if status != STATUS_COMPLETE:
-        lines.append(
-            "> **This run is INCOMPLETE.** Blocks below did not produce their full "
-            "repetition count, or a generation failed. Nothing here is a baseline."
-        )
-        lines.append("")
+    lines: List[str] = _verdict_banner(doc)
     protocol = doc.get("protocol", {})
-    if not protocol.get("canonical", False):
-        lines.append(
-            "> **NON-CANONICAL developer smoke test.** The precommitted protocol "
-            "(criteria section 10) was overridden: "
-            + "; ".join(protocol.get("deviations", []) or ["unspecified"])
-            + ". These numbers are not a Phase-0 baseline and must not be published as one."
-        )
-        lines.append("")
     lines.append(f"- session: `{protocol.get('session_id')}`")
     lines.append(f"- started: {doc.get('started_at')}")
     lines.append(f"- finished: {doc.get('finished_at')}")
@@ -189,6 +283,21 @@ def render_summary(doc: Dict[str, Any], measured: Iterable[Dict[str, Any]]) -> s
     revision = model.get("revision")
     revision_text = revision.get("value") if isinstance(revision, dict) else revision
     lines.append(f"- model: `{model.get('repository')}` @ `{revision_text}`")
+    selection = doc.get("gpu_selection") or {}
+    lines.append(
+        f"- physical GPU: requested `{selection.get('requested')}` -> resolved "
+        f"`{selection.get('resolved_uuid')}` (nvidia-smi index {selection.get('physical_index')})"
+    )
+    bench = doc.get("bench_bw") or {}
+    profile = bench.get("profile") or {}
+    lines.append(
+        "- `ft bench bw` prerequisite: "
+        + (
+            f"profile `{profile.get('path')}` sha256 `{profile.get('sha256')}`"
+            if profile.get("sha256")
+            else f"NOT USABLE ({bench.get('reason') or profile.get('unavailable') or 'see run.json'})"
+        )
+    )
     lines.append("")
     lines.append(
         "This harness does **not** select `CANONICAL_PERFORMANCE_BASELINE` and computes no "

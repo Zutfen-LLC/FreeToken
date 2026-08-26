@@ -44,10 +44,12 @@ def _config(**kw):
     return SimpleNamespace(**base)
 
 
-def _cache(quant_format="nvfp4", decode_target="gpu", cache_size=992):
+def _cache(quant_format="nvfp4", decode_target="gpu", cache_size=992,
+           hybrid_max_fetch=1, hybrid_fetch_fraction=0.0):
     return SimpleNamespace(
         quant_format=quant_format, decode_target=decode_target, cache_size=cache_size,
-        bank_caches={}, hybrid_max_fetch=1,
+        bank_caches={}, hybrid_max_fetch=hybrid_max_fetch,
+        hybrid_fetch_fraction=hybrid_fetch_fraction,
     )
 
 
@@ -199,3 +201,49 @@ def test_a_broken_engine_yields_an_error_report_rather_than_raising():
 
 def test_unavailable_helper_shape():
     assert unavailable("because") == {"value": None, "unavailable": "because"}
+
+
+# --- criteria section 2.3 fields that live on SchedulerConfig, not EngineConfig ------------
+
+def test_the_report_carries_the_resolved_max_prefill_length():
+    """--max-prefill-length's dest is max_extend_tokens on SchedulerConfig; the criteria
+    require the resolved value, and the report previously carried neither."""
+    report = build_runtime_report(_engine(config=_config(max_extend_tokens=4096)))
+    assert report["runtime"]["max_prefill_length_resolved"] == 4096
+
+
+def test_the_report_carries_the_resolved_cache_type():
+    """_adjust_config rewrites --cache-type for SWA/GDN models, so the flag the user passed
+    is frequently not what the cache manager was built with."""
+    report = build_runtime_report(_engine(config=_config(cache_type="swa_radix")))
+    assert report["runtime"]["cache_type_resolved"] == "swa_radix"
+
+
+def test_absent_scheduler_fields_are_null_rather_than_missing():
+    """An engine built from a bare EngineConfig has neither field; the consumer must see a
+    null it can reject, not a KeyError."""
+    report = build_runtime_report(_engine())
+    assert report["runtime"]["max_prefill_length_resolved"] is None
+    assert report["runtime"]["cache_type_resolved"] is None
+
+
+def test_the_report_carries_the_resolved_hybrid_fetch_fraction():
+    """`--moe-hybrid-max-fetch auto` resolves to a bandwidth-matched split read off the
+    `ft bench bw` profile; 0.0 means the fixed-cap fallback applied, which is a DIFFERENT
+    configuration from a benched split and must not be reported as one."""
+    cache = _cache(decode_target="cpu", hybrid_max_fetch=256, hybrid_fetch_fraction=0.37)
+    report = build_runtime_report(_engine(config=_config(moe_backend="hybrid"), cache=cache))
+    assert report["moe"]["hybrid_fetch_fraction_resolved"] == 0.37
+    assert report["moe"]["hybrid_max_fetch_resolved"] == 256
+
+
+def test_the_fallback_fetch_fraction_is_reported_as_zero_not_omitted():
+    cache = _cache(decode_target="cpu", hybrid_max_fetch=1, hybrid_fetch_fraction=0.0)
+    report = build_runtime_report(_engine(config=_config(moe_backend="hybrid"), cache=cache))
+    assert report["moe"]["hybrid_fetch_fraction_resolved"] == 0.0
+
+
+def test_a_configuration_without_a_cache_reports_null_fetch_fields():
+    report = build_runtime_report(_engine(cache=None))
+    assert report["moe"]["hybrid_fetch_fraction_resolved"] is None
+    assert report["moe"]["hybrid_max_fetch_resolved"] is None

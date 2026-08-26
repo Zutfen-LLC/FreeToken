@@ -50,6 +50,30 @@ CLASS_SPECS: Dict[str, ClassSpec] = {
 }
 REQUIRED_CLASSES = ("W1", "W2", "W3", "W4")
 
+# The criteria state W1/W2 as bounds ("<= 2,000", "<= 1,000") and W3/W4 as targets
+# ("~ 16,000", "~ 128"). "~" is not a rule a machine can check, so the harness FREEZES the
+# tolerance here -- before any measurement, in version control, recorded verbatim in every
+# run artifact -- rather than choosing one after seeing a fixture's token count. Widening
+# these numbers is a deliberate, reviewable change to a frozen contract (criteria section 9
+# rule 3), never a per-run accommodation.
+CLASS_SHAPE_RULE = {
+    "source": "InferSwarm criteria section 9, table; '~' frozen by this harness",
+    "W1": "prompt_tokens <= 2000 (criteria bound)",
+    "W2": "prompt_tokens <= 1000 (criteria bound)",
+    "W3": "prompt_tokens within +/-15% of 16000, and <= 20000 (criteria '~16,000')",
+    "W4": "prompt_tokens within +/-25% of 128, and <= 200 (criteria '~128')",
+    "output": (
+        "completion_tokens must EQUAL the class's frozen output_tokens: canonical runs set "
+        "ignore_eos=true (criteria section 3 rule 5), so the length is exact by construction "
+        "and any deviation means the request did not run as declared"
+    ),
+}
+
+# criteria section 5.3: FreeToken exposes no seed, so greedy decoding is the only
+# reproducible fixture available. These are the exact request-level values that mean greedy
+# in FreeToken's SamplingParams (python/freetoken/core.py).
+CANONICAL_GREEDY_SAMPLING: Dict[str, Any] = {"temperature": 0.0, "top_p": 1.0, "top_k": -1}
+
 
 class ManifestError(ValueError):
     """A manifest that cannot be trusted to reproduce a run. Always fatal."""
@@ -69,9 +93,20 @@ class Workload:
     fixture_path: str | None
     description: str = ""
 
-    def request_body(self, model_id: str) -> Dict[str, Any]:
+    def request_body(
+        self, model_id: str, *, sampling_override: Mapping[str, Any] | None = None
+    ) -> Dict[str, Any]:
         """The exact chat-completions body for this workload. Every generation field is
-        stated explicitly: nothing is left for the server's own defaults to fill in."""
+        stated explicitly: nothing is left for the server's own defaults to fill in.
+
+        ``sampling_override`` replaces the manifest's frozen sampling for this request. It
+        exists for exactly one caller: ``CORRECTNESS_REFERENCE``, which must be greedy
+        (criteria section 5.3) even when the frozen performance sampling deliberately is
+        not. ``--sampling-defaults none`` is not enough on its own -- the body below states
+        temperature/top_p/top_k explicitly, and a request-level value always wins over a
+        server default, so a sampled performance manifest would otherwise make the
+        correctness reference sampled too. The performance sweep never passes this.
+        """
         return {
             "model": model_id,
             "messages": [{"role": self.role, "content": self.prompt}],
@@ -80,8 +115,12 @@ class Workload:
             "stream": True,
             "stream_options": {"include_usage": True},
             "chat_template_kwargs": dict(self.chat_template_kwargs),
-            **self.sampling,
+            **(dict(sampling_override) if sampling_override is not None else self.sampling),
         }
+
+    def greedy_reference_body(self, model_id: str) -> Dict[str, Any]:
+        """The CORRECTNESS_REFERENCE request: same frozen prompt/content, greedy sampling."""
+        return self.request_body(model_id, sampling_override=CANONICAL_GREEDY_SAMPLING)
 
 
 @dataclass(frozen=True)
@@ -133,6 +172,10 @@ class Manifest:
                 for w in self.workloads
             ],
             "missing_required_classes": self.missing_classes(),
+            # Frozen before any measurement and reproduced in every artifact, so a reader
+            # can check the shape rule the campaign was judged against without reading the
+            # harness source.
+            "class_shape_rule": dict(CLASS_SHAPE_RULE),
         }
 
 
@@ -328,12 +371,16 @@ def load_manifest(path: str | Path, *, canonical: bool) -> Manifest:
 
 
 def check_prompt_tokens(class_id: str, prompt_tokens: int) -> str | None:
-    """Compare a server-reported prompt length against the class's declared shape.
+    """Compare a server-reported prompt length against the class's frozen shape.
 
-    Returns None when it fits, else a human-readable deviation string. This is a *recorded
-    observation*, not a hard failure: the tokenizer decides the real count, and a fixture
-    that lands slightly outside its band is information the report must carry rather than
-    something the harness should silently rewrite.
+    Returns None when it fits, else a human-readable deviation string.
+
+    The observation is always preserved in the repetition record, and the prompt is **never**
+    rewritten or truncated to make it fit -- the tokenizer decides the real count, and
+    silently reshaping a frozen fixture would break the very thing section 9 rule 3 freezes.
+    But for a *canonical* run the shape is part of the experimental contract, so a deviation
+    is not merely recorded: the runner turns it into a campaign invalidation
+    (``validity.PROMPT_SHAPE_VIOLATION``). See ``CLASS_SHAPE_RULE`` for the exact rule.
     """
     spec = CLASS_SPECS.get(class_id)
     if spec is None:
@@ -349,6 +396,33 @@ def check_prompt_tokens(class_id: str, prompt_tokens: int) -> str | None:
         if not lo <= prompt_tokens <= hi:
             return (
                 f"prompt_tokens={prompt_tokens} is outside the {class_id} target band "
-                f"[{lo:.0f}, {hi:.0f}] around {spec.prompt_target_tokens}"
+                f"[{lo:.0f}, {hi:.0f}] around {spec.prompt_target_tokens} "
+                f"(criteria section 9 '~{spec.prompt_target_tokens}', tolerance frozen by "
+                f"this harness at +/-{spec.prompt_tolerance:.0%})"
             )
+    return None
+
+
+def check_completion_tokens(
+    class_id: str, completion_tokens: Any, requested_max_tokens: Any
+) -> str | None:
+    """Whether the generation produced exactly the frozen output length.
+
+    Canonical runs pass ``ignore_eos=true`` (criteria section 3 rule 5) precisely so the
+    output length is exact and identical across arms. A completion that is shorter or longer
+    than the request therefore did not run as declared -- a truncation, a server-side cap, or
+    an ignored ``ignore_eos`` -- and the block is not a valid observation of the frozen
+    workload even though the tokens it produced were really produced.
+    """
+    if completion_tokens is None or requested_max_tokens is None:
+        return (
+            f"{class_id}: completion_tokens={completion_tokens!r} / "
+            f"requested max_tokens={requested_max_tokens!r}; the output length cannot be checked"
+        )
+    if int(completion_tokens) != int(requested_max_tokens):
+        return (
+            f"{class_id}: completion_tokens={completion_tokens} != requested max_tokens="
+            f"{requested_max_tokens}; canonical runs use ignore_eos=true so the length is "
+            "exact (criteria section 3 rule 5)"
+        )
     return None

@@ -5,61 +5,49 @@ one that cannot be read becomes an explicit null with a reason:
 
 * **GPU / VRAM identity, driver, compute capability, PCIe link generation and width**
   (current *and* max, so a card sitting in a downgraded slot is visible) -- ``nvidia-smi``.
+  The ``--gpu`` selector is resolved to a stable UUID first (``gpu.resolve_gpu``) and every
+  child measurement is given that UUID, so the bench, the microbenchmarks and the sweep
+  provably touch one physical card rather than three selectors that ought to agree.
 * **Topology** -- ``nvidia-smi topo -m`` and ``topo -p2p r``.
-* **Device memory bandwidth** -- FreeToken's own ``ft bench bw`` linear pinned<->device and
-  STREAM-style CPU DRAM measurements (``freetoken.moe.benchbw``), which is the trustworthy
-  existing path; this module does not re-implement a bandwidth kernel.
-* **PCIe / host-RAM bandwidth for the real gather** -- also ``ft bench bw``: it drives the
-  production ``OffloadMoeCache.copy_missing``, which is the transfer the offload backend
-  actually performs.
+* **Host DRAM and PCIe bandwidth for the real gather** -- FreeToken's own ``ft bench bw``
+  (``freetoken.moe.benchbw``): a STREAM-style CPU DRAM read, linear pinned<->device copies,
+  the production CPU MoE GEMV, and the production ``OffloadMoeCache.copy_missing`` gather.
+  This module does not re-implement any of them.
+* **Device (VRAM) memory bandwidth** (``--device-bandwidth``) -- issue #2 asks for the
+  card's memory bandwidth, and ``ft bench bw`` does not measure it: its ceilings are host
+  DRAM and the PCIe link. See ``device_bandwidth.py`` for the method and the byte accounting.
 * **CPU / RAM / OS / driver / runtime** -- the same provenance capture the run artifact uses.
-* Optionally, **single-expert NVFP4 execution latency** (``--expert-microbench``), which no
-  existing FreeToken benchmark provides: ``ft bench bw`` measures *bandwidth* of the CPU MoE
-  GEMV and the PCIe gather, and ``bench_offload_cache_copy.py`` measures *copy* cost.
+* Optionally, **single-expert NVFP4 execution latency** (``--expert-microbench``), measured
+  at ``top_k = 1`` so it is a latency and not an amortized share of a grouped call, plus a
+  separately-named grouped top-k step diagnostic.
 
-The microbenchmark is **diagnostic only**. Per InferSwarm's benchmark contract, a faster
+The microbenchmarks are **diagnostic only**. Per InferSwarm's benchmark contract, a faster
 expert or transfer microbenchmark is never evidence that inference improved, and its numbers
 are never combined arithmetically into an end-to-end claim.
 """
 
 from __future__ import annotations
 
-import subprocess
 import sys
 from typing import Any, Dict
 
 from . import HARNESS_VERSION
+from . import bench_bw as bench_bw_mod
 from . import provenance as prov
+from .gpu import GpuSelection, resolve_gpu
 
 
-def _bench_bw(gpu: str | None, dtype: str) -> Dict[str, Any]:
-    """Run ``ft bench bw`` and return its report plus the profile path it wrote.
+def _bench_bw(selection: GpuSelection, dtype: str) -> Dict[str, Any]:
+    """Run ``ft bench bw`` on the resolved card and pin the profile it wrote.
 
     ``ft bench bw`` writes one JSON profile per GPU (default under
     ``$XDG_CACHE_HOME/freetoken/benchbw/<gpu-uuid>.json``) -- that file is the artifact the
-    engine itself reads, so it is the right thing to record alongside a baseline.
+    engine itself reads, so it is the right thing to record alongside a baseline, together
+    with its sha256 and a check that it names this card.
     """
-    cmd = [sys.executable, "-m", "freetoken.cli", "bench", "bw", "--dtype", dtype]
-    if gpu:
-        cmd += ["--gpu", gpu]
-    try:
-        completed = subprocess.run(cmd, capture_output=True, text=True, timeout=3600, check=False)
-    except (OSError, subprocess.SubprocessError) as e:
-        return {"command": cmd, "ok": False, "error": repr(e)}
-    result: Dict[str, Any] = {
-        "command": cmd,
-        "ok": completed.returncode == 0,
-        "returncode": completed.returncode,
-        "stdout": completed.stdout[-20000:],
-        "stderr_tail": completed.stderr[-4000:],
-    }
-    try:
-        from freetoken.moe.benchbw import default_out_path
-
-        result["profile_path"] = default_out_path(gpu if gpu and gpu.startswith("GPU-") else None)
-    except Exception as e:  # noqa: BLE001 -- best effort; the stdout report still stands
-        result["profile_path"] = prov.unavailable(f"could not resolve the profile path: {e!r}")
-    return result
+    return bench_bw_mod.run_bench_bw(
+        python_executable=sys.executable, selection=selection, dtype=dtype
+    ).record
 
 
 def capture_profile(
@@ -71,31 +59,61 @@ def capture_profile(
     hidden: int = 2048,
     intermediate: int = 512,
     top_k: int = 8,
+    include_grouped: bool = True,
+    device_bandwidth: bool = False,
+    device_bandwidth_bytes: int = 512 << 20,
+    device_bandwidth_reps: int = 30,
 ) -> Dict[str, Any]:
+    selection = resolve_gpu(gpu)
     doc: Dict[str, Any] = {
-        "schema": "inferswarm.phase0.hardware-profile/1",
+        "schema": "inferswarm.phase0.hardware-profile/2",
         "harness_version": HARNESS_VERSION,
         "captured_at": prov.utc_now_iso(),
         "label": "MEASURED",
         "label_note": (
-            "Hardware facts observed on this machine. The microbenchmark block, when "
-            "present, is DIAGNOSTIC: per InferSwarm BENCHMARKING.md it never constitutes "
-            "evidence about end-to-end inference and is never combined into one."
+            "Hardware facts observed on this machine. The microbenchmark blocks, when "
+            "present, are DIAGNOSTIC: per InferSwarm BENCHMARKING.md they never constitute "
+            "evidence about end-to-end inference and are never combined into one."
         ),
         "software": prov.software_provenance(None, HARNESS_VERSION),
         "host": prov.host_provenance(),
-        "gpu": prov.gpu_provenance(gpu),
+        "gpu": prov.gpu_provenance(gpu, selection.resolved_uuid),
+        "gpu_selection": selection.record(),
     }
-    doc["bandwidth"] = (
-        _bench_bw(gpu, dtype)
+    doc["bandwidth_host_and_pcie"] = (
+        _bench_bw(selection, dtype)
         if run_bench_bw
         else prov.unavailable("`ft bench bw` skipped (--no-bench-bw)")
     )
+    # Kept under the old key too: it is what earlier profiles called this block, and a
+    # consumer that reads `bandwidth` should not silently get nothing.
+    doc["bandwidth"] = doc["bandwidth_host_and_pcie"]
+    doc["bandwidth_note"] = (
+        "`ft bench bw` measures HOST DRAM and the PCIe link (plus the production CPU MoE "
+        "GEMV and PCIe expert gather). It is not device/VRAM bandwidth -- that is the "
+        "device_memory_bandwidth block."
+    )
+
+    if device_bandwidth:
+        from .device_bandwidth import measure_device_memory_bandwidth
+
+        doc["device_memory_bandwidth"] = measure_device_memory_bandwidth(
+            gpu=selection.resolved_uuid or gpu,
+            buffer_bytes=device_bandwidth_bytes,
+            repetitions=device_bandwidth_reps,
+        )
+    else:
+        doc["device_memory_bandwidth"] = prov.unavailable("not requested (--device-bandwidth)")
+
     if expert_microbench:
         from .expert_microbench import measure_single_expert_nvfp4
 
         doc["expert_microbenchmark"] = measure_single_expert_nvfp4(
-            hidden=hidden, intermediate=intermediate, top_k=top_k, gpu=gpu
+            hidden=hidden,
+            intermediate=intermediate,
+            top_k=top_k,
+            gpu=selection.resolved_uuid or gpu,
+            include_grouped=include_grouped,
         )
     else:
         doc["expert_microbenchmark"] = prov.unavailable(
