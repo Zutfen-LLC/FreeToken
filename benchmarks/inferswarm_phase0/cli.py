@@ -199,6 +199,11 @@ def cmd_sweep(args: argparse.Namespace) -> int:
             "both arms resolve from a profile this campaign did not produce. Pass "
             "--dev-smoke to run a clearly-marked NON-CANONICAL developer smoke test."
         )
+    if campaign.canonical and args.bench_bw_dtype != "nvfp4":
+        raise SystemExit(
+            "canonical Phase-0 sweep requires --bench-bw-dtype nvfp4; alternate formats "
+            "are developer-smoke only"
+        )
     campaign.refresh_bench_bw = not args.no_bench_bw
     campaign.bench_bw_dtype = args.bench_bw_dtype
     if args.dry_run:
@@ -297,7 +302,10 @@ def build_parser() -> argparse.ArgumentParser:
     sweep.add_argument(
         "--bench-bw-dtype",
         default="nvfp4",
-        help="expert format the `ft bench bw` refresh benches (criteria section 2.1: this GPU + format)",
+        help=(
+            "expert format the `ft bench bw` refresh benches; canonical Phase 0 is locked "
+            "to nvfp4, while alternate formats require --dev-smoke"
+        ),
     )
     sweep.set_defaults(func=cmd_sweep)
 

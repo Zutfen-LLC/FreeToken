@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import subprocess
 import sys
@@ -67,7 +68,12 @@ class BenchBwResult:
     @property
     def profile_usable(self) -> bool:
         profile = self.record.get("profile") or {}
-        return bool(profile.get("sha256")) and profile.get("gpu_matches") is not False
+        calibration = profile.get("nvfp4_calibration") or {}
+        return (
+            bool(profile.get("sha256"))
+            and profile.get("gpu_matches") is True
+            and calibration.get("usable") is True
+        )
 
     @property
     def failure_reason(self) -> str:
@@ -82,6 +88,17 @@ class BenchBwResult:
             return str(profile["unavailable"])
         if profile.get("gpu_matches") is False:
             return str(profile.get("gpu_mismatch") or "the profile was benched on another GPU")
+        if profile.get("gpu_matches") is not True:
+            return str(
+                profile.get("gpu_unverified")
+                or "the profile could not be positively tied to the selected GPU"
+            )
+        calibration = profile.get("nvfp4_calibration") or {}
+        if calibration.get("usable") is not True:
+            return str(
+                calibration.get("unavailable")
+                or "the profile does not contain a machine-usable NVFP4 calibration"
+            )
         return ""
 
 
@@ -94,6 +111,107 @@ def _parse_out_path(stdout: str) -> str | None:
     return None
 
 
+def _load_backend_recommendation(path: str, gpu_name: str | None, gpu_uuid: str | None):
+    """Call the same exact-path reader used by Engine._adjust_config."""
+    from freetoken.moe.bench_profile import load_backend_recommendation
+
+    return load_backend_recommendation(
+        "nvfp4", gpu_name=gpu_name, gpu_uuid=gpu_uuid, path=path
+    )
+
+
+def _load_hybrid_fetch_fraction(path: str, gpu_name: str | None, gpu_uuid: str | None):
+    """Call the same exact-path reader used by Engine._resolve_hybrid_fetch."""
+    from freetoken.moe.bench_profile import load_hybrid_fetch_fraction
+
+    return load_hybrid_fetch_fraction(
+        "nvfp4", gpu_name=gpu_name, gpu_uuid=gpu_uuid, path=path
+    )
+
+
+def is_positive_finite(value: Any) -> bool:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+        and value > 0
+    )
+
+
+def validate_nvfp4_calibration(
+    path: str, contents: Any, selection: GpuSelection
+) -> Dict[str, Any]:
+    """Prove the captured profile is usable by the Phase-0 runtime paths.
+
+    ``ft bench bw`` intentionally preserves a profile when an individual kernel benchmark
+    fails.  A successful process and readable JSON therefore do not prove that B2 can derive
+    its fetch split or that B3 can make an evidence-backed backend choice.  Structural checks
+    prove the required CPU-MoE/PCIe measurements exist; the two reader calls below prove the
+    exact captured file has the same meaning to the harness that it will have to the engine.
+    """
+    block: Dict[str, Any] = {"dtype": "nvfp4", "usable": False}
+    problems: List[str] = []
+    if not isinstance(contents, dict):
+        problems.append("profile root is not an object")
+        block["unavailable"] = "; ".join(problems)
+        return block
+
+    dtypes = contents.get("dtypes")
+    if not isinstance(dtypes, dict) or "nvfp4" not in dtypes:
+        problems.append('profile has no dtypes["nvfp4"] tuning result')
+    elif dtypes.get("nvfp4") not in ("hybrid", "offload"):
+        problems.append(
+            f'dtypes["nvfp4"] is not a usable backend verdict: {dtypes.get("nvfp4")!r}'
+        )
+
+    dtype_kernels = contents.get("dtype_kernels")
+    kernels = dtype_kernels.get("nvfp4") if isinstance(dtype_kernels, dict) else None
+    if not isinstance(kernels, dict):
+        problems.append('profile has no dtype_kernels["nvfp4"] measurements')
+    else:
+        for field in ("cpu_moe_gbs", "pcie_gather_gbs"):
+            value = kernels.get(field)
+            if not is_positive_finite(value):
+                problems.append(
+                    f'dtype_kernels["nvfp4"]["{field}"] must be a positive finite number; '
+                    f"got {value!r}"
+                )
+
+    gpu = contents.get("gpu")
+    gpu_name = gpu.get("name") if isinstance(gpu, dict) else None
+    try:
+        recommendation = _load_backend_recommendation(
+            path, gpu_name, selection.resolved_uuid
+        )
+    except Exception as e:  # noqa: BLE001 -- reader failure is captured benchmark evidence
+        recommendation = None
+        block["backend_reader_error"] = repr(e)
+    block["backend_recommendation"] = recommendation
+    if recommendation not in ("hybrid", "offload"):
+        problems.append(
+            "load_backend_recommendation(\"nvfp4\") returned no usable recommendation"
+        )
+
+    try:
+        fraction = _load_hybrid_fetch_fraction(path, gpu_name, selection.resolved_uuid)
+    except Exception as e:  # noqa: BLE001 -- reader failure is captured benchmark evidence
+        fraction = None
+        block["hybrid_fraction_reader_error"] = repr(e)
+    block["hybrid_fetch_fraction"] = fraction
+    # B2 is explicitly hybrid even when B3's recommendation is offload, so every canonical
+    # sweep needs a real split.  Zero is the engine's fixed-cap fallback, not a calibration.
+    if not is_positive_finite(fraction) or float(fraction) > 1.0:
+        problems.append(
+            "load_hybrid_fetch_fraction(\"nvfp4\") did not derive a fraction in (0, 1]"
+        )
+
+    if problems:
+        block["unavailable"] = "; ".join(problems)
+        return block
+    block["usable"] = True
+    return block
+
+
 def capture_profile(path: str | None, selection: GpuSelection) -> Dict[str, Any]:
     """Read back the exact profile file the engine will consult, and pin it.
 
@@ -102,7 +220,8 @@ def capture_profile(path: str | None, selection: GpuSelection) -> Dict[str, Any]
     ``gpu.uuid`` is the card this campaign declared. An unreadable or missing file is an
     explicit reason, never an empty block.
     """
-    block: Dict[str, Any] = {"path": path}
+    resolved_path = os.path.expanduser(path) if path else None
+    block: Dict[str, Any] = {"path": resolved_path}
     if not path:
         block["unavailable"] = (
             "could not resolve the profile path `ft bench bw` wrote; the exact profile the "
@@ -110,7 +229,7 @@ def capture_profile(path: str | None, selection: GpuSelection) -> Dict[str, Any]
         )
         return block
     try:
-        raw = Path(os.path.expanduser(path)).read_bytes()
+        raw = Path(resolved_path).read_bytes()
     except OSError as e:
         block["unavailable"] = f"profile file could not be read: {e!r}"
         return block
@@ -122,7 +241,8 @@ def capture_profile(path: str | None, selection: GpuSelection) -> Dict[str, Any]
         block["unavailable"] = f"profile file is not readable JSON: {e!r}"
         return block
     block["contents"] = contents
-    profile_gpu = (contents.get("gpu") or {}) if isinstance(contents, dict) else {}
+    raw_profile_gpu = contents.get("gpu") if isinstance(contents, dict) else None
+    profile_gpu = raw_profile_gpu if isinstance(raw_profile_gpu, dict) else {}
     block["profile_gpu"] = profile_gpu
     want = selection.resolved_uuid
     got = profile_gpu.get("uuid")
@@ -140,6 +260,9 @@ def capture_profile(path: str | None, selection: GpuSelection) -> Dict[str, Any]
             block["gpu_mismatch"] = (
                 f"profile was benched on {got}, but this campaign declared {want}"
             )
+    block["nvfp4_calibration"] = validate_nvfp4_calibration(
+        resolved_path, contents, selection
+    )
     return block
 
 

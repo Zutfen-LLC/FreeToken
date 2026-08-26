@@ -111,6 +111,15 @@ def good_bench_bw_record(gpu_uuid: str, path: str = "/cache/freetoken/benchbw/gp
     contents = {
         "gpu": {"index": 0, "name": "NVIDIA GeForce RTX 3060", "uuid": gpu_uuid},
         "dtypes": {"nvfp4": "hybrid"},
+        "dtype_kernels": {
+            "nvfp4": {
+                "cpu_moe_gbs": 30.0,
+                "pcie_gather_gbs": 10.0,
+                "cpu_moe_overlap_gbs": 20.0,
+                "pcie_gather_overlap_gbs": 10.0,
+                "recommended": "hybrid",
+            }
+        },
         "ceilings": {"cpu_stream_read_gbs": 40.0, "pcie_linear_h2d_gbs": 12.0},
     }
     return {
@@ -133,5 +142,11 @@ def good_bench_bw_record(gpu_uuid: str, path: str = "/cache/freetoken/benchbw/gp
             "contents": contents,
             "profile_gpu": contents["gpu"],
             "gpu_matches": True,
+            "nvfp4_calibration": {
+                "dtype": "nvfp4",
+                "usable": True,
+                "backend_recommendation": "hybrid",
+                "hybrid_fetch_fraction": 1.0 / 3.0,
+            },
         },
     }

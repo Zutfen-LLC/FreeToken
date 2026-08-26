@@ -26,6 +26,58 @@ from inferswarm_phase0.runner import Campaign, ServeSettings
 SELECTION = GpuSelection(requested=FAKE_UUID, resolved_uuid=FAKE_UUID, physical_index=0)
 
 
+@pytest.fixture(autouse=True)
+def lightweight_profile_readers(monkeypatch):
+    """Exercise the harness without importing FreeToken's torch/HF-heavy package tree.
+
+    The reader semantics themselves are covered in ``tests/moe/test_hybrid_fetch.py``.  These
+    tests cover that the Phase-0 gate calls both readers against the captured path and acts on
+    their results; focused benchmark tests intentionally remain runnable in the lightweight
+    static-review environment.
+    """
+    def backend(path, gpu_name, gpu_uuid):
+        return (json.loads(Path(path).read_text()).get("dtypes") or {}).get("nvfp4")
+
+    def fraction(path, gpu_name, gpu_uuid):
+        entry = (
+            (json.loads(Path(path).read_text()).get("dtype_kernels") or {}).get("nvfp4")
+            or {}
+        )
+        cpu = entry.get("cpu_moe_overlap_gbs") or entry.get("cpu_moe_gbs")
+        pcie = entry.get("pcie_gather_overlap_gbs") or entry.get("pcie_gather_gbs")
+        return pcie / (pcie + cpu) if entry.get("cpu_moe_overlap_gbs") and entry.get(
+            "pcie_gather_overlap_gbs"
+        ) else (pcie / cpu if cpu and pcie else None)
+
+    monkeypatch.setattr(bench_bw_mod, "_load_backend_recommendation", backend)
+    monkeypatch.setattr(bench_bw_mod, "_load_hybrid_fetch_fraction", fraction)
+
+
+def _valid_profile_contents(gpu_uuid=FAKE_UUID):
+    return {
+        "gpu": {
+            "uuid": gpu_uuid,
+            "name": "NVIDIA GeForce RTX 3060",
+        },
+        "dtypes": {"nvfp4": "hybrid"},
+        "dtype_kernels": {
+            "nvfp4": {
+                "cpu_moe_gbs": 30.0,
+                "pcie_gather_gbs": 10.0,
+                "cpu_moe_overlap_gbs": 20.0,
+                "pcie_gather_overlap_gbs": 10.0,
+                "recommended": "hybrid",
+            }
+        },
+    }
+
+
+def _capture(tmp_path, contents):
+    profile = tmp_path / "benchbw.json"
+    profile.write_text(json.dumps(contents))
+    return bench_bw_mod.capture_profile(str(profile), SELECTION)
+
+
 # --- which arms consume the profile ---------------------------------------------------------
 
 def test_b2_and_b3_both_consume_the_profile():
@@ -42,8 +94,7 @@ def test_b2_and_b3_both_consume_the_profile():
 
 def test_the_profile_is_pinned_by_content_hash(tmp_path):
     profile = tmp_path / "benchbw.json"
-    contents = {"gpu": {"uuid": FAKE_UUID, "name": "NVIDIA GeForce RTX 3060"},
-                "dtypes": {"nvfp4": "hybrid"}}
+    contents = _valid_profile_contents()
     profile.write_text(json.dumps(contents))
     block = bench_bw_mod.capture_profile(str(profile), SELECTION)
     assert block["gpu_matches"] is True
@@ -75,6 +126,56 @@ def test_a_profile_benched_on_another_gpu_is_detected(tmp_path):
     assert "benched on" in block["gpu_mismatch"]
 
 
+def test_a_profile_without_a_gpu_uuid_is_not_usable(tmp_path):
+    contents = _valid_profile_contents()
+    del contents["gpu"]["uuid"]
+    block = _capture(tmp_path, contents)
+    assert block["gpu_matches"] is None
+    assert "does not name the GPU" in block["gpu_unverified"]
+    assert not bench_bw_mod.BenchBwResult({"profile": block}).profile_usable
+
+
+def test_a_profile_without_an_nvfp4_tuning_result_is_not_usable(tmp_path):
+    contents = _valid_profile_contents()
+    del contents["dtypes"]["nvfp4"]
+    block = _capture(tmp_path, contents)
+    assert block["nvfp4_calibration"]["usable"] is False
+    assert 'dtypes["nvfp4"]' in block["nvfp4_calibration"]["unavailable"]
+
+
+@pytest.mark.parametrize("field", ["cpu_moe_gbs", "pcie_gather_gbs"])
+def test_missing_required_nvfp4_kernel_measurements_are_not_usable(tmp_path, field):
+    contents = _valid_profile_contents()
+    contents["dtype_kernels"]["nvfp4"][field] = None
+    block = _capture(tmp_path, contents)
+    assert block["nvfp4_calibration"]["usable"] is False
+    assert field in block["nvfp4_calibration"]["unavailable"]
+
+
+def test_no_runtime_backend_recommendation_is_not_usable(tmp_path, monkeypatch):
+    monkeypatch.setattr(bench_bw_mod, "_load_backend_recommendation", lambda *args: None)
+    block = _capture(tmp_path, _valid_profile_contents())
+    assert block["nvfp4_calibration"]["usable"] is False
+    assert "returned no usable recommendation" in block["nvfp4_calibration"]["unavailable"]
+
+
+def test_a_hybrid_profile_without_a_derived_fraction_is_not_usable(tmp_path, monkeypatch):
+    monkeypatch.setattr(bench_bw_mod, "_load_hybrid_fetch_fraction", lambda *args: None)
+    block = _capture(tmp_path, _valid_profile_contents())
+    assert block["nvfp4_calibration"]["backend_recommendation"] == "hybrid"
+    assert block["nvfp4_calibration"]["usable"] is False
+    assert "fraction in (0, 1]" in block["nvfp4_calibration"]["unavailable"]
+
+
+def test_a_valid_nvfp4_profile_with_a_positive_fraction_is_usable(tmp_path):
+    block = _capture(tmp_path, _valid_profile_contents())
+    calibration = block["nvfp4_calibration"]
+    assert calibration["backend_recommendation"] == "hybrid"
+    assert calibration["hybrid_fetch_fraction"] == pytest.approx(1.0 / 3.0)
+    assert calibration["usable"] is True
+    assert bench_bw_mod.BenchBwResult({"profile": block}).profile_usable
+
+
 def test_the_command_names_the_resolved_uuid_not_the_raw_selector(monkeypatch, tmp_path):
     captured = {}
 
@@ -88,7 +189,7 @@ def test_the_command_names_the_resolved_uuid_not_the_raw_selector(monkeypatch, t
         captured["env"] = kwargs.get("env")
         return _Completed()
 
-    (tmp_path / "p.json").write_text(json.dumps({"gpu": {"uuid": FAKE_UUID}}))
+    (tmp_path / "p.json").write_text(json.dumps(_valid_profile_contents()))
     monkeypatch.setattr(bench_bw_mod.subprocess, "run", fake_run)
     result = bench_bw_mod.run_bench_bw(
         python_executable="python",
@@ -248,11 +349,73 @@ def test_a_profile_from_another_gpu_aborts_a_canonical_campaign(tmp_path, campai
     assert campaign_env["started"] == []
 
 
+def test_a_profile_without_a_gpu_uuid_aborts_a_canonical_campaign(
+    tmp_path, campaign_env, monkeypatch
+):
+    record = good_bench_bw_record(FAKE_UUID)
+    record["profile"]["contents"]["gpu"].pop("uuid")
+    record["profile"]["profile_gpu"].pop("uuid", None)
+    record["profile"]["gpu_matches"] = None
+    record["profile"]["gpu_unverified"] = "the profile does not name the GPU it was benched on"
+    _patch_bench(monkeypatch, campaign_env, record)
+    arms = [BASELINE_ARMS_BY_ID[i] for i in ("B1", "B2", "B3")]
+    with pytest.raises(ValueError, match="does not name the GPU"):
+        _campaign(tmp_path, arms=arms).execute()
+    assert campaign_env["started"] == []
+
+
+def test_an_unusable_nvfp4_calibration_aborts_a_canonical_campaign(
+    tmp_path, campaign_env, monkeypatch
+):
+    record = good_bench_bw_record(FAKE_UUID)
+    record["profile"]["nvfp4_calibration"] = {
+        "dtype": "nvfp4",
+        "usable": False,
+        "unavailable": 'profile has no dtypes["nvfp4"] tuning result',
+    }
+    _patch_bench(monkeypatch, campaign_env, record)
+    arms = [BASELINE_ARMS_BY_ID[i] for i in ("B1", "B2", "B3")]
+    with pytest.raises(ValueError, match=r'no dtypes\["nvfp4"\]'):
+        _campaign(tmp_path, arms=arms).execute()
+    assert campaign_env["started"] == []
+
+
+def test_a_smoke_run_keeps_an_unusable_calibration_as_an_explicit_observation(
+    tmp_path, campaign_env, monkeypatch
+):
+    record = good_bench_bw_record(FAKE_UUID)
+    record["profile"]["nvfp4_calibration"] = {
+        "dtype": "nvfp4",
+        "usable": False,
+        "unavailable": "NVFP4 CPU-MoE measurement unavailable",
+    }
+    _patch_bench(monkeypatch, campaign_env, record)
+    arms = [BASELINE_ARMS_BY_ID[i] for i in ("B1", "B2", "B3")]
+    doc = _campaign(tmp_path, arms=arms, canonical=False).execute()
+    assert doc["validity"] == V.VALIDITY_NON_CANONICAL
+    assert V.BENCH_BW_NVFP4_CALIBRATION_UNUSABLE in doc["campaign_invalidation_codes"]
+    assert campaign_env["started"] == ["B1", "B2", "B3"]
+
+
 def test_skipping_the_refresh_is_refused_for_a_canonical_campaign(tmp_path, campaign_env):
     arms = [BASELINE_ARMS_BY_ID[i] for i in ("B1", "B2", "B3")]
     with pytest.raises(ValueError, match="canonical run refused"):
         _campaign(tmp_path, arms=arms, refresh=False).execute()
     assert campaign_env["started"] == []
+
+
+def test_a_direct_canonical_campaign_cannot_bypass_the_nvfp4_dtype_lock(
+    tmp_path, campaign_env
+):
+    arms = [BASELINE_ARMS_BY_ID[i] for i in ("B1", "B2", "B3")]
+    campaign = _campaign(tmp_path, arms=arms)
+    campaign.bench_bw_dtype = "bf16"
+    with pytest.raises(
+        ValueError,
+        match="canonical Phase-0 sweep requires --bench-bw-dtype nvfp4",
+    ):
+        campaign.execute()
+    assert campaign_env["order"] == []
 
 
 def test_a_smoke_run_may_skip_the_refresh_but_records_it_as_invalidating(tmp_path, campaign_env):
@@ -277,6 +440,7 @@ def test_the_profile_used_is_recorded_in_the_artifact(tmp_path, campaign_env, mo
     profile = bench["profile"]
     assert profile["path"] and profile["sha256"] and profile["contents"]
     assert profile["gpu_matches"] is True
+    assert profile["nvfp4_calibration"]["usable"] is True
     summary = (Path(doc["run_directory"]) / "SUMMARY.md").read_text()
     assert profile["sha256"] in summary
 

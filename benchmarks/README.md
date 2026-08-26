@@ -111,10 +111,15 @@ python benchmarks/phase0_baseline.py sweep \
   arms read it: B2 resolves its per-decode-step fetch split from it, and B3's
   `--moe-backend auto` reads the same profile to decide whether to upgrade offload to
   hybrid. In a reversed session B3 runs first, so a B2-local refresh would let it consume a
-  stale profile. `--no-bench-bw` is **refused** for a canonical sweep; a failed command, an
-  unreadable profile, or a profile benched on another card aborts the campaign *before any
-  server starts*. The artifact records the command, both timestamps, the return code, the
-  selected GPU UUID, the resolved profile path, the profile's contents and its sha256.
+  stale profile. Canonical Phase 0 is locked to `--bench-bw-dtype nvfp4`; alternate formats
+  are developer-smoke only. `--no-bench-bw` is **refused** for a canonical sweep. A failed
+  command, an unreadable profile, a profile without a positively matching GPU UUID, or an
+  incomplete NVFP4 CPU-MoE/PCIe calibration aborts the campaign *before any server starts*.
+  The captured file is checked through the same backend-recommendation and hybrid-fraction
+  readers the engine uses. After B2 starts, a zero resolved hybrid fraction is invalidating:
+  it is the fixed-cap fallback, not evidence that the calibration was consumed. The artifact
+  records the command, requested dtype, both timestamps, return code, selected GPU UUID,
+  resolved profile path, profile contents, reader results and sha256.
 - **A clean FreeToken checkout.** A canonical run refuses to start from a dirty working
   tree and names the modified paths: a dirty tree cannot be reproduced from its commit SHA,
   and recording only the filenames does not make it reproducible.
@@ -173,9 +178,19 @@ the reproducible fixture those gates will later be applied to.
 ### Hardware profile
 
 ```bash
-python benchmarks/phase0_baseline.py profile --gpu GPU-xxxx \
-    --expert-microbench --device-bandwidth --out profile.json
+nvidia-smi -L
+
+PYTHONPATH=python:. python benchmarks/phase0_baseline.py profile \
+    --gpu GPU-<UUID> \
+    --dtype nvfp4 \
+    --device-bandwidth \
+    --expert-microbench \
+    --out phase0-runs/hardware-profile.json
 ```
+
+`phase0-runs/` is repository-ignored, so this hardware profile and the sweep's default
+artifacts do not make a clean checkout dirty between canonical sessions. Replace
+`GPU-<UUID>` with the value reported by `nvidia-smi -L`; do not guess it.
 
 Captures GPU/VRAM identity, driver, compute capability, PCIe link generation and width
 (current *and* max), `nvidia-smi topo -m`, CPU/RAM/OS, and the bandwidth measurements from

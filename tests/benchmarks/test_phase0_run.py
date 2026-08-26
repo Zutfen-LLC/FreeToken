@@ -460,6 +460,48 @@ def test_a_hybrid_arm_without_a_resolved_fetch_fraction_invalidates(tmp_path, mo
     assert V.RUNTIME_CONFIG_MISSING_FIELD in doc["campaign_invalidation_codes"]
 
 
+def test_b2_with_the_zero_fraction_fallback_invalidates(tmp_path, mocked_server, monkeypatch):
+    monkeypatch.setattr(
+        runner_mod,
+        "fetch_instrumentation",
+        lambda origin, limit=8: instrumentation_doc(
+            runtime_config(
+                moe={
+                    "backend_requested": "hybrid",
+                    "backend_resolved": "hybrid",
+                    "hybrid_fetch_fraction_resolved": 0.0,
+                }
+            )
+        ),
+    )
+    doc = _campaign(tmp_path, arms=[BASELINE_ARMS_BY_ID["B2"]]).execute()
+    assert doc["validity"] == V.VALIDITY_INVALID
+    assert V.BENCH_BW_NVFP4_CALIBRATION_UNUSABLE in doc["campaign_invalidation_codes"]
+    assert any(
+        "fixed-cap fallback" in item["message"]
+        for item in doc["campaign_invalidations"]
+        if item["code"] == V.BENCH_BW_NVFP4_CALIBRATION_UNUSABLE
+    )
+
+
+def test_b2_with_a_positive_resolved_fraction_is_accepted(tmp_path, mocked_server, monkeypatch):
+    monkeypatch.setattr(
+        runner_mod,
+        "fetch_instrumentation",
+        lambda origin, limit=8: instrumentation_doc(
+            runtime_config(
+                moe={
+                    "backend_requested": "hybrid",
+                    "backend_resolved": "hybrid",
+                    "hybrid_fetch_fraction_resolved": 0.25,
+                }
+            )
+        ),
+    )
+    doc = _campaign(tmp_path, arms=[BASELINE_ARMS_BY_ID["B2"]]).execute()
+    assert doc["validity"] == V.VALIDITY_VALID
+
+
 def test_missing_instrumentation_invalidates(tmp_path, mocked_server, monkeypatch):
     monkeypatch.setattr(
         runner_mod, "fetch_instrumentation",
@@ -491,7 +533,11 @@ def _sweep_configs(b3_backend, b3_nvfp4="triton"):
     per_arm = {
         "B1": runtime_config(),
         "B2": runtime_config(
-            moe={"backend_requested": "hybrid", "backend_resolved": "hybrid"},
+            moe={
+                "backend_requested": "hybrid",
+                "backend_resolved": "hybrid",
+                "hybrid_fetch_fraction_resolved": 0.25,
+            },
             nvfp4={"resolved": "not selected - native nvfp4 layout, Triton kernels",
                    "inert": True},
         ),

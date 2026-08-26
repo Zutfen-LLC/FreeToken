@@ -253,6 +253,7 @@ class Campaign:
             "bench_bw_prerequisite": {
                 "runs_before_the_sweep": bool(consumers) and self.refresh_bench_bw,
                 "consuming_arms": consumers,
+                "dtype": self.bench_bw_dtype,
                 "command": (
                     bench_bw_mod.bench_bw_command(
                         self.settings.python_executable, self.serve_gpu(), self.bench_bw_dtype
@@ -370,6 +371,11 @@ class Campaign:
                 "physical RTX 3060 Phase 0 ran on (criteria section 2.1). "
                 f"{self.gpu_selection.unavailable}"
             )
+        if self.bench_bw_consumers() and self.bench_bw_dtype != "nvfp4":
+            reasons.append(
+                "canonical Phase-0 sweep requires --bench-bw-dtype nvfp4; alternate "
+                "formats are developer-smoke only"
+            )
         return reasons
 
     def preflight(self, provenance: Dict[str, Any]) -> None:
@@ -437,11 +443,15 @@ class Campaign:
             return record
         if not result.profile_usable:
             reason = result.failure_reason or "the refreshed profile could not be pinned"
-            code = (
-                V.BENCH_BW_PROFILE_GPU_MISMATCH
-                if (record.get("profile") or {}).get("gpu_matches") is False
-                else V.BENCH_BW_PROFILE_UNREADABLE
-            )
+            profile = record.get("profile") or {}
+            if profile.get("gpu_matches") is False:
+                code = V.BENCH_BW_PROFILE_GPU_MISMATCH
+            elif profile.get("gpu_matches") is not True:
+                code = V.BENCH_BW_PROFILE_GPU_UNVERIFIED
+            elif (profile.get("nvfp4_calibration") or {}).get("usable") is not True:
+                code = V.BENCH_BW_NVFP4_CALIBRATION_UNUSABLE
+            else:
+                code = V.BENCH_BW_PROFILE_UNREADABLE
             if self.canonical:
                 raise ValueError("canonical campaign aborted before any generation: " + reason)
             self.validity.add(code, reason)
@@ -585,7 +595,8 @@ class Campaign:
             )
             return
         required = list(REQUIRED_RUNTIME_FIELDS)
-        if _lookup(config, "moe.backend_resolved") == "hybrid":
+        backend_resolved = _lookup(config, "moe.backend_resolved")
+        if backend_resolved == "hybrid":
             required += list(REQUIRED_RUNTIME_FIELDS_HYBRID)
         for path in required:
             if _lookup(config, path) is None:
@@ -593,6 +604,17 @@ class Campaign:
                     V.RUNTIME_CONFIG_MISSING_FIELD,
                     f"required resolved field {path!r} is missing or null; criteria section "
                     "2.3 requires the resolved value, and a hole is not one",
+                    arm_id=arm.id,
+                )
+        if arm.id == "B2" and backend_resolved == "hybrid":
+            fraction = _lookup(config, "moe.hybrid_fetch_fraction_resolved")
+            if not bench_bw_mod.is_positive_finite(fraction) or float(fraction) > 1.0:
+                self.validity.add(
+                    V.BENCH_BW_NVFP4_CALIBRATION_UNUSABLE,
+                    "B2 resolved to hybrid but reported "
+                    f"hybrid_fetch_fraction_resolved={fraction!r}; canonical B2 requires a "
+                    "value in (0, 1], and 0.0 is the fixed-cap fallback rather than proof "
+                    "that the fresh NVFP4 bandwidth calibration was consumed",
                     arm_id=arm.id,
                 )
 

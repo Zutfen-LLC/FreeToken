@@ -4,6 +4,7 @@ and a canonical invocation must refuse the things the criteria forbid."""
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -86,6 +87,8 @@ def test_dry_run_shows_the_exact_serve_command_per_arm(tmp_path, capsys):
     assert prerequisite["runs_before_the_sweep"] is True
     assert prerequisite["consuming_arms"] == ["B2", "B3"]
     assert "--gpu" in prerequisite["command"]
+    assert prerequisite["dtype"] == "nvfp4"
+    assert prerequisite["command"][prerequisite["command"].index("--dtype") + 1] == "nvfp4"
 
 
 def test_dry_run_records_the_execution_order(tmp_path, capsys):
@@ -161,12 +164,42 @@ def test_canonical_sweep_refuses_no_bench_bw(tmp_path):
         main(_argv(tmp_path, "--no-bench-bw"))
 
 
+def test_canonical_sweep_refuses_an_alternate_bench_bw_dtype_even_on_dry_run(tmp_path):
+    with pytest.raises(
+        SystemExit,
+        match="canonical Phase-0 sweep requires --bench-bw-dtype nvfp4",
+    ):
+        main(_argv(tmp_path, "--bench-bw-dtype", "bf16"))
+
+
+def test_a_smoke_run_records_an_alternate_bench_bw_dtype(tmp_path, capsys):
+    argv = _argv(
+        tmp_path,
+        "--dev-smoke",
+        "--bench-bw-dtype",
+        "bf16",
+        canonical=False,
+    )
+    assert main(argv) == 0
+    doc = json.loads(capsys.readouterr().out)
+    prerequisite = doc["bench_bw_prerequisite"]
+    assert doc["canonical"] is False
+    assert prerequisite["dtype"] == "bf16"
+    assert prerequisite["command"][prerequisite["command"].index("--dtype") + 1] == "bf16"
+
+
 def test_a_smoke_run_may_skip_bench_bw_and_stays_non_canonical(tmp_path, capsys):
     argv = _argv(tmp_path, "--dev-smoke", "--no-bench-bw", canonical=False)
     assert main(argv) == 0
     doc = json.loads(capsys.readouterr().out)
     assert doc["canonical"] is False
     assert doc["bench_bw_prerequisite"]["runs_before_the_sweep"] is False
+
+
+def test_default_phase0_output_root_is_repository_ignored():
+    repo_root = Path(__file__).resolve().parents[2]
+    patterns = (repo_root / ".gitignore").read_text().splitlines()
+    assert "/phase0-runs/" in patterns
 
 
 def test_canonical_sweep_requires_a_gpu(tmp_path, capsys):

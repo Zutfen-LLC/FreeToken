@@ -44,7 +44,9 @@ VALIDITY_NON_CANONICAL = "NON_CANONICAL"
 BENCH_BW_SKIPPED = "bench_bw.skipped"
 BENCH_BW_FAILED = "bench_bw.failed"
 BENCH_BW_PROFILE_UNREADABLE = "bench_bw.profile_unreadable"
+BENCH_BW_PROFILE_GPU_UNVERIFIED = "bench_bw.profile_gpu_unverified"
 BENCH_BW_PROFILE_GPU_MISMATCH = "bench_bw.profile_gpu_mismatch"
+BENCH_BW_NVFP4_CALIBRATION_UNUSABLE = "bench_bw.nvfp4_calibration_unusable"
 
 # criteria section 2.3 (resolved configuration) -- read off the live engine
 INSTRUMENTATION_UNAVAILABLE = "runtime.instrumentation_unavailable"
