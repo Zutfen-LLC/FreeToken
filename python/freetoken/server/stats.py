@@ -9,6 +9,8 @@ import time
 from collections import deque
 from typing import Any
 
+from freetoken.env import ENV
+
 
 class StatsTracker:
     def __init__(self, window_s: float = 5.0) -> None:
@@ -37,6 +39,12 @@ class StatsTracker:
         self.swa_used_tokens = 0
         self.swa_total_tokens = 0
         self.vram_bytes = 0
+        # Bounded log of GPU-measured prefills (FREETOKEN_INSTRUMENT_PREFILL only), newest
+        # last, served by /v1/instrumentation. Each entry carries a monotonic sequence
+        # number and the total observed count, so a consumer can tell "no new record" from
+        # "a record I missed" instead of silently re-reading the previous one.
+        self._prefill_log: "deque[dict]" = deque(maxlen=256)
+        self.prefill_observed = 0
 
     @property
     def active(self) -> int:
@@ -74,6 +82,13 @@ class StatsTracker:
             self.swa_total_tokens = reply.swa_total_tokens
         if getattr(reply, "gpu_mem_bytes", 0) > 0:
             self.vram_bytes = reply.gpu_mem_bytes
+        prefill = getattr(reply, "prefill", None)
+        if prefill:
+            self.prefill_observed += 1
+            self._prefill_log.append(
+                {"seq": self.prefill_observed, "uid": getattr(reply, "uid", None),
+                 "wall_monotonic": t, **prefill}
+            )
         if getattr(reply, "finished", False):
             uid = getattr(reply, "uid", None)
             if uid in self._inflight:
@@ -93,6 +108,11 @@ class StatsTracker:
         total = sum(n for _ts, n in window)
         span = max(t - window[0][0], 1e-9)
         return total / span
+
+    def prefill_records(self, limit: int = 32) -> list[dict]:
+        """The newest ``limit`` prefill measurements, oldest first."""
+        records = list(self._prefill_log)
+        return records[-limit:] if limit > 0 else []
 
     def decode_tps(self, now: float | None = None) -> float:
         return self._rate(self._decode, now)
@@ -172,5 +192,38 @@ def build_stats(state: Any, p95_ms: int, ttft_mean_ms: int) -> dict:
             "ttft_mean_ms": ttft_mean_ms,
             "prompt_tokens_total": tr.prompt_tokens_total,
             "completion_tokens_total": tr.completion_tokens_total,
+        },
+    }
+
+
+def build_instrumentation(state: Any, limit: int = 32) -> dict:
+    """Benchmark-facing instrumentation doc: the engine's RESOLVED configuration plus the
+    GPU-measured prefill log.
+
+    Both halves are provenance, not metrics: the configuration block is what the engine
+    actually resolved (not the flags it was handed), and each prefill record is one
+    measured interval, never an average. ``runtime_config`` is null until the readiness
+    metadata has arrived, and ``prefill.enabled`` is false unless the server was started
+    with FREETOKEN_INSTRUMENT_PREFILL=1 -- in which case an empty record list means no
+    prefill has been measured yet, not that prefill was free.
+    """
+    tr: StatsTracker = state.stats
+    runtime_config = getattr(state, "runtime_config", None)
+    return {
+        "schema": "freetoken.instrumentation/1",
+        "instance_id": getattr(state, "instance_id", None),
+        "runtime_config": runtime_config,
+        "runtime_config_unavailable": (
+            None if runtime_config else "readiness metadata has not been received yet"
+        ),
+        "prefill": {
+            "enabled": bool(ENV.INSTRUMENT_PREFILL),
+            "observed": tr.prefill_observed,
+            "records": tr.prefill_records(limit),
+            "measurement": (
+                "CUDA-event elapsed time around the prefill model forward(s) of one request, "
+                "summed over chunks. Excludes tokenization, scheduling, sampling, "
+                "detokenization and the HTTP/SSE hop -- all of which TTFT includes."
+            ),
         },
     }

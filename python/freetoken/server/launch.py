@@ -95,11 +95,15 @@ def _run_scheduler(args: ServerArgs, ack_queue: mp.Queue[str]) -> None:
             # best-effort: a failure here must never keep the model from serving, and older
             # consumers ignore ("meta", …).
             try:
+                from freetoken.engine.runtime_report import build_runtime_report
                 from freetoken.kvcache.cache_status import compute_cache_status_meta
 
                 meta = compute_cache_status_meta(scheduler.engine)
                 # the parent must not touch CUDA to learn this
                 meta["gpus"] = scheduler.gpus
+                # Resolved (not requested) engine configuration, for /v1/instrumentation.
+                # build_runtime_report swallows its own failures, so it cannot cost readiness.
+                meta["runtime_config"] = build_runtime_report(scheduler.engine)
                 ack_queue.put(("meta", meta))
             except Exception:  # noqa: BLE001 -- metadata is a nicety; readiness is not
                 pass

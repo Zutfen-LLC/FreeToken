@@ -29,3 +29,148 @@ python benchmarks/bench_offload_cache_copy.py
 
 For host RAM vs PCIe bandwidth and the offload/hybrid backend pick, use `ft bench bw`
 instead — it writes the JSON profile the engine reads.
+
+---
+
+## InferSwarm Phase-0 baseline harness
+
+**`phase0_baseline.py`** (package: `inferswarm_phase0/`) — the reproducible Phase-0
+baseline campaign for [InferSwarm issue #2](https://github.com/Zutfen-LLC/inferswarm/issues/2).
+It drives the same real serving path as `bench_decode_moe.py` and adds what a *baseline*
+needs on top: the explicit B1–B5 configuration matrix, a frozen workload manifest, the
+precommitted warmup/repetition protocol, full provenance capture, and raw per-repetition
+artifacts.
+
+The rules it implements are fixed in advance by InferSwarm's
+[Phase-1 success criteria](https://github.com/Zutfen-LLC/inferswarm/blob/main/docs/phase1-poc-success-criteria.md)
+(sections 1.1, 2, 3, 9, 10, 13) and its
+[benchmark contract](https://github.com/Zutfen-LLC/inferswarm/blob/main/BENCHMARKING.md).
+Those documents are canonical and are **not** duplicated here — this section is usage only.
+
+### What it measures
+
+Per generation, through `/v1/chat/completions` with streaming: TTFT, warm decode tokens/sec,
+the full raw inter-token gap list (so p50/p95/max, variance, CV and a later bootstrap all
+remain computable), prompt and completion token counts, a VRAM observation, and the output
+hash (with full text for the correctness reference).
+
+**Prefill throughput is measured, not derived from TTFT.** TTFT contains transport,
+tokenization, chat-template rendering, queueing, sampling, detokenization and the SSE hop;
+`prompt_tokens / TTFT` would attribute all of that to prefill. Instead the server is started
+with `FREETOKEN_INSTRUMENT_PREFILL=1`, which brackets *the prefill model forward* with CUDA
+events on the engine stream (`engine.forward_batch`) and sums them per request across
+chunked prefill (`Scheduler._accumulate_prefill`). The harness reads the result from
+`GET /v1/instrumentation` and refuses any record that could belong to an earlier
+generation. When instrumentation is off, the field is an explicit null with a reason — never
+a TTFT-derived substitute.
+
+`GET /v1/instrumentation` also serves the engine's **resolved** configuration: which MoE
+backend `auto` actually selected, whether `--nvfp4-backend` was inert for the executing
+expert path, whether `_auto_cpu_layers` locked any layers, the resolved cache slots and
+bytes, and whether the Marlin 992-slot cap applies and whether it bound. These are read
+back off the running engine rather than re-derived, so the record cannot disagree with what
+executed.
+
+### Running the sweep
+
+```bash
+python benchmarks/phase0_baseline.py sweep \
+    --model /path/to/nvidia--Qwen3.6-35B-A3B-NVFP4 \
+    --model-repository nvidia/Qwen3.6-35B-A3B-NVFP4 \
+    --model-revision <exact 40-hex upstream commit SHA> \
+    --gpu GPU-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx \
+    --manifest /path/to/frozen-workloads.json \
+    --inferswarm-commit <inferswarm commit> \
+    --session-id session-1 \
+    --out-root phase0-runs
+```
+
+- **Pinned model revision.** `--model-revision` must be the exact upstream commit SHA.
+  Branch names, tags and `main` are refused for a canonical run: no Phase-0 measurement may
+  begin until the revision is recorded, and inventing one is a fabricated provenance record.
+- **Physical GPU by stable UUID.** `--gpu` takes what `ft serve --gpu` takes. Prefer the
+  UUID from `nvidia-smi -L`: `nvidia-smi` indices move between boots, and the criteria
+  require the sweep and the later candidate to use the *same physical card*.
+- **Frozen workload manifest.** `--manifest` points at a version-controlled JSON file
+  pinning, per class, the fixture (or inline content), its sha256, the output-token count,
+  the sampling parameters, `ignore_eos`, and the chat-template settings. Schema:
+  `inferswarm_phase0/workload-manifest.schema.json`; the authoritative validator is
+  `inferswarm_phase0/manifest.py`, and it runs before a server is started.
+  `python benchmarks/phase0_baseline.py hash <fixture>` prints the digest to freeze.
+  The W1/W3/W4 fixtures come from
+  [InferSwarm issue #3](https://github.com/Zutfen-LLC/inferswarm/issues/3); the example
+  manifest in `inferswarm_phase0/examples/` is a smoke-test fixture and declares
+  `canonical: false`, so a canonical run refuses it.
+- **Sessions, warmups, repetitions.** Per (arm, workload class): 2 discarded warmups then
+  10 measured generations. `--session-id` distinguishes campaign sessions so the whole
+  campaign can be repeated on a different day and thermal state; `--reverse-order` gives
+  that second session the reversed traversal. `--warmups` / `--repetitions` exist for
+  developer smoke tests only, require `--dev-smoke`, and stamp the run NON-CANONICAL
+  everywhere it is recorded.
+- **`--dry-run`** prints the whole plan — every arm's exact `ft serve` command line, the
+  execution order, and an unambiguous CANONICAL / NON-CANONICAL banner — without touching a
+  GPU.
+
+### Correctness reference
+
+`CORRECTNESS_REFERENCE` is a **separate subcommand**, because it answers a different
+question and must never be conflated with the performance baseline: it is fixed in advance,
+never chosen by speed, and no ratio is ever computed against it.
+
+```bash
+python benchmarks/phase0_baseline.py reference \
+    --model ... --model-revision ... --gpu ... --manifest ... \
+    --nvfp4-backend triton \      # the RESOLVED backend the candidate's expert GEMM uses
+    --moe-cache-size 992          # fixed; >= num_experts, and <= 992 under marlin
+```
+
+It runs `--moe-backend offload --moe-cpu-layers 0 --sampling-defaults none` (framework
+defaults → greedy) and always stores full output text. Its self-consistency check is two
+independent runs with different `--session-id`s, compared on the recorded `output_sha256`
+per class. Note that identical HTTP text hashes are **not** the deeper C1/C2/C3 Phase-1
+correctness instrumentation (per-layer outputs, router selections, step-0 logits); they are
+the reproducible fixture those gates will later be applied to.
+
+### Hardware profile
+
+```bash
+python benchmarks/phase0_baseline.py profile --gpu GPU-xxxx --expert-microbench --out profile.json
+```
+
+Captures GPU/VRAM identity, driver, compute capability, PCIe link generation and width
+(current *and* max), `nvidia-smi topo -m`, CPU/RAM/OS, and the bandwidth measurements from
+`ft bench bw` (STREAM-style CPU DRAM, pinned↔device copy, the real CPU MoE GEMV and the real
+`OffloadMoeCache.copy_missing` PCIe gather). `--expert-microbench` adds single-expert NVFP4
+decode-GEMV latency — the one Phase-0 hardware number no existing FreeToken benchmark
+provides. It is **diagnostic only**: per the benchmark contract a microbenchmark never
+constitutes evidence about end-to-end inference and is never combined into one.
+
+### Artifacts
+
+```
+phase0-runs/<YYYY-MM-DD>-<session-id>-<short-name>/
+    run.json            provenance, configuration, protocol, resolved per-arm config
+    repetitions.jsonl   ONE LINE PER GENERATION, warmups included and tagged
+    failures.jsonl      every failed generation, with its reason
+    SUMMARY.md          human summary; status derived from expected vs observed counts
+    server-logs/        one ft serve log per arm
+```
+
+Every measured repetition is preserved with its raw timings; no repetition is ever
+discarded, and only averages are never emitted. The run status is computed from
+expected-vs-observed repetition counts and the failure list, so an incomplete campaign
+reads `INCOMPLETE` at the top of both `run.json` and `SUMMARY.md` — a successful-looking
+summary cannot hide a missing repetition. The harness computes **no** cross-configuration
+ratio and selects no baseline: `CANONICAL_PERFORMANCE_BASELINE` is chosen by a human from
+the completed campaign, and computing ratios mid-campaign is prohibited.
+
+### Where results live
+
+**CI never produces hardware numbers.** The tests under `tests/benchmarks/` mock the
+server, GPU and HTTP layer and run on CPU; nothing in this repository's CI measures
+hardware, and nothing may.
+
+The authoritative InferSwarm results live in the **InferSwarm repository**, under
+`docs/benchmarks/results/YYYY-MM-DD-short-name/` (`result.json` + `SUMMARY.md`). A run
+directory here is the raw local artifact those entries are derived from; copying one over
+is a deliberate human step taken once the numbers have been read.

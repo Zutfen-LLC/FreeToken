@@ -1,0 +1,1 @@
+SMOKE TEST FIXTURE - NOT a Phase-0 workload. Reply with the word "ok".

@@ -21,6 +21,7 @@ from types import SimpleNamespace
 import torch
 
 from freetoken.core import Batch, Req, SamplingParams
+from freetoken.engine.engine import ForwardOutput
 from freetoken.kvcache.linear_state_pool import LinearStatePool
 from freetoken.message import AbortBackendMsg
 from freetoken.models.config import LinearGatedDeltaGroupConfig
@@ -70,8 +71,12 @@ def _setup():
         _match_stop_str=lambda _req: None,
         _pending_abort_acks=set(),
         _last_data=None,
+        _prefill_probe={},
     )
     stub._free_req_resources = lambda req: Scheduler._free_req_resources(stub, req)
+    stub._accumulate_prefill = lambda batch, timing: Scheduler._accumulate_prefill(
+        stub, batch, timing
+    )
     return pool, cm, tm, dm, pm, sent, stub
 
 
@@ -94,10 +99,12 @@ def _launch_req(pool, cm, tm, prompt, *, cls=Req, track_seqlen=None):
 
 
 def _as_last_data(batch):
+    # A real ForwardOutput (a plain NamedTuple): the drain reads next_tokens_cpu, the
+    # copy-done event, and the optional prefill timing off it by name.
     return (
         SimpleNamespace(batch=batch),
-        (None, torch.tensor([42], dtype=torch.int32),
-         SimpleNamespace(synchronize=lambda: None)),
+        ForwardOutput(None, torch.tensor([42], dtype=torch.int32),
+                      SimpleNamespace(synchronize=lambda: None), None),
     )
 
 

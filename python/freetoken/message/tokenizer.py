@@ -48,6 +48,32 @@ class DetokenizeMsg(BaseTokenizerMsg):
     swa_total_tokens: int = 0
     # Bytes this engine process holds on the GPU (torch reserved pool). 0 on CPU.
     gpu_mem_bytes: int = 0
+    # Measured prefill for THIS request, attached to its first sampled token (the token the
+    # final prefill chunk produces) and only under FREETOKEN_INSTRUMENT_PREFILL. None
+    # otherwise -- never 0, so "not measured" cannot be read as "0 ms".
+    prefill: "PrefillMeasurement | None" = None
+
+
+@dataclass
+class PrefillMeasurement(BaseTokenizerMsg):
+    """GPU-measured prefill for one request, summed over its prefill chunks.
+
+    ``gpu_ms`` is CUDA-event elapsed time across the prefill model forward(s) only: it
+    excludes tokenization, scheduling, sampling, detokenization and the HTTP/SSE hop, all
+    of which TTFT includes. ``new_tokens`` counts the prompt tokens actually forwarded
+    (prefix-cache hits are in ``cached_tokens`` and were NOT computed), so
+    ``new_tokens / (gpu_ms / 1000)`` is a prefill throughput with a defined denominator.
+
+    ``shared_batch`` is True when any of the request's prefill batches also carried another
+    request: the interval is then a property of the batch, not of this request, and the
+    token counts are left at 0. A benchmark must reject such a record rather than divide it.
+    """
+
+    gpu_ms: float = 0.0
+    new_tokens: int = 0
+    cached_tokens: int = 0
+    chunks: int = 0
+    shared_batch: bool = False
 
 
 @dataclass
