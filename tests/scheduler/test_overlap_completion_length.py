@@ -39,6 +39,7 @@ def _scheduler_for_drain(captured: list) -> Scheduler:
         remove_req=lambda req: None,
         running_reqs=set(),
     )
+    scheduler.prefill_manager = SimpleNamespace(pending_list=[])
     scheduler.finished_reqs = set()
     scheduler._prefill_probe = {}
     scheduler.toolcall_anchor_id = None
