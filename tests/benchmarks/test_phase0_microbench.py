@@ -157,6 +157,13 @@ def test_the_microbenchmark_binds_to_the_requested_gpu(monkeypatch):
     seen = {}
     monkeypatch.setitem(sys.modules, "torch", _fake_torch())
 
+    # This test is about binding, not kernel importability. Force the first production-kernel
+    # import to fail deterministically. On a fully provisioned CUDA host, letting the real
+    # modules import while fake torch is installed can cache a production module bound to the
+    # fake and poison unrelated tests later in the same pytest process.
+    fused_before = sys.modules.get("freetoken.moe.fused_nvfp4")
+    monkeypatch.setitem(sys.modules, "freetoken.benchmark.perf", None)
+
     def fake_bind(selector):
         seen["selector"] = selector
         return _FakeDevice(1), {"index": 1, "name": "RTX 3060", "uuid": FAKE_UUID}, {
@@ -164,11 +171,12 @@ def test_the_microbenchmark_binds_to_the_requested_gpu(monkeypatch):
         }
 
     monkeypatch.setattr(micro, "bind_torch_device", fake_bind)
-    # The kernels are not importable here, so the run stops right after binding -- which is
-    # exactly the step under test.
+    # The perf import is deliberately unavailable, so the run stops right after binding --
+    # exactly the step under test -- without importing a real kernel module under fake torch.
     result = micro.measure_single_expert_nvfp4(gpu=FAKE_UUID)
     assert seen["selector"] == FAKE_UUID
     assert "not importable" in result["unavailable"]
+    assert sys.modules.get("freetoken.moe.fused_nvfp4") is fused_before
 
 
 def test_the_microbenchmark_refuses_rather_than_misattributing_the_gpu(monkeypatch):
