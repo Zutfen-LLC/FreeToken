@@ -16,7 +16,8 @@ one that cannot be read becomes an explicit null with a reason:
 * **Device (VRAM) memory bandwidth** (``--device-bandwidth``) -- issue #2 asks for the
   card's memory bandwidth, and ``ft bench bw`` does not measure it: its ceilings are host
   DRAM and the PCIe link. See ``device_bandwidth.py`` for the method and the byte accounting.
-* **CPU / RAM / OS / driver / runtime** -- the same provenance capture the run artifact uses.
+* **CPU / RAM / OS / driver / runtime** -- the same provenance capture the run artifact uses,
+  including the exact InferSwarm methodology commit supplied by the profile command.
 * Optionally, **single-expert NVFP4 execution latency** (``--expert-microbench``), measured
   at ``top_k = 1`` so it is a latency and not an amortized share of a grouped call, plus a
   separately-named grouped top-k step diagnostic.
@@ -53,6 +54,7 @@ def _bench_bw(selection: GpuSelection, dtype: str) -> Dict[str, Any]:
 def capture_profile(
     *,
     gpu: str | None = None,
+    inferswarm_commit: str | None = None,
     run_bench_bw: bool = True,
     dtype: str = "nvfp4",
     expert_microbench: bool = False,
@@ -75,7 +77,7 @@ def capture_profile(
             "present, are DIAGNOSTIC: per InferSwarm BENCHMARKING.md they never constitute "
             "evidence about end-to-end inference and are never combined into one."
         ),
-        "software": prov.software_provenance(None, HARNESS_VERSION),
+        "software": prov.software_provenance(inferswarm_commit, HARNESS_VERSION),
         "host": prov.host_provenance(),
         "gpu": prov.gpu_provenance(gpu, selection.resolved_uuid),
         "gpu_selection": selection.record(),
