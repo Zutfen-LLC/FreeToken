@@ -248,10 +248,16 @@ def cmd_reference(args: argparse.Namespace) -> int:
 
 
 def cmd_profile(args: argparse.Namespace) -> int:
+    # P0-C is canonical evidence just like the later sweep: it must identify the exact
+    # InferSwarm methodology commit before touching the GPU. Refuse early rather than write
+    # a measured-looking profile with a provenance hole.
+    prov.validate_inferswarm_commit(args.inferswarm_commit, canonical=True)
+
     from .hardware_profile import capture_profile
 
     doc = capture_profile(
         gpu=args.gpu,
+        inferswarm_commit=args.inferswarm_commit,
         run_bench_bw=not args.no_bench_bw,
         dtype=args.dtype,
         expert_microbench=args.expert_microbench,
@@ -327,6 +333,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     profile = sub.add_parser("profile", help="hardware profile of the selected GPU")
     profile.add_argument("--gpu", default=None, help="GPU UUID or nvidia-smi index")
+    profile.add_argument(
+        "--inferswarm-commit",
+        default=None,
+        help=(
+            "EXACT 40-hex InferSwarm commit this measured profile belongs to; P0-C refuses "
+            "to run without it"
+        ),
+    )
     profile.add_argument("--out", default=None, help="write JSON here instead of stdout")
     profile.add_argument("--dtype", default="nvfp4", help="expert format for `ft bench bw`")
     profile.add_argument("--no-bench-bw", action="store_true", help="skip `ft bench bw`")
