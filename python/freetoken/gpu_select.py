@@ -195,16 +195,32 @@ _assigned_visible: "int | None" = None
 
 
 def set_assigned_gpu(target: str) -> None:
-    """Publish this process's GPU before CUDA init; second call must agree.
+    """Publish this process's GPU before CUDA init; later calls must agree.
 
-    A UUID names a physical GPU and is converted at bind time; a bare index is already a visible ordinal (a preset CUDA_VISIBLE_DEVICES has narrowed to it).
+    A UUID names a physical GPU and is converted at bind time; a bare index is already a
+    visible ordinal (a preset CUDA_VISIBLE_DEVICES has narrowed to it). Once a physical UUID
+    has been bound, ``bind_assigned_gpu`` also records its derived visible ordinal. Repeating
+    the same UUID assignment after that bind is therefore idempotent and must preserve the
+    derived ordinal rather than mistaking ``(uuid, ordinal)`` for a conflicting assignment.
+    Switching GPU identity or switching identifier namespaces remains an error.
     """
     global _assigned_physical, _assigned_visible
     physical = target if is_gpu_uuid(target) else None
     visible = None if physical is not None else int(target)
     current = (_assigned_physical, _assigned_visible)
-    if current not in ((None, None), (physical, visible)):
-        raise RuntimeError(f"set_assigned_gpu called twice: {current} then {target!r}")
+
+    if _assigned_physical is not None:
+        if physical is None or _assigned_physical.upper() != physical.upper():
+            raise RuntimeError(f"set_assigned_gpu called twice: {current} then {target!r}")
+        # Same physical GPU. _assigned_visible may have been filled by bind_assigned_gpu;
+        # keep that derived CUDA ordinal intact.
+        return
+
+    if _assigned_visible is not None:
+        if physical is not None or _assigned_visible != visible:
+            raise RuntimeError(f"set_assigned_gpu called twice: {current} then {target!r}")
+        return
+
     _assigned_physical, _assigned_visible = physical, visible
 
 
