@@ -1,0 +1,28 @@
+{
+  "schema": "inferswarm.phase0.workload-manifest/1",
+  "manifest_id": "smoke-test-not-a-baseline",
+  "canonical": false,
+  "notes": "Developer smoke test only. One synthetic class so the harness can be exercised end to end without a real workload set. NOT a Phase-0 manifest: it declares canonical=false, so `sweep` without --dev-smoke refuses it.",
+  "provenance": {
+    "source": "written by hand as harness plumbing; no dataset, no transcript",
+    "real_fixtures": "InferSwarm issue #3 supplies W1/W3/W4; W2 is the criteria's reasoning workload"
+  },
+  "workloads": [
+    {
+      "class_id": "W4",
+      "description": "SMOKE TEST fixture standing in for the short-interactive class",
+      "fixture_path": "smoke-fixtures/smoke-w4.txt",
+      "content_sha256": "12d9858e323a647e6680ec771c0c7c07d22543554b5ca24415eae53c2da434b1",
+      "output_tokens": 16,
+      "ignore_eos": true,
+      "sampling": {
+        "temperature": 0.0,
+        "top_p": 1.0,
+        "top_k": -1
+      },
+      "seed": null,
+      "chat_template_kwargs": {},
+      "role": "user"
+    }
+  ]
+}

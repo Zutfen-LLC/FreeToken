@@ -15,6 +15,7 @@ from .tokenizer import (
     CacheRebuildResultMsg,
     DetokenizeMsg,
     ErrorReplyMsg,
+    PrefillMeasurement,
     PromptAdmittedMsg,
     TokenizeMsg,
 )
@@ -33,6 +34,7 @@ __all__ = [
     "CacheRebuildResultMsg",
     "DetokenizeMsg",
     "ErrorReplyMsg",
+    "PrefillMeasurement",
     "PromptAdmittedMsg",
     "TokenizeMsg",
     "BaseFrontendMsg",

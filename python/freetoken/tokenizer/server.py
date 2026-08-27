@@ -50,6 +50,19 @@ def _prompt_admitted_reply(msg: PromptAdmittedMsg) -> UserReply:
     )
 
 
+def _prefill_payload(measurement) -> dict | None:
+    """Flatten the scheduler's prefill measurement onto the frontend reply (or None)."""
+    if measurement is None:
+        return None
+    return {
+        "gpu_ms": measurement.gpu_ms,
+        "new_tokens": measurement.new_tokens,
+        "cached_tokens": measurement.cached_tokens,
+        "chunks": measurement.chunks,
+        "shared_batch": measurement.shared_batch,
+    }
+
+
 def _error_reply(msg: ErrorReplyMsg) -> UserReply:
     return UserReply(
         uid=msg.uid, incremental_output="", finished=True, error=msg.error, error_code=msg.code,
@@ -223,6 +236,7 @@ def tokenize_worker(
                         swa_used_tokens=msg.swa_used_tokens,
                         swa_total_tokens=msg.swa_total_tokens,
                         gpu_mem_bytes=msg.gpu_mem_bytes,
+                        prefill=_prefill_payload(msg.prefill),
                     )
                     for msg, reply in zip(detokenize_msg, replies, strict=True)
                 ]

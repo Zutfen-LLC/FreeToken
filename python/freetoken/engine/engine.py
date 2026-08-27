@@ -10,6 +10,7 @@ import torch
 from freetoken.attention import AttnType, attention_backend_info, create_attention_backend
 from freetoken.core import Batch, Context, Req, set_global_ctx
 from freetoken.distributed import destroy_distributed, enable_pynccl_distributed, set_tp_info
+from freetoken.env import ENV
 from freetoken.gpu_select import gpu_identity
 from freetoken.layers import set_rope_device
 from freetoken.models import create_model, load_weight
@@ -288,6 +289,11 @@ class ForwardOutput(NamedTuple):
     next_tokens_gpu: torch.Tensor
     next_tokens_cpu: torch.Tensor
     copy_done_event: torch.cuda.Event
+    # (start, end) timing events bracketing a PREFILL batch's model forward, or None.
+    # Only recorded under FREETOKEN_INSTRUMENT_PREFILL; both are enqueued on the engine
+    # stream before copy_done_event, so the scheduler can read elapsed_time as soon as it
+    # has synchronized on that event -- no extra synchronization of its own.
+    prefill_timing: "Tuple[torch.cuda.Event, torch.cuda.Event] | None" = None
 
 
 class Engine:
@@ -299,6 +305,11 @@ class Engine:
         from freetoken.gpu_select import bind_assigned_gpu
 
         self.device = bind_assigned_gpu(config.tp_info.rank)
+        # _adjust_config resolves `auto` IN PLACE, so the flag text is only readable before it.
+        # Kept for the runtime report: "requested" and "resolved" are different provenance facts.
+        self._requested_moe_backend = config.moe_backend
+        self.moe_resolution: Dict[str, Any] | None = None
+        self.moe_cache_auto_plan: Dict[str, Any] | None = None
         _adjust_config(config)
         torch.manual_seed(42)
         self.stream = torch.cuda.Stream()
@@ -480,7 +491,7 @@ class Engine:
         fixed_cache_size += state_pool_bytes(config)  # sibling GDN state pool, engine-summed
         num_experts = config.model_config.num_experts
         total_experts = config.model_config.num_moe_layers * num_experts
-        return resolve_moe_cache_auto(
+        plan_args = dict(
             baseline_free=self._baseline_free,
             weights_bytes=self._weights_bytes,
             memory_ratio=config.memory_ratio,
@@ -492,8 +503,26 @@ class Engine:
             prefill_overlap=config.moe_prefill_overlap,
             kv_reserve_tokens=max(config.kv_reserve_tokens, min_reserve),
             page_size=page_tokens,
-            quant_format=banks.quant_format,
         )
+        size, pages, overlap = resolve_moe_cache_auto(
+            **plan_args, quant_format=banks.quant_format
+        )
+        # Provenance (criteria section 13): did the marlin 992-slot cap actually BIND, or
+        # did VRAM run out first? Re-solve the same pure plan with a non-marlin format tag,
+        # whose only effect in resolve_moe_cache_auto is to lift max_slots to total_experts.
+        uncapped_slots = None
+        if banks.quant_format == "nvfp4_marlin":
+            uncapped_slots = resolve_moe_cache_auto(**plan_args, quant_format="nvfp4")[0]
+        self.moe_cache_auto_plan = {
+            "resolved_slots": size,
+            "resolved_num_pages": pages,
+            "resolved_prefill_overlap": overlap,
+            "per_expert_bytes": plan_args["per_expert_bytes"],
+            "kv_reserve_tokens": plan_args["kv_reserve_tokens"],
+            "quant_format": banks.quant_format,
+            "uncapped_slots": uncapped_slots,
+        }
+        return size, pages, overlap
 
     def _init_offload_moe_cache(self, config: EngineConfig) -> OffloadMoeCache:
         # A model may fully own cache construction via make_offload_moe_cache.
@@ -514,13 +543,15 @@ class Engine:
         # layout; the GPU slot-cache GEMM reads those same native rows. decode_target also
         # gates the CPU executor build below.
         cpu_layer_ids = _resolve_cpu_layers(config, config.model_config.num_moe_layers)
+        auto_cpu_layer_ids: frozenset[int] = frozenset()
         if (
             not cpu_layer_ids
             and config.moe_cpu_layers is None
             and config.moe_backend in ("offload", "hybrid")
             and _pin_budget_bytes() is not None
         ):
-            cpu_layer_ids = _auto_cpu_layers(config, config.model_config.num_moe_layers)
+            auto_cpu_layer_ids = _auto_cpu_layers(config, config.model_config.num_moe_layers)
+            cpu_layer_ids = auto_cpu_layer_ids
         if config.moe_backend == "hybrid":
             decode_target = "hybrid"
         elif cpu_layer_ids:
@@ -549,6 +580,17 @@ class Engine:
                     f"--moe-backend cpu: banks {bank_bytes / 2**30:.2f} GiB exceed the "
                     f"pin budget; OS-locking all layers instead of pinning"
                 )
+        # Resolution record for the runtime report (freetoken.engine.runtime_report): which
+        # of these values came from a flag and which the engine picked. _auto_cpu_layers in
+        # particular flips the whole process to the native bank layout, which makes
+        # --nvfp4-backend inert -- a benchmark record that only quoted the flags would miss it.
+        self.moe_resolution = {
+            "moe_backend_requested": self._requested_moe_backend,
+            "cpu_layer_ids": sorted(cpu_layer_ids),
+            "auto_cpu_layers_fired": bool(auto_cpu_layer_ids),
+            "auto_cpu_layer_ids": sorted(auto_cpu_layer_ids),
+            "split_residency": bool(split_residency),
+        }
         if split_residency and config.moe_prefill_overlap:
             # locked (unregistered) layers cannot feed the async pinned H2D double buffer; their prefill is a synchronous pageable copy via materialize
             logger.info_rank0(
@@ -914,11 +956,24 @@ class Engine:
 
     def forward_batch(self, batch: Batch, args: BatchSamplingArgs) -> ForwardOutput:
         assert torch.cuda.current_stream() == self.stream
+        # Prefill interval, measured where prefill actually happens: the events bracket the
+        # model forward for this prefill batch (chunk) and nothing else -- no host-side
+        # scheduling, no sampling, no detokenizer or HTTP hop. TTFT is a strictly larger
+        # quantity and must not be divided into prompt tokens to "get" prefill throughput.
+        prefill_start = None
+        if ENV.INSTRUMENT_PREFILL and batch.is_prefill:
+            prefill_start = torch.cuda.Event(enable_timing=True)
+            prefill_start.record(self.stream)
         with self.ctx.forward_batch(batch):
             if self.graph_runner.can_use_cuda_graph(batch):
                 logits = self.graph_runner.replay(batch)
             else:
                 logits = self.model.forward()
+        prefill_timing = None
+        if prefill_start is not None:
+            prefill_end = torch.cuda.Event(enable_timing=True)
+            prefill_end.record(self.stream)
+            prefill_timing = (prefill_start, prefill_end)
         if self.cpu_moe_executor is not None:
             # One pinned read: surfaces a fired flag-handshake watchdog (dead coordinator
             # -> stale expert outputs) as a loud error instead of silent corruption.
@@ -932,7 +987,7 @@ class Engine:
         next_tokens_cpu = next_tokens_gpu.to("cpu", non_blocking=True)
         copy_done_event = torch.cuda.Event()
         copy_done_event.record(self.stream)
-        return ForwardOutput(next_tokens_gpu, next_tokens_cpu, copy_done_event)
+        return ForwardOutput(next_tokens_gpu, next_tokens_cpu, copy_done_event, prefill_timing)
 
     @torch.inference_mode()
     def _warmup_prefill(self) -> None:

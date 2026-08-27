@@ -1,5 +1,6 @@
 """Read-only control-plane endpoints consumed by the desktop app: /health (lifecycle),
-/v1/stats (runtime metrics, Task 6), /v1/requests (request log ring, Task 5).
+/v1/stats (runtime metrics, Task 6), /v1/requests (request log ring, Task 5), and
+/v1/instrumentation (resolved engine configuration + measured prefill, for benchmarks).
 
 All handlers read a shared FrontendManager snapshot via ``get_state``; nothing here touches
 the scheduler or blocks. Registered on the app alongside the OpenAI/Anthropic/Responses routes.
@@ -78,3 +79,10 @@ def register_control_routes(
         if get_model_sampling is not None:
             doc["model"]["sampling"] = get_model_sampling() or {}
         return doc
+
+    from .stats import build_instrumentation
+
+    @app.get("/v1/instrumentation")
+    async def instrumentation(limit: int = 32):
+        """Resolved engine configuration + GPU-measured prefill log (benchmark provenance)."""
+        return build_instrumentation(get_state(), max(0, min(limit, 256)))

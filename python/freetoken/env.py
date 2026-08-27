@@ -75,6 +75,10 @@ class EnvClassSingleton:
     # fp32 matches the Qwen3.x configs (mamba_ssm_dtype); fp16/bf16 halves the GDN state
     # pool at some precision cost on the long recurrence (mirrors SGLang's mamba_ssm_dtype).
     MAMBA_SSM_DTYPE = EnvStr("float32")
+    # Per-request prefill timing (CUDA events around the prefill model forward), surfaced
+    # on /v1/instrumentation. Off by default: it records two extra events per prefill batch
+    # and exists for benchmarking, not for serving. See benchmarks/README.md.
+    INSTRUMENT_PREFILL = EnvBool(False)
 
     def __new__(cls):
         # single instance

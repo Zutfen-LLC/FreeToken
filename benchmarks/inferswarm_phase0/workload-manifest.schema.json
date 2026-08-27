@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Zutfen-LLC/FreeToken/benchmarks/inferswarm_phase0/workload-manifest.schema.json",
+  "title": "InferSwarm Phase-0 workload manifest",
+  "description": "Frozen workload set for a Phase-0 baseline campaign. Criteria section 9 fixes the four classes; InferSwarm issue #3 supplies the realistic W1/W3/W4 fixtures. The authoritative validator is benchmarks/inferswarm_phase0/manifest.py, which enforces rules this schema cannot express (content hash equality, canonical output-token counts, the seed prohibition).",
+  "type": "object",
+  "required": ["schema", "manifest_id", "workloads"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "inferswarm.phase0.workload-manifest/1"},
+    "manifest_id": {"type": "string", "minLength": 1},
+    "canonical": {
+      "type": "boolean",
+      "default": false,
+      "description": "true only for a manifest frozen for a real Phase-0 campaign. A canonical run refuses a manifest that does not declare this."
+    },
+    "frozen_at": {"type": "string", "description": "ISO-8601 date/time the set was frozen"},
+    "notes": {"type": "string"},
+    "provenance": {
+      "type": "object",
+      "description": "Where the fixtures came from (dataset, transcript, issue #3 artifact ids).",
+      "additionalProperties": true
+    },
+    "workloads": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/workload"}
+    }
+  },
+  "$defs": {
+    "workload": {
+      "type": "object",
+      "required": ["class_id", "content_sha256", "output_tokens", "sampling"],
+      "additionalProperties": false,
+      "properties": {
+        "class_id": {
+          "enum": ["W1", "W2", "W3", "W4"],
+          "description": "W1 coding/agentic (<=2000 prompt, 512 out); W2 open-ended reasoning (<=1000, 512); W3 long context (~16000, 256); W4 short interactive (~128, 128)."
+        },
+        "description": {"type": "string"},
+        "fixture_path": {
+          "type": "string",
+          "description": "UTF-8 prompt file, relative to the manifest. Mutually exclusive with 'content'."
+        },
+        "content": {
+          "type": "string",
+          "description": "Inline prompt. Mutually exclusive with 'fixture_path'."
+        },
+        "content_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "sha256 of the exact UTF-8 prompt bytes. Validation fails on mismatch: re-freeze deliberately rather than updating the hash to match a changed prompt."
+        },
+        "output_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Exact generated-token count (with ignore_eos). Canonical values are fixed per class by criteria section 9."
+        },
+        "ignore_eos": {
+          "type": "boolean",
+          "default": true,
+          "description": "Canonical runs require true so output length is exact and identical across arms (criteria section 3 rule 5)."
+        },
+        "sampling": {
+          "type": "object",
+          "required": ["temperature", "top_p", "top_k"],
+          "additionalProperties": false,
+          "description": "Every field stated explicitly; the server's own defaults must never fill one in. temperature<=0 (or top_k==1) with top_p==1 is greedy, mirroring SamplingParams.is_greedy.",
+          "properties": {
+            "temperature": {"type": "number", "minimum": 0},
+            "top_p": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+            "top_k": {"type": "integer", "description": "-1 disables top-k filtering"}
+          }
+        },
+        "seed": {
+          "type": "null",
+          "description": "Must be null. FreeToken's SamplingParams (python/freetoken/core.py) exposes no seed parameter anywhere; a non-null value is rejected rather than silently ignored. Reproducibility comes from greedy decoding (criteria section 5.3)."
+        },
+        "chat_template_kwargs": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Passed through to the server's chat template, e.g. {\"enable_thinking\": true}."
+        },
+        "role": {"enum": ["user", "system"], "default": "user"}
+      }
+    }
+  }
+}

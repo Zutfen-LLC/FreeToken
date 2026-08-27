@@ -16,6 +16,7 @@ from freetoken.message import (
     DetokenizeMsg,
     ErrorReplyMsg,
     ExitMsg,
+    PrefillMeasurement,
     PromptAdmittedMsg,
     UserMsg,
 )
@@ -104,6 +105,11 @@ class Scheduler(SchedulerIOMixin):
         # terminal accounting acknowledgement has already been published.
         self._abort_tombstones: dict[int, None] = {}
         self._forward_iter = 0  # global forward counter; drives the SWA proactive-eviction cadence
+        # uid -> in-progress PrefillMeasurement, accumulated across chunked prefill and
+        # detached onto the request's first sampled token. Only populated under
+        # FREETOKEN_INSTRUMENT_PREFILL; entries are removed when that token is emitted or
+        # when the request is aborted, so an abandoned prompt cannot leak an entry.
+        self._prefill_probe: dict[int, PrefillMeasurement] = {}
         # The launched-but-not-yet-drained batch (overlap): set at the top of each overlap_loop
         # iteration so the abort handler can tell whether a request's forward is still in flight
         # (mark it, defer the free to _process_last_data) or not (free immediately). Stays None
@@ -303,8 +309,12 @@ class Scheduler(SchedulerIOMixin):
         if last_data is None:
             return
 
-        batch, (_, next_tokens_cpu, copy_done) = last_data[0].batch, last_data[1]
+        batch, forward_output = last_data[0].batch, last_data[1]
+        next_tokens_cpu, copy_done = forward_output[1], forward_output[2]
         copy_done.synchronize()
+        # copy_done is recorded after the prefill events on the same stream, so both have
+        # completed by here and elapsed_time adds no synchronization of its own.
+        self._accumulate_prefill(batch, forward_output.prefill_timing)
         reply: List[DetokenizeMsg] = []
         new_finished_reqs: Set[Req] = set()
         with self.cache_manager.lazy_free_region():
@@ -318,11 +328,13 @@ class Scheduler(SchedulerIOMixin):
                         # popped the pending continuation (no next chunk launches), and this
                         # drain point frees the chunk's pages/slots exactly once.
                         self._free_req_resources(req)
+                        self._prefill_probe.pop(req.uid, None)
                     continue
                 if req.aborted:
                     # Aborted while this final-chunk prefill / decode step was in flight: free
                     # here (the forward is drained) and finish the request. No DetokenizeMsg --
                     # the abort ack flushed after this method stays the uid's terminal reply.
+                    self._prefill_probe.pop(req.uid, None)
                     self.decode_manager.remove_req(req)
                     self._free_req_resources(req)
                     new_finished_reqs.add(req)
@@ -362,6 +374,7 @@ class Scheduler(SchedulerIOMixin):
                     req.toolcall_anchor_len = req.input_ids.numel()
                 reply.append(
                     DetokenizeMsg(
+                        prefill=self._prefill_probe.pop(req.uid, None),
                         uid=req.uid,
                         next_token=next_token,
                         finished=finished,
@@ -855,12 +868,45 @@ class Scheduler(SchedulerIOMixin):
             ]
         )
 
+    def _accumulate_prefill(self, batch: Batch, timing) -> None:
+        """Fold one prefill batch's measured GPU interval into its requests' records.
+
+        The interval belongs to the batch. At batch size 1 -- the InferSwarm Phase-0
+        protocol, and `--max-running-requests 1` generally -- that is exactly one request,
+        so the attribution is exact and the prompt-token counts come from the batch's
+        schedule-time snapshot. When a prefill batch carries more than one request the
+        interval cannot be split without inventing a model of the split, so the record is
+        marked ``shared_batch`` and its token counts are left at 0 for the consumer to
+        reject.
+        """
+        if timing is None or not batch.is_prefill:
+            return
+        start, end = timing
+        gpu_ms = float(start.elapsed_time(end))
+        shared = len(batch.reqs) > 1
+        for req in batch.reqs:
+            rec = self._prefill_probe.get(req.uid)
+            if rec is None:
+                rec = self._prefill_probe[req.uid] = PrefillMeasurement()
+            rec.gpu_ms += gpu_ms
+            rec.chunks += 1
+            rec.shared_batch |= shared
+            if not shared:
+                rec.new_tokens += batch.log_new_tokens
+                rec.cached_tokens += batch.log_cached_tokens
+
     def _flush_abort_acks(self) -> None:
         pending = getattr(self, "_pending_abort_acks", None)
         if not pending:
             return
         uids = sorted(pending)
         pending.clear()
+        # getattr, like the pending set above: this method is reachable on a Scheduler built
+        # by __new__ in the accounting tests, which never runs __init__.
+        probe = getattr(self, "_prefill_probe", None)
+        for uid in uids:  # an aborted prompt never emits the token its record rides on
+            if probe is not None:
+                probe.pop(uid, None)
         self.send_result([ErrorReplyMsg(uid=uid, error="request aborted") for uid in uids])
 
     def _forward(self, forward_input: ForwardInput) -> ForwardOutput:
