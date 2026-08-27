@@ -129,22 +129,63 @@ def start_server(
 
 
 def stop_server(handle: ServerHandle) -> None:
-    """SIGTERM the whole process group, escalate, then let the driver reclaim VRAM.
+    """Give the frontend an orderly shutdown before process-group cleanup.
 
-    Best-effort by design: it runs in ``finally`` and must not mask the real error. killpg
-    runs even when the frontend already exited -- a crashed frontend leaves live non-daemon
-    workers in the group, and they hold the GPU.
+    The server's Uvicorn lifespan hook sets ``_SHUTTING_DOWN`` before terminating its
+    workers. Signaling the whole process group first races that hook: a worker can die
+    while the flag is still clear and the supervisor then logs an expected teardown as
+    a backend crash.
+
+    Signal the frontend parent first. Process-group TERM/KILL remains the backstop for
+    a hung frontend or orphaned workers, so teardown still reclaims GPU resources after
+    genuine crashes.
     """
-    for sig, wait_s in ((signal.SIGTERM, 90), (signal.SIGKILL, 30)):
+    proc = handle.proc
+
+    if proc.poll() is None:
         try:
-            os.killpg(handle.proc.pid, sig)
+            proc.terminate()
         except ProcessLookupError:
             pass
+
         try:
-            handle.proc.wait(timeout=wait_s)
-            break
+            proc.wait(timeout=90)
         except subprocess.TimeoutExpired:
-            continue
+            # The orderly frontend path did not complete. Escalate to the whole group.
+            for sig, wait_s in ((signal.SIGTERM, 30), (signal.SIGKILL, 30)):
+                try:
+                    os.killpg(proc.pid, sig)
+                except ProcessLookupError:
+                    pass
+                try:
+                    proc.wait(timeout=wait_s)
+                    break
+                except subprocess.TimeoutExpired:
+                    continue
+
+            time.sleep(3)
+            return
+
+        # Lifespan has now had its opportunity to set the shutdown flag and tear down
+        # workers itself. Gently reap anything still left in the process group.
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        time.sleep(3)
+        return
+
+    # The frontend was already dead. Its workers may still own the GPU, so there is no
+    # orderly parent left to wait for: clean the orphaned process group directly.
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    time.sleep(3)
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
     time.sleep(3)
 
 
