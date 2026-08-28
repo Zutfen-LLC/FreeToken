@@ -316,10 +316,18 @@ class Engine:
         self.inferswarm_secondary_device = None
         self.inferswarm_placement = None
         self.inferswarm_resident_bank = None
+        self.inferswarm_remote_decode = None
         placement_path = getattr(config, "inferswarm_placement", None)
         secondary_spec = getattr(config, "inferswarm_secondary_gpu", None)
+        remote_decode = bool(getattr(config, "inferswarm_remote_decode", False))
         if placement_path is not None and secondary_spec is None:
             raise ValueError("--inferswarm-placement requires --inferswarm-secondary-gpu")
+        if remote_decode and secondary_spec is None:
+            raise ValueError("--inferswarm-remote-decode requires --inferswarm-secondary-gpu")
+        if remote_decode and placement_path is None:
+            raise ValueError("--inferswarm-remote-decode requires --inferswarm-placement")
+        if remote_decode and config.cuda_graph_max_bs != 0:
+            raise ValueError("--inferswarm-remote-decode requires --cuda-graph-max-bs 0")
         if secondary_spec is not None:
             from freetoken.moe.inferswarm_secondary import probe_secondary_device
 
@@ -351,6 +359,10 @@ class Engine:
             raise ValueError(
                 "--inferswarm-placement requires an offload-family MoE backend so P2 can "
                 "reuse the existing normalized host expert banks"
+            )
+        if remote_decode and config.moe_backend != "offload":
+            raise ValueError(
+                "--inferswarm-remote-decode requires resolved --moe-backend offload"
             )
         torch.manual_seed(42)
         self.stream = torch.cuda.Stream()
@@ -738,6 +750,8 @@ class Engine:
         assert len(layers) == config.model_config.num_moe_layers
         if cache.decode_target in ("cpu", "hybrid"):
             self._init_cpu_moe_executor(config, cache, layers)
+        if bool(getattr(config, "inferswarm_remote_decode", False)):
+            self._init_inferswarm_remote_decode(config, cache, layers)
         self.ctx.moe_offload_cache = cache
         self.moe_offload_cache = cache
         return cache
@@ -766,7 +780,48 @@ class Engine:
             "InferSwarm P2 resident bank loaded and verified: "
             f"{report.placement.remote_slots} slots, "
             f"{report.total_live_resident_bytes} live bytes on "
-            f"cuda:{report.secondary_visible_ordinal}; remote execution remains disabled"
+            f"cuda:{report.secondary_visible_ordinal}; storage initialization complete"
+        )
+
+    def _init_inferswarm_remote_decode(self, config: EngineConfig, cache, layers) -> None:
+        """Attach the narrow P3 executor after P2 storage and local cache are complete."""
+        resident = self.inferswarm_resident_bank
+        secondary = self.inferswarm_secondary_device
+        assert resident is not None, "P3 requires the initialized P2 resident bank"
+        assert secondary is not None, "P3 requires the validated secondary device"
+        from freetoken.moe.inferswarm_remote_decode import (
+            HostStagedRemoteTransport,
+            InferSwarmRemoteDecodeExecutor,
+            build_remote_slot_lookup,
+            validate_remote_decode_runtime,
+        )
+
+        validate_remote_decode_runtime(config, cache, resident, secondary)
+        route_lookup = build_remote_slot_lookup(resident.placement, self.device)
+        transport = HostStagedRemoteTransport(
+            primary_device=self.device,
+            secondary_device=torch.device(
+                "cuda", int(secondary.secondary.visible_ordinal)
+            ),
+            max_tokens=int(config.max_running_req),
+            hidden_size=int(config.model_config.hidden_size),
+            top_k=int(config.model_config.num_experts_per_tok),
+            hidden_dtype=config.dtype,
+            resident_bank=resident,
+        )
+        executor = InferSwarmRemoteDecodeExecutor(
+            resident_bank=resident,
+            secondary_device=secondary,
+            primary_device=self.device,
+            transport=transport,
+            route_lookup=route_lookup,
+        )
+        for layer in layers:
+            layer.inferswarm_remote_decode = executor
+        self.inferswarm_remote_decode = executor
+        logger.info_rank0(
+            "InferSwarm P3 remote decode enabled: correctness-first serialized, "
+            f"explicit host staging to cuda:{secondary.secondary.visible_ordinal}"
         )
 
     def _resolve_hybrid_fetch(self, config: EngineConfig, cache) -> None:
@@ -919,6 +974,14 @@ class Engine:
             if resident is not None
             else absent_resident_bank_report()
         )
+        from freetoken.moe.inferswarm_remote_decode import absent_remote_decode_report
+
+        remote_decode = getattr(self, "inferswarm_remote_decode", None)
+        payload["inferswarm_remote_decode"] = (
+            remote_decode.snapshot()
+            if remote_decode is not None
+            else absent_remote_decode_report()
+        )
         payload["boundary"] = {
             "operation": operation,
             "idle": True,
@@ -929,6 +992,8 @@ class Engine:
         }
         if operation == "reset":
             cache.reset_instrumentation()
+            if remote_decode is not None:
+                remote_decode.reset()
         return payload
 
     def rebuild_runtime_cache(

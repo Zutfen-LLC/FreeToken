@@ -217,9 +217,11 @@ def test_runtime_report_records_secondary_as_explicitly_absent():
     resident = report["inferswarm_resident_bank"]
     assert resident["placement_configured"] is False
     assert resident["resident_bank_loaded"] is False
-    assert resident["remote_execution_enabled"] is False
-    assert resident["decode_dispatches_to_secondary"] == 0
     assert resident["steady_state_expert_weight_bytes_host_to_gpu1"] == 0
+    remote = report["inferswarm_remote_decode"]
+    assert remote["enabled"] is False
+    assert "aggregate" not in remote
+    assert "idle snapshot" in remote["counter_source"]
 
 
 def test_runtime_report_includes_validated_secondary_provenance():
@@ -261,6 +263,19 @@ def test_runtime_report_includes_the_loaded_inert_resident_bank_report():
     resident = SimpleNamespace(report=SimpleNamespace(as_dict=lambda: resident_report))
     report = build_runtime_report(_engine(inferswarm_resident_bank=resident))
     assert report["inferswarm_resident_bank"] == resident_report
+    assert report["inferswarm_remote_decode"]["enabled"] is False
+
+
+def test_runtime_report_keeps_p3_execution_truth_separate_from_p2_storage():
+    resident_report = {"placement_configured": True, "storage_boundary": "storage only"}
+    remote_report = {"enabled": True, "remote_dispatches": 7}
+    resident = SimpleNamespace(report=SimpleNamespace(as_dict=lambda: resident_report))
+    remote = SimpleNamespace(configuration_report=lambda: remote_report)
+    report = build_runtime_report(
+        _engine(inferswarm_resident_bank=resident, inferswarm_remote_decode=remote)
+    )
+    assert report["inferswarm_resident_bank"] == resident_report
+    assert report["inferswarm_remote_decode"] == remote_report
 
 
 # --- criteria section 2.3 fields that live on SchedulerConfig, not EngineConfig ------------

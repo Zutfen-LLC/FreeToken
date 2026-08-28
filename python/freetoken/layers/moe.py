@@ -218,6 +218,9 @@ class OffloadMoELayer(MoELayer):
         )
         self.layer_id = layer_id
         self.offload_cache: OffloadMoeCache | None = None
+        # P3 attaches this only when --inferswarm-remote-decode is explicitly active.
+        # None keeps the ordinary and P2 resident-bank-only paths byte-for-byte direct.
+        self.inferswarm_remote_decode = None
 
     def forward(
         self,
@@ -303,6 +306,10 @@ class OffloadMoELayer(MoELayer):
         ids), so no ``ensure_experts``/``copy_missing`` here."""
         cache = self.offload_cache
         assert cache is not None
+        if self.inferswarm_remote_decode is not None:
+            return self.inferswarm_remote_decode.decode(
+                self, cache, hidden_states, topk_weights, topk_ids
+            )
         if cache.is_cpu_layer(self.layer_id):
             executor = cache.cpu_executor
             assert executor is not None, "CPU MoE executor was not initialized"

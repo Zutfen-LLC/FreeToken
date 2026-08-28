@@ -1,8 +1,8 @@
-"""InferSwarm Phase-1 P2 frozen placement and inert secondary expert bank.
+"""InferSwarm Phase-1 frozen placement and secondary expert storage.
 
 This module deliberately stops at startup residency.  It has no route, fetch, execute,
-or cache-miss API, and nothing here is attached to :class:`OffloadMoELayer`.  The
-ordinary host banks and :class:`OffloadMoeCache` remain the only inference authority.
+or cache-miss API.  P3 exposes deterministic read-only-by-contract tensor views to its
+narrow executor, while all transport, partitioning, and execution remain elsewhere.
 """
 
 from __future__ import annotations
@@ -659,12 +659,11 @@ class ResidentBankReport:
                 "tensors": [item.as_dict() for item in self.verification],
                 "mismatch": None,
             },
-            "remote_execution_enabled": False,
-            "decode_dispatches_to_secondary": 0,
             "startup_expert_weight_bytes_host_to_gpu1": self.total_live_resident_bytes,
             "steady_state_expert_weight_bytes_host_to_gpu1": 0,
-            "inertness_basis": (
-                "startup-only object with no fetch/execute method; not attached to any MoE layer"
+            "storage_boundary": (
+                "startup-only resident storage; execution views are read-only by contract; "
+                "no fetch, ensure, eviction, planning, transport, or execute method"
             ),
         }
 
@@ -687,22 +686,38 @@ def absent_resident_bank_report() -> dict[str, Any]:
         "accounting": None,
         "cuda_memory": None,
         "source_byte_verification": {"status": "not_configured"},
-        "remote_execution_enabled": False,
-        "decode_dispatches_to_secondary": 0,
         "startup_expert_weight_bytes_host_to_gpu1": 0,
         "steady_state_expert_weight_bytes_host_to_gpu1": 0,
-        "inertness_basis": "--inferswarm-placement was not supplied",
+        "storage_boundary": "--inferswarm-placement was not supplied",
     }
 
 
 @dataclass(frozen=True, slots=True)
 class SecondaryResidentExpertBank:
-    """Persistent P2 storage with intentionally no inference-time public tensor API."""
+    """Persistent P2 storage with a minimal P3 execution-view surface.
+
+    The returned tensors are read-only by contract.  This object intentionally owns no
+    cache-miss, fetch, load-on-demand, eviction, planning, transport, or execution API.
+    """
 
     placement: FrozenPlacement
     report: ResidentBankReport
     _bank_tensors: dict[str, torch.Tensor]
     _auxiliary_tensors: dict[str, torch.Tensor]
+
+    def bank_views(self) -> tuple[torch.Tensor, ...]:
+        """Resident expert tensors in the validated production schema order."""
+        return tuple(self._bank_tensors[name] for name in self.report.layout.bank_schema)
+
+    def alpha_views(self) -> tuple[torch.Tensor, torch.Tensor] | None:
+        """Optional resident per-slot alphas for layouts that carry them."""
+        gate = self._auxiliary_tensors.get("gate_up_alpha")
+        down = self._auxiliary_tensors.get("down_alpha")
+        if gate is None and down is None:
+            return None
+        if gate is None or down is None:
+            raise RuntimeError("resident alpha storage is incomplete")
+        return gate, down
 
 
 def _copy_and_verify_rows(

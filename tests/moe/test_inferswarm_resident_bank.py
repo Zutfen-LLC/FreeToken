@@ -320,8 +320,13 @@ def test_resident_bank_selects_exact_rows_in_canonical_slot_order_and_accounts_b
     assert report["source_byte_verification"]["verified_bytes"] == 18
     assert report["startup_expert_weight_bytes_host_to_gpu1"] == 18
     assert report["steady_state_expert_weight_bytes_host_to_gpu1"] == 0
-    assert report["remote_execution_enabled"] is False
-    assert report["decode_dispatches_to_secondary"] == 0
+    assert "remote_execution_enabled" not in report
+    assert "decode_dispatches_to_secondary" not in report
+    assert "no fetch" in report["storage_boundary"]
+    assert bank.bank_views() == tuple(
+        bank._bank_tensors[name] for name in bank.report.layout.bank_schema
+    )
+    assert bank.alpha_views() is None
     assert cuda.current_device() == 0
 
 
@@ -472,16 +477,24 @@ def test_engine_p2_helper_consumes_the_already_loaded_banks(monkeypatch):
     assert "_init_inferswarm_resident_bank(config, banks)" in source
 
 
-def test_resident_bank_is_not_an_execution_backend_or_moe_layer_attachment():
+def test_resident_bank_exposes_views_but_remains_storage_not_execution_backend():
     assert not hasattr(OffloadMoELayer, "inferswarm_resident_bank")
-    assert "inferswarm" not in inspect.getsource(OffloadMoELayer._decode_routed)
     assert "inferswarm" not in inspect.getsource(OffloadMoELayer._prefill_routed)
     public = {
         name
         for name in dir(resident_mod.SecondaryResidentExpertBank)
         if not name.startswith("_")
     }
-    assert public <= {"placement", "report"}
+    assert public <= {"placement", "report", "bank_views", "alpha_views"}
+    for forbidden in (
+        "ensure_experts",
+        "fetch",
+        "copy_missing",
+        "evict",
+        "execute",
+        "plan",
+    ):
+        assert not hasattr(resident_mod.SecondaryResidentExpertBank, forbidden)
 
 
 @pytest.mark.skipif(

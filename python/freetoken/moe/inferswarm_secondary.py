@@ -74,8 +74,8 @@ class InferSwarmSecondaryDevice:
             "transport_classification": self.transport_classification,
             "primary_current_after_probe": self.primary_current_after_probe,
             "note": (
-                "Capability classification only; no cross-device model execution is "
-                "implemented by the Phase-1 P1 substrate."
+                "Capability classification only; InferSwarm execution configuration and "
+                "counters, when present, are reported in their separate runtime block."
             ),
         }
 

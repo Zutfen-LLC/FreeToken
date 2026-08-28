@@ -268,9 +268,13 @@ def build_runtime_report(engine) -> Dict[str, Any]:
         cache = getattr(engine, "moe_offload_cache", None)
         from freetoken.moe.inferswarm_secondary import absent_secondary_device_report
         from freetoken.moe.inferswarm_resident_bank import absent_resident_bank_report
+        from freetoken.moe.inferswarm_remote_decode import (
+            absent_remote_decode_configuration_report,
+        )
 
         secondary = getattr(engine, "inferswarm_secondary_device", None)
         resident = getattr(engine, "inferswarm_resident_bank", None)
+        remote_decode = getattr(engine, "inferswarm_remote_decode", None)
         report: Dict[str, Any] = {
             "schema": SCHEMA,
             "offload_family": is_offload_moe_backend(config.moe_backend),
@@ -287,12 +291,17 @@ def build_runtime_report(engine) -> Dict[str, Any]:
                 if secondary is not None
                 else absent_secondary_device_report()
             ),
-            # P2 startup residency provenance. This block is explicitly inert: no remote
-            # inference code is introduced until a later Phase-1 slice.
+            # P2 startup residency/storage provenance. Runtime execution truth is kept in
+            # the separate P3 block so static storage cannot contradict live counters.
             "inferswarm_resident_bank": (
                 resident.report.as_dict()
                 if resident is not None
                 else absent_resident_bank_report()
+            ),
+            "inferswarm_remote_decode": (
+                remote_decode.configuration_report()
+                if remote_decode is not None
+                else absent_remote_decode_configuration_report()
             ),
         }
         return report

@@ -29,6 +29,7 @@ def test_parser_accepts_no_secondary_without_changing_defaults():
     assert args.inferswarm_secondary_gpu is None
     assert args.inferswarm_secondary_gpu_assigned is None
     assert args.inferswarm_placement is None
+    assert args.inferswarm_remote_decode is False
 
 
 def test_parser_accepts_exactly_one_secondary_spec():
@@ -56,6 +57,47 @@ def test_secondary_and_placement_enable_p2_configuration():
     )
     assert args.inferswarm_secondary_gpu == SECONDARY_UUID
     assert args.inferswarm_placement == "/tmp/placement.json"
+    assert args.inferswarm_remote_decode is False
+
+
+def test_remote_decode_without_secondary_is_rejected_explicitly():
+    with pytest.raises(SystemExit):
+        _parse("--inferswarm-remote-decode")
+
+
+def test_remote_decode_without_placement_is_rejected_explicitly():
+    with pytest.raises(SystemExit):
+        _parse(
+            "--inferswarm-secondary-gpu",
+            SECONDARY_UUID,
+            "--inferswarm-remote-decode",
+        )
+
+
+def test_secondary_placement_and_eager_remote_decode_enable_p3():
+    args = _parse(
+        "--inferswarm-secondary-gpu",
+        SECONDARY_UUID,
+        "--inferswarm-placement",
+        "/tmp/placement.json",
+        "--inferswarm-remote-decode",
+        "--cuda-graph-max-bs",
+        "0",
+    )
+    assert args.inferswarm_remote_decode is True
+
+
+def test_remote_decode_refuses_cuda_graph_capture():
+    with pytest.raises(SystemExit):
+        _parse(
+            "--inferswarm-secondary-gpu",
+            SECONDARY_UUID,
+            "--inferswarm-placement",
+            "/tmp/placement.json",
+            "--inferswarm-remote-decode",
+            "--cuda-graph-max-bs",
+            "1",
+        )
 
 
 @pytest.mark.parametrize("value", ["0,1", f"{PRIMARY_UUID},{SECONDARY_UUID}"])

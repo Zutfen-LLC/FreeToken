@@ -52,6 +52,8 @@ class ServerArgs(SchedulerConfig):
     # explicitly resolved secondary above; the path is deliberately withheld from runtime
     # provenance because it is host-local.
     inferswarm_placement: str | None = None
+    # InferSwarm Phase-1 P3 decode execution.  False preserves P1/P2 inert behavior.
+    inferswarm_remote_decode: bool = False
 
     @property
     def share_tokenizer(self) -> bool:
@@ -281,6 +283,16 @@ def parse_args(
         help=(
             "Experimental InferSwarm Phase-1 P2 frozen placement artifact. Requires "
             "--inferswarm-secondary-gpu and loads an inert resident expert bank at startup"
+        ),
+    )
+
+    parser.add_argument(
+        "--inferswarm-remote-decode",
+        action="store_true",
+        default=ServerArgs.inferswarm_remote_decode,
+        help=(
+            "Experimental InferSwarm Phase-1 P3 serialized remote decode. Requires "
+            "--inferswarm-secondary-gpu, --inferswarm-placement, and eager decode"
         ),
     )
 
@@ -713,6 +725,10 @@ def parse_args(
         and kwargs["inferswarm_secondary_gpu"] is None
     ):
         parser.error("--inferswarm-placement requires --inferswarm-secondary-gpu")
+    if kwargs["inferswarm_remote_decode"] and kwargs["inferswarm_secondary_gpu"] is None:
+        parser.error("--inferswarm-remote-decode requires --inferswarm-secondary-gpu")
+    if kwargs["inferswarm_remote_decode"] and kwargs["inferswarm_placement"] is None:
+        parser.error("--inferswarm-remote-decode requires --inferswarm-placement")
 
     # resolve some arguments
     run_shell |= kwargs.pop("shell_mode")
@@ -727,6 +743,8 @@ def parse_args(
             "--moe-trace-max-steps requires --cuda-graph-max-bs 0; exact routing cannot "
             "run under CUDA graph replay"
         )
+    if kwargs["inferswarm_remote_decode"] and kwargs["cuda_graph_max_bs"] != 0:
+        parser.error("--inferswarm-remote-decode requires --cuda-graph-max-bs 0")
 
     if kwargs["model_path"].startswith("~"):
         kwargs["model_path"] = os.path.expanduser(kwargs["model_path"])

@@ -198,6 +198,11 @@ def launch_server(
         logger.info(
             "--inferswarm-placement configured (host-local path withheld from provenance)"
         )
+    if server_args.inferswarm_remote_decode:
+        logger.info(
+            "--inferswarm-remote-decode enabled "
+            "(correctness-first serialized, explicit host-staged transport)"
+        )
 
     def start_subprocess() -> "BackendHandle":
         import multiprocessing as mp
