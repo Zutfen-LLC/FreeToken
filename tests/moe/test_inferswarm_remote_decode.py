@@ -157,6 +157,29 @@ def test_route_lookup_comes_from_p2_deterministic_remote_slots():
     assert lookup.tolist() == [[1, -1, -1], [-1, 0, 2]]
 
 
+@pytest.mark.parametrize("invalid_id", [-1, _Placement.num_experts])
+def test_invalid_raw_expert_id_fails_before_classification_or_service(invalid_id):
+    executor, transport = _executor()
+    cache, layer = _Cache(), _Layer(0)
+    counters_before = executor.counters.aggregate()
+
+    with pytest.raises(RuntimeError, match="invalid P3 raw expert routing"):
+        executor.decode(
+            layer,
+            cache,
+            torch.zeros(1, 2),
+            torch.tensor([[0.5, 0.5]], dtype=torch.float32),
+            torch.tensor([[1, invalid_id]], dtype=torch.int32),
+        )
+
+    assert transport.calls == []
+    assert cache.ensure_calls == []
+    assert cache.copy_calls == 0
+    assert cache.routing_records == []
+    assert layer.local_gemm_calls == 0
+    assert executor.counters.aggregate() == counters_before
+
+
 def test_local_only_uses_ordinary_cache_service_and_no_remote_dispatch():
     executor, transport = _executor()
     cache, layer = _Cache(), _Layer(0)

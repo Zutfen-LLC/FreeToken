@@ -429,6 +429,14 @@ class InferSwarmRemoteDecodeExecutor:
     ) -> torch.Tensor:
         layer_id = int(layer.layer_id)
         raw_ids = topk_ids.clone()
+        num_experts = int(self.resident_bank.placement.num_experts)
+        invalid_mask = (raw_ids < 0) | (raw_ids >= num_experts)
+        if bool(invalid_mask.any().item()):
+            invalid_values = torch.unique(raw_ids[invalid_mask]).detach().cpu().tolist()
+            raise RuntimeError(
+                "invalid P3 raw expert routing: "
+                f"expert IDs {invalid_values} are outside [0, {num_experts})"
+            )
         try:
             remote_slots = self.route_lookup[layer_id][raw_ids.long()]
         except (IndexError, RuntimeError) as exc:
