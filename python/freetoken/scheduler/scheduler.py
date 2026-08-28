@@ -13,6 +13,8 @@ from freetoken.message import (
     BatchBackendMsg,
     CacheRebuildBackendMsg,
     CacheRebuildResultMsg,
+    MoeInstrumentationBackendMsg,
+    MoeInstrumentationResultMsg,
     DetokenizeMsg,
     ErrorReplyMsg,
     ExitMsg,
@@ -594,6 +596,39 @@ class Scheduler(SchedulerIOMixin):
                 self._reply_rebuild(msg.request_id, "busy")
             else:
                 self._pending_rebuild = msg
+        elif isinstance(msg, MoeInstrumentationBackendMsg):
+            if msg.operation not in ("snapshot", "reset"):
+                self._reply_moe_instrumentation(
+                    msg.request_id, "unsupported", error=f"unknown operation {msg.operation!r}"
+                )
+            elif self.config.tp_info.size > 1:
+                self._reply_moe_instrumentation(
+                    msg.request_id, "unsupported", error="MoE instrumentation unsupported under TP > 1"
+                )
+            elif self.engine.moe_offload_cache is None:
+                self._reply_moe_instrumentation(
+                    msg.request_id, "unsupported", error="engine has no offloaded MoE cache"
+                )
+            elif (
+                self._last_data is not None
+                or self.prefill_manager.runnable
+                or self.decode_manager.runnable
+            ):
+                self._reply_moe_instrumentation(
+                    msg.request_id, "busy", error="generation is active; retry at an idle boundary"
+                )
+            else:
+                try:
+                    # The sole device/host synchronization in the control operation. All
+                    # hot-path instrumentation accumulated asynchronously before this point.
+                    torch.cuda.synchronize(self.device)
+                    payload = self.engine.moe_instrumentation(msg.operation)
+                except Exception as exc:  # noqa: BLE001 -- reply, never kill serving loop
+                    self._reply_moe_instrumentation(
+                        msg.request_id, "failed", error=f"instrumentation {msg.operation} failed: {exc!r}"
+                    )
+                else:
+                    self._reply_moe_instrumentation(msg.request_id, "ok", payload=payload)
         else:
             logger.error(f"Unknown message type: {type(msg)}")
             raise NotImplementedError
@@ -639,6 +674,21 @@ class Scheduler(SchedulerIOMixin):
                     mamba_slots=geo["num_mamba_slots"] or 0,
                     num_swa_pages=geo["num_swa_pages"] or 0,
                     error=error,
+                )
+            ]
+        )
+
+    def _reply_moe_instrumentation(
+        self,
+        request_id: str,
+        status: str,
+        payload: dict | None = None,
+        error: str | None = None,
+    ) -> None:
+        self.send_result(
+            [
+                MoeInstrumentationResultMsg(
+                    request_id=request_id, status=status, payload=payload, error=error
                 )
             ]
         )

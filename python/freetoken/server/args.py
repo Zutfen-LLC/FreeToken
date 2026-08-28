@@ -113,6 +113,15 @@ def parse_args(
             raise argparse.ArgumentTypeError("must be >= 1")
         return n
 
+    def _nonnegative_int(value: str) -> int:
+        try:
+            n = int(value)
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError("must be a non-negative integer") from exc
+        if n < 0:
+            raise argparse.ArgumentTypeError("must be >= 0")
+        return n
+
     def _lazy_gpu_arg(value: str) -> tuple[str, ...]:
         from freetoken.gpu_select import gpu_arg
 
@@ -612,6 +621,27 @@ def parse_args(
     )
 
     parser.add_argument(
+        "--moe-collect-stats",
+        action="store_true",
+        default=ServerArgs.moe_collect_stats,
+        help=(
+            "Opt in to device-side MoE decode hit/miss/fetch counters. Disabled by default; "
+            "read/reset only through POST /v1/moe/instrumentation at an idle boundary."
+        ),
+    )
+
+    parser.add_argument(
+        "--moe-trace-max-steps",
+        type=_nonnegative_int,
+        default=ServerArgs.moe_trace_max_steps,
+        help=(
+            "Retain exact per-step/per-layer decode expert selections for at most this many "
+            "steps (0 disables and allocates no trace VRAM). Exact tracing requires "
+            "--cuda-graph-max-bs 0 so replay cannot return capture-time routes."
+        ),
+    )
+
+    parser.add_argument(
         "--shell-mode",
         action="store_true",
         help="Run the server in shell mode.",
@@ -646,6 +676,12 @@ def parse_args(
         kwargs["cuda_graph_max_bs"] = 1
         kwargs["max_running_req"] = 1
         kwargs["silent_output"] = True
+
+    if kwargs["moe_trace_max_steps"] > 0 and kwargs["cuda_graph_max_bs"] != 0:
+        parser.error(
+            "--moe-trace-max-steps requires --cuda-graph-max-bs 0; exact routing cannot "
+            "run under CUDA graph replay"
+        )
 
     if kwargs["model_path"].startswith("~"):
         kwargs["model_path"] = os.path.expanduser(kwargs["model_path"])

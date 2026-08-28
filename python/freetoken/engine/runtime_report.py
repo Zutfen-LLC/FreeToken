@@ -191,6 +191,8 @@ def _moe_block(engine, cache) -> Dict[str, Any]:
         "prefill_overlap_resolved": config.moe_prefill_overlap,
         "prefill_hit_d2d": config.moe_prefill_hit_d2d,
         "collect_stats": config.moe_collect_stats,
+        "trace_max_steps": int(getattr(config, "moe_trace_max_steps", 0) or 0),
+        "trace_enabled": bool(getattr(config, "moe_trace_max_steps", 0) or 0),
     }
     block.update(
         {

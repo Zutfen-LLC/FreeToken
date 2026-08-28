@@ -134,6 +134,13 @@ class OffloadMoeCache:
     # pcie_bw / cpu_bw ratio so the PCIe fetch and the CPU overflow GEMV take equal
     # time (perfect overlap): fetched : cpu = pcie : cpu - pcie.
     hybrid_fetch_fraction: float = 0.0
+    # Exact decode routing is an investigation-only, eager-mode facility. A zero
+    # capacity leaves it completely disabled (no buffer allocation and no hot-path
+    # branch beyond the existing boolean check). The engine supplies the maximum
+    # decode batch and model top-k so every retained route has a fixed, bounded slot.
+    trace_max_steps: int = 0
+    trace_max_tokens_per_step: int = 0
+    trace_top_k: int = 0
 
     def __post_init__(self) -> None:
         policy_ids = {"lru": 0}
@@ -235,6 +242,40 @@ class OffloadMoeCache:
         self.decode_freq = torch.zeros(
             (self.num_layers, self.num_experts), dtype=torch.int64, device=self.device
         )
+        self.trace_enabled = self.trace_max_steps > 0
+        if self.trace_enabled:
+            if self.trace_max_tokens_per_step < 1 or self.trace_top_k < 1:
+                raise ValueError(
+                    "exact routing trace requires positive trace_max_tokens_per_step and trace_top_k"
+                )
+            # The last step is an overflow sink. Device-side cursors clamp to it, so
+            # recording never reads a CUDA scalar on the host and never synchronizes per
+            # layer/step. The sink is excluded from snapshots.
+            self.routing_trace = torch.full(
+                (
+                    self.trace_max_steps + 1,
+                    self.num_layers,
+                    self.trace_max_tokens_per_step,
+                    self.trace_top_k,
+                ),
+                -1,
+                dtype=torch.int32,
+                device=self.device,
+            )
+            self.trace_token_counts = torch.zeros(
+                (self.trace_max_steps + 1, self.num_layers),
+                dtype=torch.int32,
+                device=self.device,
+            )
+            self.trace_layer_steps = torch.zeros(
+                self.num_layers, dtype=torch.int64, device=self.device
+            )
+            self.trace_shape_overflow = torch.zeros((), dtype=torch.int64, device=self.device)
+        else:
+            self.routing_trace = None
+            self.trace_token_counts = None
+            self.trace_layer_steps = None
+            self.trace_shape_overflow = None
         # (per-layer sources, cache) per bank, in schema order. Every piece of cache
         # machinery that moves bank bytes (copy_missing, the prefill double buffers,
         # bank_views) iterates this list, so the slot cache is bank-count agnostic.
@@ -477,6 +518,7 @@ class OffloadMoeCache:
         self.stat_fetched_layer.zero_()
         self.stat_steps_layer.zero_()
         self.decode_freq.zero_()
+        self.reset_trace()
         self.prefill_hit_rows = 0
         self.prefill_total_rows = 0
         self._hit_d2d_fallback_logged = False  # geometry changed; re-log if still unusable
@@ -800,11 +842,8 @@ class OffloadMoeCache:
     def ensure_experts(self, layer_id: int, expert_ids: torch.Tensor) -> None:
         from freetoken.moe.offload_kernels import ensure_experts
 
-        if self.collect_decode_freq:
-            # ``expert_ids`` still holds raw expert ids here (the kernel rewrites them to
-            # slot ids in place), so snapshot the routing histogram before that happens.
-            ids = expert_ids.reshape(-1).long()
-            self.decode_freq[layer_id].scatter_add_(0, ids, torch.ones_like(ids))
+        if self.collect_decode_freq or self.trace_enabled:
+            self.record_decode_routing(layer_id, expert_ids)
         self._pending_src_layer = layer_id
         self._pending_whole_layer = False
         ensure_experts(self, layer_id, expert_ids)
@@ -821,9 +860,8 @@ class OffloadMoeCache:
         miss count (for stats). All device-side / fixed-shape, so it is CUDA-graph safe."""
         from freetoken.moe.offload_kernels import ensure_experts_hybrid
 
-        if self.collect_decode_freq:
-            ids = expert_ids.reshape(-1).long()
-            self.decode_freq[layer_id].scatter_add_(0, ids, torch.ones_like(ids))
+        if self.collect_decode_freq or self.trace_enabled:
+            self.record_decode_routing(layer_id, expert_ids)
         self._pending_src_layer = layer_id
         self._pending_whole_layer = False
         ensure_experts_hybrid(
@@ -858,6 +896,54 @@ class OffloadMoeCache:
         self.stat_fetched_layer.zero_()
         self.stat_steps_layer.zero_()
 
+    def record_decode_routing(self, layer_id: int, expert_ids: torch.Tensor) -> None:
+        """Record raw decode routing before ``ensure_experts`` rewrites ids to slots.
+
+        Histogram and exact-trace storage both remain device-side. Exact tracing uses
+        one independent cursor per MoE layer; a normal model forward advances every
+        cursor once, aligning records by decode step. Calls beyond the configured step
+        capacity overwrite only the overflow sink and are reported as truncation.
+        """
+        if not (self.collect_decode_freq or self.trace_enabled):
+            return
+        if self.collect_decode_freq:
+            ids = expert_ids.reshape(-1).long()
+            self.decode_freq[layer_id].scatter_add_(0, ids, torch.ones_like(ids))
+        if not self.trace_enabled:
+            return
+        rows = expert_ids.reshape(-1, expert_ids.shape[-1])
+        n = min(rows.shape[0], self.trace_max_tokens_per_step)
+        k = min(rows.shape[1], self.trace_top_k)
+        padded = torch.full(
+            (self.trace_max_tokens_per_step, self.trace_top_k),
+            -1,
+            dtype=torch.int32,
+            device=expert_ids.device,
+        )
+        padded[:n, :k].copy_(rows[:n, :k].to(torch.int32))
+        cursor = self.trace_layer_steps[layer_id]
+        dst = cursor.clamp(max=self.trace_max_steps).reshape(1)
+        self.routing_trace[:, layer_id].index_copy_(0, dst, padded.unsqueeze(0))
+        self.trace_token_counts[:, layer_id].index_fill_(0, dst, n)
+        if rows.shape[0] > n or rows.shape[1] != self.trace_top_k:
+            self.trace_shape_overflow.add_(1)
+        self.trace_layer_steps[layer_id].add_(1)
+
+    def reset_trace(self) -> None:
+        """Clear exact trace state without touching cache residency."""
+        if not self.trace_enabled:
+            return
+        self.routing_trace.fill_(-1)
+        self.trace_token_counts.zero_()
+        self.trace_layer_steps.zero_()
+        self.trace_shape_overflow.zero_()
+
+    def reset_instrumentation(self) -> None:
+        """Reset counters, histogram, and trace while preserving slot residency."""
+        self.reset_stats()
+        self.decode_freq.zero_()
+        self.reset_trace()
+
     def record_decode_stats(self, layer_id: int) -> None:
         """No-op: ``ensure_experts`` accumulates into ``lru_stats`` inside its own launch.
 
@@ -889,9 +975,18 @@ class OffloadMoeCache:
             calls = int(self.stat_calls.item())
         else:
             active, missing, calls = (int(x) for x in self.lru_stats.sum(0))
-        fetched = int(self.stat_fetched.item())
+        fetched = (
+            int(self.stat_fetched.item())
+            if self.decode_target == "hybrid"
+            else missing  # plain GPU offload fetches every miss
+        )
         return {
+            "decode_steps": (calls // self.num_layers) if self.num_layers else 0,
             "layer_calls": calls,
+            "active_selections": active,
+            "hits": active - missing,
+            "misses": missing,
+            "fetches": fetched,
             "active_per_layer": (active / calls) if calls else 0.0,
             "missing_per_layer": (missing / calls) if calls else 0.0,
             "miss_rate": (missing / active) if active else 0.0,
@@ -919,19 +1014,149 @@ class OffloadMoeCache:
         else:
             cols = self.lru_stats.t().tolist()
             active, missing, steps = cols[Stat.ACTIVE], cols[Stat.MISS], cols[Stat.CALLS]
-        fetched = self.stat_fetched_layer.tolist()
+        fetched = (
+            self.stat_fetched_layer.tolist()
+            if self.decode_target == "hybrid"
+            else list(missing)
+        )
         per_layer = []
         for L in range(self.num_layers):
             s, m, a, f = steps[L], missing[L], active[L], fetched[L]
             per_layer.append({
                 "layer": L,
                 "steps": s,
+                "active_selections": a,
+                "hits": a - m,
+                "misses": m,
+                "fetches": f,
                 "active_per_step": (a / s) if s else 0.0,
                 "missing_per_step": (m / s) if s else 0.0,
                 "miss_rate": (m / a) if a else 0.0,
                 "fetched_per_step": (f / s) if s else 0.0,
             })
         return {"per_layer": per_layer}
+
+    def actual_residency(self) -> dict:
+        """Read actual resident identities from the authoritative reverse slot map.
+
+        ``cache_size`` describes configured slot coverage; it is deliberately reported
+        separately from the valid identities currently present in ``id_of_slot``.
+        """
+        flat_ids = [int(v) for v in self.id_of_slot.tolist()]
+        by_layer: list[list[int]] = [[] for _ in range(self.num_layers)]
+        slot_map = []
+        total_ids = self.num_layers * self.num_experts
+        for slot, flat_id in enumerate(flat_ids):
+            if not 0 <= flat_id < total_ids:
+                continue
+            layer, expert = divmod(flat_id, self.num_experts)
+            by_layer[layer].append(expert)
+            slot_map.append({"slot": slot, "layer": layer, "expert_id": expert})
+        return {
+            "source": "id_of_slot_authoritative_slot_map",
+            "configured_slots": self.cache_size,
+            "configured_cache_fraction": self.cache_size / total_ids if total_ids else 0.0,
+            "actual_resident_slots": len(slot_map),
+            "slot_map": slot_map,
+            "per_layer": [
+                {"layer": layer, "resident_expert_ids": sorted(set(experts))}
+                for layer, experts in enumerate(by_layer)
+            ],
+        }
+
+    def exact_routing_trace(self) -> dict:
+        if not self.trace_enabled:
+            return {
+                "enabled": False,
+                "capacity_steps": 0,
+                "max_tokens_per_step": 0,
+                "top_k": 0,
+                "truncated": False,
+                "steps_observed": 0,
+                "steps_recorded": 0,
+                "overflow_layer_calls": 0,
+                "layer_steps_observed": [],
+                "incomplete_layer_alignment": False,
+                "records": [],
+            }
+        layer_steps = [int(v) for v in self.trace_layer_steps.tolist()]
+        shape_overflow = int(self.trace_shape_overflow.item())
+        observed = max(layer_steps, default=0)
+        recorded = min(min(layer_steps, default=0), self.trace_max_steps)
+        overflow_calls = sum(max(0, n - self.trace_max_steps) for n in layer_steps)
+        incomplete_alignment = len(set(layer_steps)) > 1
+        values = self.routing_trace[:recorded].tolist()
+        counts = self.trace_token_counts[:recorded].tolist()
+        records = []
+        for step in range(recorded):
+            layers = []
+            for layer in range(self.num_layers):
+                n = counts[step][layer]
+                layers.append(
+                    {
+                        "layer": layer,
+                        "token_routes": [row[:] for row in values[step][layer][:n]],
+                    }
+                )
+            records.append({"step": step, "layers": layers})
+        return {
+            "enabled": True,
+            "capacity_steps": self.trace_max_steps,
+            "max_tokens_per_step": self.trace_max_tokens_per_step,
+            "top_k": self.trace_top_k,
+            "truncated": bool(overflow_calls or shape_overflow or incomplete_alignment),
+            "steps_observed": observed,
+            "steps_recorded": recorded,
+            "overflow_layer_calls": overflow_calls + shape_overflow,
+            "layer_steps_observed": layer_steps,
+            "incomplete_layer_alignment": incomplete_alignment,
+            "records": records,
+        }
+
+    def instrumentation_snapshot(self) -> dict:
+        """Versioned, lossless MoE measurement at an explicit idle boundary.
+
+        The scheduler synchronizes once before calling this method. All counters cover
+        decode activity since the most recent instrumentation reset/cache rebuild;
+        residency is the instantaneous authoritative slot map at this boundary.
+        """
+        aggregate = self.decode_miss_stats()
+        per_layer = self.decode_miss_stats_per_layer()["per_layer"]
+        histogram = self.decode_freq.tolist() if self.collect_decode_freq else []
+        return {
+            "schema": "freetoken.moe-instrumentation/1",
+            "measurement_semantics": {
+                "counters": "decode activity since the last instrumentation reset or cache rebuild",
+                "residency": "instantaneous state at the synchronized idle snapshot boundary",
+                "reset": "clears counters, routing histogram, and exact trace; preserves cache residency",
+                "cache_counter_unit": (
+                    "active/miss/fetch counts are cache-active expert identities summed over "
+                    "MoE layer calls; routing histogram/trace retain raw token top-k selections"
+                ),
+                "histogram_order": "counts indexed by [moe_layer][expert_id]",
+                "trace_order": "decode step, MoE layer, token row, router top-k order",
+            },
+            "geometry": {
+                "resolved_cache_slots": self.cache_size,
+                "num_moe_layers": self.num_layers,
+                "num_routed_experts": self.num_experts,
+                "cache_policy": self.cache_policy,
+                "decode_target": self.decode_target,
+            },
+            "collection": {
+                "stats_enabled": bool(self.collect_stats),
+                "routing_histogram_enabled": bool(self.collect_decode_freq),
+                "trace_enabled": bool(self.trace_enabled),
+            },
+            "aggregate": aggregate,
+            "per_layer": per_layer,
+            "routing": {
+                "histogram": histogram,
+                "derived_concentration": self.decode_routing_stats() if histogram else {},
+            },
+            "trace": self.exact_routing_trace(),
+            "residency": self.actual_residency(),
+        }
 
     def decode_routing_stats(self) -> dict:
         """Per-layer decode routing concentration, for cache-skew analysis.

@@ -129,6 +129,22 @@ class CacheRebuildResultMsg(BaseTokenizerMsg):
 
 
 @dataclass
+class MoeInstrumentationMsg(BaseTokenizerMsg):
+    # api server -> tokenizer worker (pure passthrough).
+    request_id: str
+    operation: str  # "snapshot" | "reset"
+
+
+@dataclass
+class MoeInstrumentationResultMsg(BaseTokenizerMsg):
+    # scheduler -> detokenizer worker (passthrough to MoeInstrumentationReply).
+    request_id: str
+    status: str  # "ok" | "busy" | "unsupported" | "failed"
+    payload: dict | None = None
+    error: str | None = None
+
+
+@dataclass
 class ErrorReplyMsg(BaseTokenizerMsg):
     # scheduler -> tokenizer/detokenizer worker -> frontend: a request the scheduler cannot
     # serve (e.g. its prompt exceeds the KV budget). The worker translates it into a terminal

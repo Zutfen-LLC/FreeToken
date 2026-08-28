@@ -16,6 +16,10 @@ from freetoken.message import (
     CacheRebuildMsg,
     CacheRebuildReply,
     CacheRebuildResultMsg,
+    MoeInstrumentationBackendMsg,
+    MoeInstrumentationMsg,
+    MoeInstrumentationReply,
+    MoeInstrumentationResultMsg,
     PromptAdmittedMsg,
     TokenizeMsg,
     UserReply,
@@ -51,6 +55,30 @@ def test_cache_rebuild_reply_roundtrip():
     out = BaseFrontendMsg.decoder(BaseFrontendMsg.encoder(msg))
     assert isinstance(out, CacheRebuildReply)
     assert (out.request_id, out.status, out.error) == ("r3", "failed", "boom")
+
+
+def test_moe_instrumentation_control_messages_roundtrip():
+    request = MoeInstrumentationMsg(request_id="i1", operation="reset")
+    request_out = BaseTokenizerMsg.decoder(BaseTokenizerMsg.encoder(request))
+    assert isinstance(request_out, MoeInstrumentationMsg)
+    assert (request_out.request_id, request_out.operation) == ("i1", "reset")
+
+    backend = MoeInstrumentationBackendMsg(request_id="i2", operation="snapshot")
+    backend_out = BaseBackendMsg.decoder(backend.encoder())
+    assert isinstance(backend_out, MoeInstrumentationBackendMsg)
+
+    payload = {"schema": "freetoken.moe-instrumentation/1", "trace": {"truncated": False}}
+    result = MoeInstrumentationResultMsg(request_id="i3", status="ok", payload=payload)
+    result_out = BaseTokenizerMsg.decoder(BaseTokenizerMsg.encoder(result))
+    assert isinstance(result_out, MoeInstrumentationResultMsg)
+    assert result_out.payload == payload
+
+    reply = MoeInstrumentationReply(request_id="i4", status="busy", error="active generation")
+    reply_out = BaseFrontendMsg.decoder(BaseFrontendMsg.encoder(reply))
+    assert isinstance(reply_out, MoeInstrumentationReply)
+    assert (reply_out.request_id, reply_out.status, reply_out.error) == (
+        "i4", "busy", "active generation",
+    )
 
 
 def test_prompt_admitted_msg_roundtrip():

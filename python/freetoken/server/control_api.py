@@ -2,6 +2,11 @@
 /v1/stats (runtime metrics, Task 6), /v1/requests (request log ring, Task 5), and
 /v1/instrumentation (resolved engine configuration + measured prefill, for benchmarks).
 
+The engine-owned, on-demand MoE benchmark snapshot is intentionally not registered here:
+``POST /v1/moe/instrumentation`` follows the correlated frontend -> tokenizer -> scheduler
+-> engine control path in ``api_server`` and is accepted only at a scheduler-proven idle
+boundary. The frontend cannot read that process-local state directly.
+
 All handlers read a shared FrontendManager snapshot via ``get_state``; nothing here touches
 the scheduler or blocks. Registered on the app alongside the OpenAI/Anthropic/Responses routes.
 """

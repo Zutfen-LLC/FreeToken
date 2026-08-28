@@ -184,6 +184,55 @@ per class. Note that identical HTTP text hashes are **not** the deeper C1/C2/C3 
 correctness instrumentation (per-layer outputs, router selections, step-0 logits); they are
 the reproducible fixture those gates will later be applied to.
 
+### Issue-#3 routing and residency support
+
+`routing` produces the FreeToken-side raw evidence needed by
+`Zutfen-LLC/inferswarm#3`; it does not complete that issue or generate feasibility claims.
+
+```bash
+python benchmarks/phase0_baseline.py routing \
+    --model /path/to/nvidia--Qwen3.6-35B-A3B-NVFP4 \
+    --model-revision <exact 40-hex upstream commit SHA> \
+    --gpu GPU-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx \
+    --manifest /path/to/frozen-workloads.json \
+    --inferswarm-commit <exact 40-hex InferSwarm commit> \
+    --session-id p0-i-session-1
+```
+
+The command deliberately starts two modes. `exact_trace` uses eager decode
+(`--cuda-graph-max-bs 0`) and a bounded on-device route buffer; any truncation rejects a
+canonical observation. Its timing is not Phase-0 performance evidence. `cache_pressure`
+uses the existing graph-safe hit/miss/fetch counters with exact tracing off. It starts at
+the auto-resolved feasible cache size `A`, reads the authoritative rebuild minimum `M`, and
+predeclares `M + floor((A-M)q/4)` for `q=0..4`, deduplicating integer collisions before any
+miss rate is observed. Fewer than four distinct feasible points is not accepted as a
+canonical curve.
+
+At every cache-size/workload boundary the runner records cold/rebuild residency, discarded
+warmup hashes and counts, the residency immediately before measurement, each raw measured
+repetition, and ending residency. `POST /v1/moe/instrumentation` reaches the scheduler and
+engine through correlated control messages; the scheduler returns `busy` unless it sees a
+fully idle request boundary. A reset response snapshots the pre-reset counters/residency,
+then clears only counters, histogram, and exact trace. The authoritative slot map—and thus
+the warmed cache—remains unchanged.
+
+Artifacts contain fixture/request/output hashes and exact token counts, never prompt or
+generated output text:
+
+```
+<run>/run.json
+<run>/exact-routing.jsonl
+<run>/cache-pressure.jsonl
+<run>/server-logs/{exact-trace,cache-pressure}.log
+```
+
+The engine payload schema is `freetoken.moe-instrumentation/1`. Counters cover decode
+activity since the last instrumentation reset or cache rebuild; residency is instantaneous
+at the synchronized idle boundary and comes from `id_of_slot`, not configured coverage.
+`configured_slots`/`configured_cache_fraction` remain separate from actual resident expert
+identities. Histogram counts are indexed `[MoE layer][expert id]`; exact routes are ordered
+by decode step, MoE layer, token row, and router top-k order.
+
 ### Hardware profile
 
 ```bash

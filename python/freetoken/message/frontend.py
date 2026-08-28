@@ -71,3 +71,12 @@ class CacheRebuildReply(BaseFrontendMsg):
     mamba_slots: int = 0
     num_swa_pages: int = 0
     error: str | None = None
+
+
+@dataclass
+class MoeInstrumentationReply(BaseFrontendMsg):
+    # detokenizer worker -> api server: correlated instrumentation control result.
+    request_id: str
+    status: str
+    payload: dict | None = None
+    error: str | None = None

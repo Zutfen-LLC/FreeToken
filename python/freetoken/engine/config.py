@@ -39,6 +39,10 @@ class EngineConfig:
     # (cudaMemcpyBatchAsync); no-op unless moe_cache_size > 2 * num_experts.
     moe_prefill_hit_d2d: bool = False
     moe_collect_stats: bool = False  # capture decode miss-rate counters into the cuda graph
+    # Exact decode routes retained on-device until an explicit idle snapshot. Zero disables
+    # tracing and allocates nothing. Exact tracing is eager-only; server argument validation
+    # requires --cuda-graph-max-bs 0 when this is positive.
+    moe_trace_max_steps: int = 0
     # CPU MoE backend (--moe-backend cpu): number of CPU worker threads computing
     # the decode experts. 0 = auto (physical cores). Ignored by other backends.
     moe_cpu_threads: int = 0
