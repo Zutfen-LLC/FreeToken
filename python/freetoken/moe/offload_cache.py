@@ -839,10 +839,16 @@ class OffloadMoeCache:
             self._prefill_buffer_has_release_event[buffer_id] = True
         self._prefill_buffer_released[buffer_id] = True
 
-    def ensure_experts(self, layer_id: int, expert_ids: torch.Tensor) -> None:
+    def ensure_experts(
+        self,
+        layer_id: int,
+        expert_ids: torch.Tensor,
+        *,
+        record_routing: bool = True,
+    ) -> None:
         from freetoken.moe.offload_kernels import ensure_experts
 
-        if self.collect_decode_freq or self.trace_enabled:
+        if record_routing and (self.collect_decode_freq or self.trace_enabled):
             self.record_decode_routing(layer_id, expert_ids)
         self._pending_src_layer = layer_id
         self._pending_whole_layer = False
