@@ -173,3 +173,19 @@ profile that `ft serve --moe-backend auto` and `--moe-hybrid-max-fetch -1` then 
 - `--threshold` (default 2.0) sets the call: recommend hybrid when CPU bandwidth beats PCIe
   by that factor.
 
+## InferSwarm Phase-1 POC secondary device
+
+The downstream `inferswarm` branch accepts one experimental secondary-device selector:
+
+```bash
+ft serve --model MODEL --gpu GPU-PRIMARY \
+  --inferswarm-secondary-gpu GPU-SECONDARY
+```
+
+Prefer full `GPU-...` UUIDs. The secondary is independent of tensor parallelism, is never
+an implicit `cuda:1`, and does not change `CUDA_VISIBLE_DEVICES`. Startup validates that it
+is CUDA-visible and physically distinct from the bound primary, probes memory, compute
+capability, and directional peer access, then restores the primary as current. P1 exposes
+that discovery state through `/v1/instrumentation`; it does not allocate an expert bank or
+change model execution. When peer access is unavailable, the report says
+`host_staged_required` and does not describe PyTorch cross-device copies as direct P2P.

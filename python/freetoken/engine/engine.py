@@ -310,6 +310,25 @@ class Engine:
         from freetoken.gpu_select import bind_assigned_gpu
 
         self.device = bind_assigned_gpu(config.tp_info.rank)
+        # Phase-1 P1 only: validate and describe the explicitly requested secondary before
+        # model loading.  With the option absent this imports nothing, initializes no second
+        # CUDA context, and preserves the existing one-GPU path exactly.
+        self.inferswarm_secondary_device = None
+        if getattr(config, "inferswarm_secondary_gpu", None) is not None:
+            from freetoken.moe.inferswarm_secondary import probe_secondary_device
+
+            self.inferswarm_secondary_device = probe_secondary_device(
+                config.inferswarm_secondary_gpu,
+                resolved_uuid=getattr(
+                    config, "inferswarm_secondary_gpu_assigned", None
+                ),
+                primary_visible_ordinal=self.device.index,
+                primary_resolved_uuid=(
+                    config.gpu_assigned[config.tp_info.rank]
+                    if getattr(config, "gpu_assigned", None)
+                    else None
+                ),
+            )
         # _adjust_config resolves `auto` IN PLACE, so the flag text is only readable before it.
         # Kept for the runtime report: "requested" and "resolved" are different provenance facts.
         self._requested_moe_backend = config.moe_backend

@@ -232,14 +232,22 @@ def assign_gpu(spec: "str | None") -> None:
     set_assigned_gpu(resolved[0] if resolved else parse_gpu_spec(spec)[0])
 
 
-def _visible_of_physical(uuid: str) -> int:
-    """CUDA ordinal of the physical GPU ``uuid`` (or unique prefix) among this process's visible devices."""
-    import torch
+def visible_gpu_for_uuid(uuid: str, torch_module=None) -> int:
+    """CUDA ordinal of physical ``uuid`` (or unique prefix) in this process.
+
+    ``torch_module`` is injectable so secondary-device discovery can be covered by ordinary
+    CPU tests.  The lookup deliberately uses CUDA's visible enumeration rather than NVML
+    order: ``CUDA_DEVICE_ORDER`` and ``CUDA_VISIBLE_DEVICES`` may make those orders differ.
+    """
+    if torch_module is None:
+        import torch as torch_module
 
     seen: list[str] = []
     hits: list[int] = []
-    for v in range(torch.cuda.device_count()):
-        u = format_gpu_uuid(getattr(torch.cuda.get_device_properties(v), "uuid", None))
+    for v in range(torch_module.cuda.device_count()):
+        u = format_gpu_uuid(
+            getattr(torch_module.cuda.get_device_properties(v), "uuid", None)
+        )
         seen.append(u or "?")
         if u is not None and u.upper().startswith(uuid.upper()):
             hits.append(v)
@@ -254,6 +262,10 @@ def _visible_of_physical(uuid: str) -> int:
     )
 
 
+# Kept as a private alias for callers in older downstream branches.
+_visible_of_physical = visible_gpu_for_uuid
+
+
 def bind_assigned_gpu(default: int = 0):
     """torch.cuda.set_device this process's GPU and return the device.
 
@@ -264,7 +276,7 @@ def bind_assigned_gpu(default: int = 0):
     import torch
 
     if _assigned_visible is None:
-        _assigned_visible = default if _assigned_physical is None else _visible_of_physical(_assigned_physical)
+        _assigned_visible = default if _assigned_physical is None else visible_gpu_for_uuid(_assigned_physical)
     if not 0 <= _assigned_visible < torch.cuda.device_count():
         raise RuntimeError(
             f"cannot use CUDA device {_assigned_visible}: only {torch.cuda.device_count()} device(s) visible "
@@ -282,7 +294,7 @@ def assigned_visible_gpu() -> "int | None":
     """
     if _assigned_visible is not None:
         return _assigned_visible
-    return None if _assigned_physical is None else _visible_of_physical(_assigned_physical)
+    return None if _assigned_physical is None else visible_gpu_for_uuid(_assigned_physical)
 
 
 def format_gpu_uuid(raw) -> str | None:
