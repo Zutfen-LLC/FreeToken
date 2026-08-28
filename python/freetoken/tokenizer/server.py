@@ -17,6 +17,10 @@ from freetoken.message import (
     CacheRebuildMsg,
     CacheRebuildReply,
     CacheRebuildResultMsg,
+    MoeInstrumentationBackendMsg,
+    MoeInstrumentationMsg,
+    MoeInstrumentationReply,
+    MoeInstrumentationResultMsg,
     DetokenizeMsg,
     ErrorReplyMsg,
     PromptAdmittedMsg,
@@ -207,10 +211,32 @@ def tokenize_worker(
                             error=m.error,
                         )
                     )
+                elif isinstance(m, MoeInstrumentationMsg):
+                    send_backend.put(
+                        MoeInstrumentationBackendMsg(
+                            request_id=m.request_id, operation=m.operation
+                        )
+                    )
+                elif isinstance(m, MoeInstrumentationResultMsg):
+                    send_frontend.put(
+                        MoeInstrumentationReply(
+                            request_id=m.request_id,
+                            status=m.status,
+                            payload=m.payload,
+                            error=m.error,
+                        )
+                    )
             n_control = sum(
                 isinstance(
                     m,
-                    (CacheRebuildMsg, CacheRebuildResultMsg, ErrorReplyMsg, PromptAdmittedMsg),
+                    (
+                        CacheRebuildMsg,
+                        CacheRebuildResultMsg,
+                        MoeInstrumentationMsg,
+                        MoeInstrumentationResultMsg,
+                        ErrorReplyMsg,
+                        PromptAdmittedMsg,
+                    ),
                 )
                 for m in pending_msg
             )

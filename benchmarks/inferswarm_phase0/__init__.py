@@ -30,7 +30,7 @@ CANONICAL_MODEL_REPOSITORY = "nvidia/Qwen3.6-35B-A3B-NVFP4"
 
 # Bumped whenever the harness changes in a way that could move a number. Recorded in every
 # run artifact so two result directories can be told apart by more than their date.
-HARNESS_VERSION = "0.3.0"
+HARNESS_VERSION = "0.4.1"
 
 # The artifact schema the runner writes. A consumer must refuse an unknown major version
 # rather than guess at field meanings.

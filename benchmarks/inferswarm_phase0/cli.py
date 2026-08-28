@@ -5,6 +5,7 @@ Subcommands:
     sweep       run the B1-B5 performance sweep (criteria section 2.1)
     reference   run CORRECTNESS_REFERENCE (criteria section 2.4) and record its outputs
     profile     capture the hardware profile of the selected GPU
+    routing     capture Issue-#3 exact routing and cache-pressure evidence
     hash        print the sha256 of a fixture, for freezing it into a manifest
 
 ``sweep`` and ``reference`` are separate subcommands on purpose. They answer different
@@ -29,6 +30,7 @@ from .baselines import BASELINE_ARMS, BASELINE_ARMS_BY_ID, correctness_reference
 from .manifest import ManifestError, load_manifest, sha256_text
 from .protocol import build_protocol
 from .runner import Campaign, ServeSettings
+from .routing import RoutingCampaign, RoutingSettings
 
 
 def _add_common(p: argparse.ArgumentParser) -> None:
@@ -285,6 +287,79 @@ def cmd_hash(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_routing(args: argparse.Namespace) -> int:
+    """Issue-#3 support: eager exact routes plus a separate graph-safe pressure curve."""
+    if args.store_output_text:
+        raise ValueError("routing artifacts never store prompt or generated output text")
+    canonical = not (args.dev_smoke or args.allow_missing_provenance)
+    manifest = load_manifest(args.manifest, canonical=canonical)
+    if args.classes:
+        from dataclasses import replace
+
+        selected = [value.strip() for value in args.classes.split(",") if value.strip()]
+        unknown = sorted(set(selected) - set(manifest.by_class()))
+        if unknown:
+            raise ValueError(f"unknown workload classes {unknown}")
+        if canonical:
+            raise ValueError("a workload subset is allowed only with --dev-smoke")
+        manifest = replace(
+            manifest, workloads=[manifest.by_class()[class_id] for class_id in selected]
+        )
+    protocol = build_protocol(
+        warmups=args.warmups,
+        repetitions=args.repetitions,
+        session_id=args.session_id,
+        reverse_order=args.reverse_order,
+        dev_smoke=args.dev_smoke,
+    )
+    settings = RoutingSettings(
+        model_path=args.model,
+        model_repository=args.model_repository,
+        model_revision=args.model_revision,
+        gpu=args.gpu,
+        memory_ratio=args.memory_ratio,
+        kv_reserve_tokens=args.kv_reserve_tokens,
+        max_seq_len_override=args.max_seq_len_override,
+        server_timeout=args.server_timeout,
+        python_executable=sys.executable,
+        trace_max_steps=args.trace_max_steps,
+        pressure_cuda_graph_max_bs=args.pressure_cuda_graph_max_bs,
+        moe_backend=args.moe_backend,
+        nvfp4_backend=args.nvfp4_backend,
+    )
+    campaign = RoutingCampaign(
+        manifest=manifest,
+        settings=settings,
+        out_root=Path(args.out_root),
+        short_name=args.short_name,
+        session_id=args.session_id,
+        inferswarm_commit=args.inferswarm_commit,
+        warmups=protocol.warmups,
+        repetitions=protocol.repetitions,
+        canonical=canonical,
+        reverse_order=args.reverse_order,
+        echo_server_output=not args.no_echo_server,
+    )
+    if args.dry_run:
+        doc = campaign.plan()
+        banner = (
+            "CANONICAL Issue-#3 routing plan"
+            if canonical
+            else "NON-CANONICAL Issue-#3 developer-smoke plan"
+        )
+        print(f"=== {banner} ===", file=sys.stderr)
+        print(json.dumps(doc, indent=2))
+        return 0
+    doc = campaign.execute()
+    _report(doc)
+    print(
+        "[phase0] Supports/references Zutfen-LLC/inferswarm#3; real canonical P0-I "
+        "measurements and the InferSwarm investigation artifact still remain.",
+        flush=True,
+    )
+    return _exit_code(doc)
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="phase0_baseline",
@@ -380,6 +455,38 @@ def build_parser() -> argparse.ArgumentParser:
         help="device-bandwidth measured repetitions (all are reported individually)",
     )
     profile.set_defaults(func=cmd_profile)
+
+    routing = sub.add_parser(
+        "routing", help="Issue-#3 exact MoE routing and cache-residency evidence"
+    )
+    _add_common(routing)
+    routing.add_argument(
+        "--trace-max-steps",
+        type=int,
+        default=4096,
+        help="bounded exact-trace capacity per repetition (canonical truncation is rejected)",
+    )
+    routing.add_argument(
+        "--pressure-cuda-graph-max-bs",
+        type=int,
+        default=1,
+        help="CUDA graph max batch for the separate graph-safe cache-pressure server",
+    )
+    routing.add_argument(
+        "--moe-backend", default="offload", choices=["offload"],
+        help="routing investigation backend (fixed to offload)",
+    )
+    routing.add_argument(
+        "--nvfp4-backend",
+        default="triton",
+        choices=["marlin", "flashinfer", "triton"],
+    )
+    routing.add_argument(
+        "--classes",
+        default=None,
+        help="comma-separated subset, permitted only with --dev-smoke",
+    )
+    routing.set_defaults(func=cmd_routing)
 
     h = sub.add_parser("hash", help="sha256 of fixture file(s), for freezing into a manifest")
     h.add_argument("paths", nargs="+")

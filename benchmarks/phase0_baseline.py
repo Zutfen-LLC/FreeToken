@@ -4,8 +4,10 @@
     python benchmarks/phase0_baseline.py sweep --help
     python benchmarks/phase0_baseline.py reference --help
     python benchmarks/phase0_baseline.py profile --help
+    python benchmarks/phase0_baseline.py routing --help
 
-Canonical issue: https://github.com/Zutfen-LLC/inferswarm/issues/2
+Canonical baseline issue: https://github.com/Zutfen-LLC/inferswarm/issues/2
+Routing instrumentation support: https://github.com/Zutfen-LLC/inferswarm/issues/3
 The harness itself lives in ``benchmarks/inferswarm_phase0/``; see ``benchmarks/README.md``.
 """
 

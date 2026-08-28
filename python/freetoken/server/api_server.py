@@ -24,6 +24,8 @@ from freetoken.message import (
     BatchFrontendMsg,
     CacheRebuildMsg,
     CacheRebuildReply,
+    MoeInstrumentationMsg,
+    MoeInstrumentationReply,
     TokenizeMsg,
     UserReply,
 )
@@ -143,6 +145,8 @@ class FrontendManager:
     # Runtime cache-rebuild control plane (correlated by uuid request_id, separate from
     # the int-uid generation ack machinery).
     rebuild_futures: Dict[str, asyncio.Future] = field(default_factory=dict)
+    # Narrow benchmark control plane, correlated independently from generations/rebuilds.
+    instrumentation_futures: Dict[str, asyncio.Future] = field(default_factory=dict)
     # Lifecycle gate. Starts "loading" (uvicorn binds before weights finish; the three
     # API adapters 503 until this flips) -> "serving" once all workers ack ready ->
     # "rebuilding"/"failed" for runtime cache rebuilds.
@@ -248,6 +252,9 @@ class FrontendManager:
             if isinstance(msg, CacheRebuildReply):
                 self._resolve_rebuild(msg)
                 continue
+            if isinstance(msg, MoeInstrumentationReply):
+                self._resolve_moe_instrumentation(msg)
+                continue
             for msg in _unwrap_msg(msg):
                 # Global accounting follows actual admitted/sampled work even after the HTTP
                 # client disconnects and abort_user removes its ack queue. Delivery to a live
@@ -289,6 +296,16 @@ class FrontendManager:
             self.maintenance_state = "failed"
             return
         self.maintenance_state = "failed" if msg.status == "failed" else "serving"
+
+    def _resolve_moe_instrumentation(self, msg: MoeInstrumentationReply) -> None:
+        result = {"request_id": msg.request_id, "status": msg.status}
+        if msg.payload is not None:
+            result["payload"] = msg.payload
+        if msg.error is not None:
+            result["error"] = msg.error
+        fut = self.instrumentation_futures.pop(msg.request_id, None)
+        if fut is not None and not fut.done():
+            fut.set_result(result)
 
     def fail_pending_rebuilds(self, message: str) -> None:
         """Resolve every in-flight rebuild waiter as failed. Called from the supervisor thread
@@ -497,6 +514,61 @@ class CacheRebuildRequest(BaseModel):
     # unsupported value fail fast with a 422 at the API layer instead of a generic 503.
     mode: Literal["if_idle"] = "if_idle"
     timeout: float = 300.0
+
+
+class MoeInstrumentationRequest(BaseModel):
+    operation: Literal["snapshot", "reset"] = "snapshot"
+    timeout: float = 30.0
+
+
+async def dispatch_moe_instrumentation(
+    state: FrontendManager, *, operation: str, timeout: float = 30.0
+) -> Dict[str, Any]:
+    """Correlated frontend -> scheduler -> engine -> frontend control request.
+
+    The frontend owns no scheduler/engine references. The scheduler either performs the
+    operation at its observed idle boundary or returns ``busy`` explicitly.
+    """
+    request_id = str(uuid.uuid4())
+    fut = asyncio.get_running_loop().create_future()
+    state.instrumentation_futures[request_id] = fut
+    try:
+        await state.send_one(
+            MoeInstrumentationMsg(request_id=request_id, operation=operation)
+        )
+    except Exception as exc:  # noqa: BLE001
+        state.instrumentation_futures.pop(request_id, None)
+        return {"status": "failed", "error": f"failed to dispatch instrumentation: {exc!r}"}
+    try:
+        return await asyncio.wait_for(fut, timeout=timeout)
+    except asyncio.TimeoutError:
+        state.instrumentation_futures.pop(request_id, None)
+        return {"status": "timeout", "request_id": request_id}
+
+
+@app.post("/v1/moe/instrumentation")
+async def moe_instrumentation(req: MoeInstrumentationRequest):
+    """Idle-only MoE snapshot/reset; separate from frontend-resident /v1/instrumentation."""
+    state = get_global_state()
+    if state.maintenance_state != "serving":
+        return JSONResponse(
+            {
+                "status": "busy",
+                "error": f"engine is {state.maintenance_state}; instrumentation requires serving/idle",
+            },
+            status_code=409,
+        )
+    result = await dispatch_moe_instrumentation(
+        state, operation=req.operation, timeout=req.timeout
+    )
+    status_code = {
+        "ok": 200,
+        "busy": 409,
+        "unsupported": 422,
+        "timeout": 504,
+        "failed": 503,
+    }.get(result.get("status"), 500)
+    return JSONResponse(result, status_code=status_code)
 
 
 async def dispatch_rebuild(

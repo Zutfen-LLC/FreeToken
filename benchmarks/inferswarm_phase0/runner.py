@@ -630,38 +630,24 @@ class Campaign:
 
     def _check_arm_runtime(self, arm: Arm, instrumentation: Dict[str, Any] | None) -> None:
         """Instrumentation availability and the required resolved fields, for one arm."""
-        if not isinstance(instrumentation, dict) or instrumentation.get("unavailable"):
-            reason = (
-                (instrumentation or {}).get("unavailable")
-                or "/v1/instrumentation returned no document"
-            )
-            self.validity.add(
-                V.INSTRUMENTATION_UNAVAILABLE,
-                f"the resolved configuration could not be read: {reason}",
-                arm_id=arm.id,
-            )
-            return
-        config = instrumentation.get("runtime_config")
-        if not isinstance(config, dict) or not config:
-            self.validity.add(
-                V.RUNTIME_CONFIG_MISSING,
-                "the server served /v1/instrumentation but carried no runtime_config: "
-                + str(instrumentation.get("runtime_config_unavailable") or "reason not given"),
-                arm_id=arm.id,
-            )
-            return
         required = list(REQUIRED_RUNTIME_FIELDS)
-        backend_resolved = _lookup(config, "moe.backend_resolved")
+        raw_config = (
+            instrumentation.get("runtime_config")
+            if isinstance(instrumentation, dict)
+            else None
+        )
+        backend_resolved = (
+            _lookup(raw_config, "moe.backend_resolved")
+            if isinstance(raw_config, dict)
+            else None
+        )
         if backend_resolved == "hybrid":
             required += list(REQUIRED_RUNTIME_FIELDS_HYBRID)
-        for path in required:
-            if _lookup(config, path) is None:
-                self.validity.add(
-                    V.RUNTIME_CONFIG_MISSING_FIELD,
-                    f"required resolved field {path!r} is missing or null; criteria section "
-                    "2.3 requires the resolved value, and a hole is not one",
-                    arm_id=arm.id,
-                )
+        config = V.check_runtime_configuration(
+            self.validity, instrumentation, required, arm_id=arm.id
+        )
+        if config is None:
+            return
         expert_quant = _lookup(config, "model.expert_quant")
         if self.canonical and expert_quant is not None and expert_quant != "nvfp4":
             self.validity.add(
@@ -683,30 +669,10 @@ class Campaign:
                 )
 
     def _check_arm_gpu(self, arm: Arm, verification: Dict[str, Any]) -> None:
-        matches = verification.get("matches")
-        if matches is True:
-            if self.canonical:
-                hardware = verification.get("phase0_hardware") or {}
-                if hardware.get("valid") is not True:
-                    code = str(hardware.get("code") or V.GPU_UNPROVEN)
-                    self.validity.add(
-                        code,
-                        str(hardware.get("message") or "the engine-reported Phase-0 GPU class is unproven"),
-                        arm_id=arm.id,
-                    )
-            return
-        if matches is False:
-            self.validity.add(
-                V.GPU_MISMATCH,
-                f"the engine did not run on the declared physical GPU: "
-                f"{verification.get('mismatch')}",
-                arm_id=arm.id,
-            )
-            return
-        self.validity.add(
-            V.GPU_UNPROVEN,
-            "the physical GPU this arm ran on could not be proven: "
-            + str(verification.get("unavailable") or "reason not given"),
+        V.check_engine_gpu(
+            self.validity,
+            verification,
+            canonical_intent=self.canonical,
             arm_id=arm.id,
         )
 

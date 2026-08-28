@@ -299,6 +299,11 @@ class ForwardOutput(NamedTuple):
 class Engine:
     def __init__(self, config: EngineConfig):
         assert not torch.cuda.is_initialized()
+        if config.moe_trace_max_steps > 0 and config.cuda_graph_max_bs != 0:
+            raise ValueError(
+                "exact MoE routing trace requires cuda_graph_max_bs=0; CUDA graph replay "
+                "cannot be used for exact route capture"
+            )
         set_tp_info(rank=config.tp_info.rank, size=config.tp_info.size)
         _ensure_expandable_segments()  # before the first CUDA allocation below
 
@@ -655,6 +660,9 @@ class Engine:
                 quant_format=banks.quant_format,
                 decode_target=decode_target,
                 hybrid_max_fetch=config.moe_hybrid_max_fetch,
+                trace_max_steps=config.moe_trace_max_steps,
+                trace_max_tokens_per_step=config.max_running_req,
+                trace_top_k=config.model_config.num_experts_per_tok,
             )
             # before set_bank_sources: the residency validation and the copy plan's skip of non-pinned layers key on the CPU-layer set
             cache.cpu_layer_ids = cpu_layer_ids
@@ -665,11 +673,22 @@ class Engine:
             cache.decode_target = decode_target
             cache.hybrid_max_fetch = config.moe_hybrid_max_fetch
             cache.cpu_layer_ids = cpu_layer_ids
+            if config.moe_trace_max_steps > 0 and not getattr(cache, "trace_enabled", False):
+                raise ValueError(
+                    "this model's custom MoE cache factory did not configure exact routing "
+                    "trace storage; refusing to run with tracing silently disabled"
+                )
         if decode_target == "hybrid":
             self._resolve_hybrid_fetch(config, cache)
         # Must be set before CUDA graph capture so the (device-side) accumulation ops are
         # captured and re-run on every decode replay.
-        cache.collect_stats = config.moe_collect_stats
+        cache.collect_stats = config.moe_collect_stats or config.moe_trace_max_steps > 0
+        # The existing routing histogram is eager-correct. Enable it alongside exact
+        # tracing (or eager counter collection), never under graph replay.
+        cache.collect_decode_freq = bool(
+            (config.moe_trace_max_steps > 0 or config.moe_collect_stats)
+            and config.cuda_graph_max_bs == 0
+        )
         # attach_offload_moe_cache walks for OffloadMoELayers, or defers to a model's
         # _iter_offload_moe_layers() hook when its MoE blocks are bespoke nn.Modules (DSV4).
         layers = attach_offload_moe_cache(self.model, cache)
@@ -809,6 +828,31 @@ class Engine:
         self.kv_cache.attach_page_table(self.page_table)
 
     @torch.inference_mode()
+    def moe_instrumentation(self, operation: str) -> dict:
+        """Snapshot/reset the authoritative MoE cache at a scheduler-proven idle boundary.
+
+        For ``reset``, the returned payload is the state immediately *before* the reset so
+        benchmark tooling can retain the warmed residency boundary and discarded warmup
+        counts. The reset then clears only measurement state, never slot residency.
+        """
+        cache = self.moe_offload_cache
+        if cache is None:
+            raise RuntimeError("engine has no offloaded MoE cache")
+        if operation not in ("snapshot", "reset"):
+            raise ValueError(f"unknown MoE instrumentation operation {operation!r}")
+        payload = cache.instrumentation_snapshot()
+        payload["boundary"] = {
+            "operation": operation,
+            "idle": True,
+            "device_synchronized": True,
+            "snapshot_position": "before_reset" if operation == "reset" else "current",
+            "reset_applied": operation == "reset",
+            "residency_preserved_by_reset": operation == "reset",
+        }
+        if operation == "reset":
+            cache.reset_instrumentation()
+        return payload
+
     def rebuild_runtime_cache(
         self,
         *,
