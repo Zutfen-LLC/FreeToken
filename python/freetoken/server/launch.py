@@ -126,6 +126,42 @@ def _run_scheduler(args: ServerArgs, ack_queue: mp.Queue[str]) -> None:
             scheduler.shutdown()
 
 
+def _resolve_server_gpu_args(server_args: ServerArgs) -> ServerArgs:
+    """Resolve primary/secondary selectors before workers spawn, without touching CUDA."""
+    from freetoken.gpu_select import resolve_gpu_uuids
+
+    primary_assigned = server_args.gpu_assigned
+    if server_args.gpu:
+        primary_assigned = resolve_gpu_uuids(server_args.gpu)
+
+    secondary_assigned = server_args.inferswarm_secondary_gpu_assigned
+    secondary = server_args.inferswarm_secondary_gpu
+    if secondary is not None:
+        try:
+            resolved = resolve_gpu_uuids([secondary])
+        except ValueError as exc:
+            message = str(exc).replace("--gpu", "--inferswarm-secondary-gpu", 1)
+            raise ValueError(message) from exc
+        secondary_assigned = resolved[0] if resolved else None
+
+        # With an explicit primary, NVML can reject aliases of the same physical card before
+        # CUDA/model initialization.  The worker repeats this check against CUDA identities,
+        # which also covers an implicit primary and hosts where NVML is unavailable.
+        if primary_assigned and secondary_assigned:
+            primary_uuid = primary_assigned[0]
+            if primary_uuid.upper() == secondary_assigned.upper():
+                raise ValueError(
+                    "--inferswarm-secondary-gpu resolves to the same physical GPU as "
+                    f"the primary ({primary_uuid})"
+                )
+
+    return replace(
+        server_args,
+        gpu_assigned=primary_assigned,
+        inferswarm_secondary_gpu_assigned=secondary_assigned,
+    )
+
+
 def launch_server(
     run_shell: bool = False,
     argv: list[str] | None = None,
@@ -141,17 +177,22 @@ def launch_server(
     )
     logger = init_logger(__name__, "initializer")
 
-    if server_args.gpu:
-        # resolve here so a typo is one clear error before any worker spawns
-        from freetoken.gpu_select import resolve_gpu_uuids
-
+    if server_args.gpu or server_args.inferswarm_secondary_gpu is not None:
+        # Resolve here so a typo is one clear error before any worker spawns. CUDA visibility,
+        # identity, and peer capability are verified again inside the bound engine worker.
         try:
-            server_args = replace(server_args, gpu_assigned=resolve_gpu_uuids(server_args.gpu))
+            server_args = _resolve_server_gpu_args(server_args)
         except ValueError as exc:
             raise SystemExit(f"{prog or 'ft serve'}: error: {exc}") from exc
+    if server_args.gpu:
         logger.info(
             f"--gpu {','.join(server_args.gpu)} -> "
             f"{', '.join(server_args.gpu_assigned) if server_args.gpu_assigned else 'resolved at CUDA init (no NVML)'}"
+        )
+    if server_args.inferswarm_secondary_gpu is not None:
+        logger.info(
+            f"--inferswarm-secondary-gpu {server_args.inferswarm_secondary_gpu} -> "
+            f"{server_args.inferswarm_secondary_gpu_assigned or 'resolved at CUDA init (no NVML)'}"
         )
 
     def start_subprocess() -> "BackendHandle":

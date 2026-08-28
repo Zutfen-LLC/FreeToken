@@ -266,6 +266,9 @@ def build_runtime_report(engine) -> Dict[str, Any]:
     try:
         config = engine.config
         cache = getattr(engine, "moe_offload_cache", None)
+        from freetoken.moe.inferswarm_secondary import absent_secondary_device_report
+
+        secondary = getattr(engine, "inferswarm_secondary_device", None)
         report: Dict[str, Any] = {
             "schema": SCHEMA,
             "offload_family": is_offload_moe_backend(config.moe_backend),
@@ -275,6 +278,13 @@ def build_runtime_report(engine) -> Dict[str, Any]:
             "cache": _cache_block(engine, cache),
             "marlin_cache_cap": _marlin_cap(cache, getattr(engine, "moe_cache_auto_plan", None)),
             "runtime": _runtime_block(engine),
+            # Downstream experimental schema: P1 discovery/provenance only.  This is not an
+            # upstream-stable FreeToken API and does not imply remote model execution.
+            "inferswarm_secondary_device": (
+                secondary.as_dict()
+                if secondary is not None
+                else absent_secondary_device_report()
+            ),
         }
         return report
     except Exception as e:  # noqa: BLE001 -- runs on the readiness path; never block startup

@@ -18,6 +18,11 @@ from types import SimpleNamespace
 import pytest
 
 from freetoken.engine.runtime_report import build_runtime_report, unavailable
+from freetoken.moe.inferswarm_secondary import (
+    HOST_STAGED_REQUIRED,
+    CudaDeviceIdentity,
+    InferSwarmSecondaryDevice,
+)
 from freetoken.moe.offload_cache import MARLIN_MAX_CACHE_SIZE
 
 
@@ -201,6 +206,43 @@ def test_a_broken_engine_yields_an_error_report_rather_than_raising():
 
 def test_unavailable_helper_shape():
     assert unavailable("because") == {"value": None, "unavailable": "because"}
+
+
+def test_runtime_report_records_secondary_as_explicitly_absent():
+    report = build_runtime_report(_engine())
+    secondary = report["inferswarm_secondary_device"]
+    assert secondary["configured"] is False
+    assert secondary["requested_secondary_spec"] is None
+    assert secondary["validation_passed"] is None
+
+
+def test_runtime_report_includes_validated_secondary_provenance():
+    primary = CudaDeviceIdentity(
+        uuid="GPU-primary", visible_ordinal=1, name="primary", total_vram_bytes=12 << 30,
+        free_vram_bytes_at_probe=8 << 30, compute_capability_major=8,
+        compute_capability_minor=6,
+    )
+    secondary = CudaDeviceIdentity(
+        uuid="GPU-secondary", visible_ordinal=0, name="secondary", total_vram_bytes=12 << 30,
+        free_vram_bytes_at_probe=11 << 30, compute_capability_major=8,
+        compute_capability_minor=6,
+    )
+    device = InferSwarmSecondaryDevice(
+        requested_spec="GPU-secondary",
+        primary=primary,
+        secondary=secondary,
+        can_access_peer_primary_to_secondary=False,
+        can_access_peer_secondary_to_primary=False,
+        transport_classification=HOST_STAGED_REQUIRED,
+        primary_current_after_probe=True,
+    )
+    report = build_runtime_report(_engine(inferswarm_secondary_device=device))
+    block = report["inferswarm_secondary_device"]
+    assert block["configured"] is True
+    assert block["validation_passed"] is True
+    assert block["primary"]["uuid"] == "GPU-primary"
+    assert block["secondary"]["visible_cuda_ordinal"] == 0
+    assert block["transport_classification"] == HOST_STAGED_REQUIRED
 
 
 # --- criteria section 2.3 fields that live on SchedulerConfig, not EngineConfig ------------

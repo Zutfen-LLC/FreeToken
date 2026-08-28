@@ -43,6 +43,11 @@ class ServerArgs(SchedulerConfig):
     gpu: tuple[str, ...] = ()
     # full UUIDs resolved from --gpu, entry i = TP rank i; None = NVML unavailable, each worker then resolves its raw entry against CUDA's own enumeration
     gpu_assigned: "tuple[str, ...] | None" = None
+    # InferSwarm Phase-1 POC device, independent of the primary/TP rank list above.
+    inferswarm_secondary_gpu: str | None = None
+    # Full physical UUID resolved by the parent when NVML is available.  The worker still
+    # verifies it against CUDA's visible enumeration before loading the model.
+    inferswarm_secondary_gpu_assigned: str | None = None
 
     @property
     def share_tokenizer(self) -> bool:
@@ -126,6 +131,11 @@ def parse_args(
         from freetoken.gpu_select import gpu_arg
 
         return gpu_arg(value)
+
+    def _lazy_single_gpu_arg(value: str) -> str:
+        from freetoken.gpu_select import single_gpu_arg
+
+        return single_gpu_arg(value)
 
     def _infer_tool_call_parser(model_path: str) -> str:
         try:
@@ -246,6 +256,17 @@ def parse_args(
         help=(
             "GPU(s) to run on, comma-separated; entry i is TP rank i. Each entry is a GPU "
             "UUID (GPU-xxxx..., as nvidia-smi -L prints) or an nvidia-smi index"
+        ),
+    )
+
+    parser.add_argument(
+        "--inferswarm-secondary-gpu",
+        type=_lazy_single_gpu_arg,
+        default=ServerArgs.inferswarm_secondary_gpu,
+        help=(
+            "Experimental InferSwarm Phase-1 POC secondary GPU. Takes one GPU UUID "
+            "(preferred) or one existing FreeToken GPU index; independent of tensor "
+            "parallelism and never changes CUDA_VISIBLE_DEVICES"
         ),
     )
 
@@ -667,6 +688,11 @@ def parse_args(
         parser.error(
             f"--gpu has {len(kwargs['gpu'])} entries but --tensor-parallel-size is "
             f"{kwargs['tensor_parallel_size']}; give one entry per TP rank"
+        )
+    if kwargs["inferswarm_secondary_gpu"] is not None and kwargs["tensor_parallel_size"] != 1:
+        parser.error(
+            "--inferswarm-secondary-gpu is a two-device Phase-1 POC option and currently "
+            "requires --tensor-parallel-size 1; it is not a TP rank"
         )
 
     # resolve some arguments
