@@ -90,6 +90,13 @@ PROVENANCE_MISSING = "provenance.missing_required"
 GENERATION_FAILED = "execution.generation_failed"
 SERVER_FAILED = "execution.server_failed"
 
+# Issue-#3 routing/residency measurement contracts. These have no baseline-arm analogue,
+# so they extend (rather than redefine) the shared Phase-0 vocabulary.
+ROUTING_RUNTIME_IDENTITY_MISMATCH = "routing.runtime_identity_mismatch"
+ROUTING_TRACE_TRUNCATED = "routing.trace_truncated"
+ROUTING_TRACE_INCOMPLETE = "routing.trace_incomplete"
+ROUTING_CACHE_PRESSURE_POINT_CONTRACT = "routing.cache_pressure_point_contract"
+
 
 @dataclass(frozen=True)
 class Invalidation:
@@ -169,6 +176,98 @@ class CampaignValidity:
                 "instrumentation requirement or provenance requirement failed."
             ),
         }
+
+
+def _runtime_lookup(config: Dict[str, Any], path: str) -> Any:
+    value: Any = config
+    for part in path.split("."):
+        if not isinstance(value, dict) or part not in value:
+            return None
+        value = value[part]
+    return value
+
+
+def check_runtime_configuration(
+    state: CampaignValidity,
+    instrumentation: Dict[str, Any] | None,
+    required_fields: Sequence[str],
+    *,
+    arm_id: str | None = None,
+) -> Dict[str, Any] | None:
+    """Apply the shared live-runtime availability/required-field contract.
+
+    Callers retain experiment-specific expected-value checks, but a missing endpoint,
+    runtime report, or required resolved value has one meaning and one reason vocabulary
+    across baseline and routing campaigns.
+    """
+    if not isinstance(instrumentation, dict) or instrumentation.get("unavailable"):
+        reason = (
+            (instrumentation or {}).get("unavailable")
+            if isinstance(instrumentation, dict)
+            else None
+        ) or "/v1/instrumentation returned no document"
+        state.add(
+            INSTRUMENTATION_UNAVAILABLE,
+            f"the resolved configuration could not be read: {reason}",
+            arm_id=arm_id,
+        )
+        return None
+    config = instrumentation.get("runtime_config")
+    if not isinstance(config, dict) or not config:
+        state.add(
+            RUNTIME_CONFIG_MISSING,
+            "the server served /v1/instrumentation but carried no runtime_config: "
+            + str(instrumentation.get("runtime_config_unavailable") or "reason not given"),
+            arm_id=arm_id,
+        )
+        return None
+    for path in required_fields:
+        if _runtime_lookup(config, path) is None:
+            state.add(
+                RUNTIME_CONFIG_MISSING_FIELD,
+                f"required resolved field {path!r} is missing or null; the canonical "
+                "runtime identity requires the live resolved value",
+                arm_id=arm_id,
+            )
+    return config
+
+
+def check_engine_gpu(
+    state: CampaignValidity,
+    verification: Dict[str, Any],
+    *,
+    canonical_intent: bool,
+    arm_id: str | None = None,
+) -> None:
+    """Apply the shared engine-reported physical GPU and Phase-0 hardware gate."""
+    matches = verification.get("matches")
+    if matches is True:
+        if canonical_intent:
+            hardware = verification.get("phase0_hardware") or {}
+            if hardware.get("valid") is not True:
+                state.add(
+                    str(hardware.get("code") or GPU_UNPROVEN),
+                    str(
+                        hardware.get("message")
+                        or "the engine-reported Phase-0 GPU class is unproven"
+                    ),
+                    arm_id=arm_id,
+                )
+        return
+    if matches is False:
+        state.add(
+            GPU_MISMATCH,
+            "the engine did not run on the declared physical GPU: "
+            + str(verification.get("mismatch")),
+            arm_id=arm_id,
+        )
+        return
+    state.add(
+        GPU_UNPROVEN,
+        "the physical GPU this run used could not be proven: "
+        + str(verification.get("unavailable") or "reason not given"),
+        arm_id=arm_id,
+    )
 
 
 def headline(execution_status: str, validity: str) -> str:

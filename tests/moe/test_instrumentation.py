@@ -29,6 +29,25 @@ def test_instrumentation_is_disabled_by_default():
     assert snapshot["collection"]["stats_enabled"] is False
     assert snapshot["trace"]["enabled"] is False
     assert snapshot["trace"]["capacity_steps"] == 0
+    assert snapshot["geometry"]["prefill_overlap_active"] is False
+
+
+def test_snapshot_reports_live_prefill_state_after_small_cache_rebuild():
+    cache = OffloadMoeCache(
+        num_layers=1,
+        num_experts=6,
+        cache_size=12,
+        device=torch.device("cpu"),
+        prefill_overlap=True,
+    )
+    cache.set_bank_sources({
+        "gate_up": [torch.randn(6, 4, 4)],
+        "down": [torch.randn(6, 4, 4)],
+    })
+
+    cache.rebuild(6)
+
+    assert cache.instrumentation_snapshot()["geometry"]["prefill_overlap_active"] is False
 
 
 def test_exact_trace_preserves_step_layer_token_and_topk_order():

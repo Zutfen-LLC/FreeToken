@@ -351,13 +351,13 @@ def cmd_routing(args: argparse.Namespace) -> int:
         print(json.dumps(doc, indent=2))
         return 0
     doc = campaign.execute()
-    print(f"[phase0] routing evidence: {doc['run_directory']}", flush=True)
+    _report(doc)
     print(
         "[phase0] Supports/references Zutfen-LLC/inferswarm#3; real canonical P0-I "
         "measurements and the InferSwarm investigation artifact still remain.",
         flush=True,
     )
-    return 0
+    return _exit_code(doc)
 
 
 def build_parser() -> argparse.ArgumentParser:

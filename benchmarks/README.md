@@ -202,11 +202,13 @@ python benchmarks/phase0_baseline.py routing \
 The command deliberately starts two modes. `exact_trace` uses eager decode
 (`--cuda-graph-max-bs 0`) and a bounded on-device route buffer; any truncation rejects a
 canonical observation. Its timing is not Phase-0 performance evidence. `cache_pressure`
-uses the existing graph-safe hit/miss/fetch counters with exact tracing off. It starts at
-the auto-resolved feasible cache size `A`, reads the authoritative rebuild minimum `M`, and
-predeclares `M + floor((A-M)q/4)` for `q=0..4`, deduplicating integer collisions before any
-miss rate is observed. Fewer than four distinct feasible points is not accepted as a
-canonical curve.
+uses the existing graph-safe hit/miss/fetch counters with exact tracing off and explicitly
+passes `--disable-moe-prefill-overlap`. That pins prefill policy while the sweep crosses the
+`2 * num_experts` threshold where a runtime rebuild would otherwise disable overlap as a
+side effect. It starts at the auto-resolved feasible cache size `A`, reads the authoritative
+rebuild minimum `M`, and predeclares `M + floor((A-M)q/4)` for `q=0..4`, deduplicating
+integer collisions before any miss rate is observed. Fewer than four distinct feasible
+points is not accepted as a canonical curve.
 
 At every cache-size/workload boundary the runner records cold/rebuild residency, discarded
 warmup hashes and counts, the residency immediately before measurement, each raw measured
@@ -215,6 +217,12 @@ engine through correlated control messages; the scheduler returns `busy` unless 
 fully idle request boundary. A reset response snapshots the pre-reset counters/residency,
 then clears only counters, histogram, and exact trace. The authoritative slot map—and thus
 the warmed cache—remains unchanged.
+
+Immediately after every pressure rebuild and before warmup, the runner snapshots the live
+cache and records point-level checks for requested/resolved slots, LRU policy, GPU decode
+target, active statistics, and inactive prefill overlap. A failed check invalidates and
+refuses that point; the boundary evidence remains in `cache-pressure.jsonl` and the missing
+planned observations make the run `INCOMPLETE`.
 
 Artifacts contain fixture/request/output hashes and exact token counts, never prompt or
 generated output text:
@@ -231,7 +239,16 @@ activity since the last instrumentation reset or cache rebuild; residency is ins
 at the synchronized idle boundary and comes from `id_of_slot`, not configured coverage.
 `configured_slots`/`configured_cache_fraction` remain separate from actual resident expert
 identities. Histogram counts are indexed `[MoE layer][expert id]`; exact routes are ordered
-by decode step, MoE layer, token row, and router top-k order.
+by decode step, MoE layer, token row, and router top-k order. The geometry block also reports
+the live cache object's `prefill_overlap_active` state.
+
+Routing run documents use the same `CampaignValidity` contract as the baseline harness:
+`canonical_intent` records what was requested, `validity` is `VALID`, `INVALID`, or
+`NON_CANONICAL`, and `execution_status` is independently `COMPLETE` or `INCOMPLETE`.
+Server-reported token shapes, exact completion lengths, live GPU identity, resolved Qwen3.6
+NVFP4 offload identity, exact trace completeness, point contracts, and planned-observation
+counts all feed that verdict. Violating observations are retained rather than rewritten or
+discarded.
 
 ### Hardware profile
 

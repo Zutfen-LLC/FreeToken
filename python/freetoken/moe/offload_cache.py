@@ -1142,6 +1142,9 @@ class OffloadMoeCache:
                 "num_routed_experts": self.num_experts,
                 "cache_policy": self.cache_policy,
                 "decode_target": self.decode_target,
+                # Live cache state, not the startup EngineConfig: rebuild() may disable
+                # overlap when the resized cache cannot hold both prefill buffers.
+                "prefill_overlap_active": bool(self.prefill_overlap),
             },
             "collection": {
                 "stats_enabled": bool(self.collect_stats),

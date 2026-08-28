@@ -20,12 +20,51 @@ from typing import Any, Dict
 from . import CANONICAL_MODEL_REPOSITORY, HARNESS_VERSION
 from . import gpu as gpu_mod
 from . import provenance as prov
-from .client import free_port, get_json, start_server, stop_server, stream_generation
-from .manifest import Manifest, REQUIRED_CLASSES
+from . import validity as V
+from .client import (
+    fetch_instrumentation,
+    free_port,
+    get_json,
+    start_server,
+    stop_server,
+    stream_generation,
+)
+from .manifest import (
+    Manifest,
+    REQUIRED_CLASSES,
+    check_completion_tokens,
+    check_prompt_tokens,
+)
 
 ROUTING_RUN_SCHEMA = "inferswarm.phase0.routing-run/1"
 ROUTING_OBSERVATION_SCHEMA = "inferswarm.phase0.routing-observation/1"
 PRESSURE_OBSERVATION_SCHEMA = "inferswarm.phase0.cache-pressure-observation/1"
+
+ROUTING_RUNTIME_FIELDS = (
+    "model.expert_quant",
+    "model.is_moe",
+    "model.num_moe_layers",
+    "model.num_experts",
+    "model.top_k",
+    "moe.backend_resolved",
+    "moe.decode_target",
+    "moe.collect_stats",
+    "moe.trace_enabled",
+    "nvfp4.resolved",
+    "cache.moe_cache_policy",
+    "cache.resolved_slots",
+    "runtime.max_running_req",
+    "runtime.cuda_graph_max_bs",
+)
+
+
+def _lookup(config: dict[str, Any], path: str) -> Any:
+    value: Any = config
+    for part in path.split("."):
+        if not isinstance(value, dict) or part not in value:
+            return None
+        value = value[part]
+    return value
 
 
 @dataclass(frozen=True)
@@ -95,6 +134,10 @@ def _serve_command(
     ]
     if exact:
         command += ["--moe-trace-max-steps", str(settings.trace_max_steps)]
+    else:
+        # The pressure sweep intentionally crosses the 2*num_experts overlap threshold.
+        # Pin prefill policy off so cache capacity is the only swept cache variable.
+        command.append("--disable-moe-prefill-overlap")
     if settings.kv_reserve_tokens is not None:
         command += ["--kv-reserve-tokens", str(settings.kv_reserve_tokens)]
     if settings.max_seq_len_override is not None:
@@ -142,8 +185,10 @@ def build_routing_plan(
                 index += 1
     return {
         "schema": "inferswarm.phase0.routing-plan/1",
-        "canonical": canonical,
-        "non_canonical": not canonical,
+        "canonical_intent": canonical,
+        "planned_validity": (
+            "PENDING_RUNTIME_VALIDATION" if canonical else V.VALIDITY_NON_CANONICAL
+        ),
         "session_id": session_id,
         "workload_classes": ordered,
         "workload_manifest": manifest.record(),
@@ -278,6 +323,14 @@ class RoutingCampaign:
         self.reverse_order = reverse_order
         self.echo_server_output = echo_server_output
         self.gpu_selection = gpu_mod.resolve_gpu(settings.gpu)
+        self.validity = V.CampaignValidity(canonical_intent=canonical)
+        self.validity.canonical_blockers = self._canonical_blockers()
+        self.expected_observations = 0
+        self.observed_observations = 0
+        self.failures: list[dict[str, Any]] = []
+        self.exact_phase_completed = False
+        self.pressure_plan_resolved = False
+        self.pressure_phase_completed = False
 
     def plan(self) -> dict:
         return build_routing_plan(
@@ -289,6 +342,19 @@ class RoutingCampaign:
             canonical=self.canonical,
             reverse_order=self.reverse_order,
         )
+
+    def _canonical_blockers(self) -> list[str]:
+        blockers = []
+        if not self.canonical:
+            blockers.append("canonical mode is off (--dev-smoke / --allow-missing-provenance)")
+        if not self.manifest.canonical:
+            blockers.append(
+                f"workload manifest {self.manifest.manifest_id} declares canonical=false"
+            )
+        missing = self.manifest.missing_classes()
+        if missing:
+            blockers.append(f"workload manifest is missing classes {missing}")
+        return list(dict.fromkeys(blockers))
 
     def _preflight(self) -> None:
         self.plan()
@@ -332,6 +398,181 @@ class RoutingCampaign:
             ),
         }
 
+    def _check_runtime_identity(
+        self,
+        *,
+        mode: str,
+        instrumentation: dict[str, Any] | None,
+        gpu_verification: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Validate the live engine identity needed by this investigation mode."""
+        config = V.check_runtime_configuration(
+            self.validity,
+            instrumentation,
+            ROUTING_RUNTIME_FIELDS,
+            arm_id=mode,
+        )
+        V.check_engine_gpu(
+            self.validity,
+            gpu_verification,
+            canonical_intent=self.canonical,
+            arm_id=mode,
+        )
+        expected = {
+            "model.expert_quant": "nvfp4",
+            "model.is_moe": True,
+            "moe.backend_resolved": "offload",
+            "moe.decode_target": "gpu",
+            "moe.collect_stats": True,
+            "moe.trace_enabled": mode == "exact_trace",
+            "nvfp4.resolved": self.settings.nvfp4_backend,
+            "cache.moe_cache_policy": "lru",
+            "runtime.max_running_req": 1,
+            "runtime.cuda_graph_max_bs": (
+                0 if mode == "exact_trace" else self.settings.pressure_cuda_graph_max_bs
+            ),
+        }
+        checks: dict[str, Any] = {}
+        if config is not None:
+            for path, wanted in expected.items():
+                observed = _lookup(config, path)
+                matches = observed == wanted
+                checks[path] = {"expected": wanted, "observed": observed, "matches": matches}
+                if not matches:
+                    self.validity.add(
+                        V.ROUTING_RUNTIME_IDENTITY_MISMATCH,
+                        f"{mode} live runtime field {path!r}={observed!r}, expected {wanted!r}",
+                        arm_id=mode,
+                    )
+            for path in ("model.num_moe_layers", "model.num_experts", "model.top_k"):
+                observed = _lookup(config, path)
+                positive = isinstance(observed, int) and not isinstance(observed, bool) and observed > 0
+                checks[path] = {"expected": "positive integer", "observed": observed, "matches": positive}
+                if not positive:
+                    self.validity.add(
+                        V.ROUTING_RUNTIME_IDENTITY_MISMATCH,
+                        f"{mode} live runtime field {path!r} must be a positive integer, got {observed!r}",
+                        arm_id=mode,
+                    )
+        return {
+            "instrumentation": instrumentation,
+            "gpu_verification": gpu_verification,
+            "expected_runtime_identity": expected,
+            "runtime_identity_checks": checks,
+        }
+
+    def _check_generation_contract(
+        self,
+        *,
+        class_id: str,
+        execution_index: int,
+        evidence: dict[str, Any],
+    ) -> None:
+        prompt_deviation = check_prompt_tokens(class_id, evidence["prompt_tokens"])
+        completion_deviation = check_completion_tokens(
+            class_id,
+            evidence.get("completion_tokens"),
+            evidence.get("requested_completion_tokens"),
+        )
+        evidence["prompt_token_deviation"] = prompt_deviation
+        evidence["completion_length_deviation"] = completion_deviation
+        if prompt_deviation:
+            self.validity.add(
+                V.PROMPT_SHAPE_VIOLATION,
+                prompt_deviation + ". The raw routing observation is preserved.",
+                class_id=class_id,
+                execution_index=execution_index,
+            )
+        if completion_deviation:
+            self.validity.add(
+                V.COMPLETION_LENGTH_MISMATCH,
+                completion_deviation,
+                class_id=class_id,
+                execution_index=execution_index,
+            )
+
+    def _observe_generation(
+        self,
+        *,
+        origin: str,
+        workload: Any,
+        model_id: str,
+        output: Path,
+        mode: str,
+        phase: str,
+        repetition: int,
+        execution_index: int,
+    ) -> dict[str, Any] | None:
+        try:
+            evidence = self._run_generation(origin, workload, model_id)
+        except (OSError, RuntimeError, ValueError) as exc:
+            failure = {
+                "schema": (
+                    ROUTING_OBSERVATION_SCHEMA
+                    if mode == "exact_trace"
+                    else PRESSURE_OBSERVATION_SCHEMA
+                ),
+                "record_type": "observation_failure",
+                "session_id": self.session_id,
+                "execution_index": execution_index,
+                "mode": mode,
+                "phase": phase,
+                "class_id": workload.class_id,
+                "repetition": repetition,
+                "error": repr(exc),
+                "prompt_text_stored": False,
+                "output_text_stored": False,
+            }
+            self.failures.append(failure)
+            self.validity.add(
+                V.GENERATION_FAILED,
+                f"{mode}/{workload.class_id} repetition {repetition}: {exc!r}",
+                class_id=workload.class_id,
+                execution_index=execution_index,
+            )
+            _append(output, failure)
+            return None
+        self.observed_observations += 1
+        self._check_generation_contract(
+            class_id=workload.class_id,
+            execution_index=execution_index,
+            evidence=evidence,
+        )
+        return evidence
+
+    @staticmethod
+    def _pressure_point_contract(snapshot: dict[str, Any], requested_slots: int) -> dict[str, Any]:
+        geometry = snapshot.get("geometry") or {}
+        collection = snapshot.get("collection") or {}
+        checks = {
+            "resolved_cache_slots": {
+                "expected": requested_slots,
+                "observed": geometry.get("resolved_cache_slots"),
+                "matches": geometry.get("resolved_cache_slots") == requested_slots,
+            },
+            "cache_policy": {
+                "expected": "lru",
+                "observed": geometry.get("cache_policy"),
+                "matches": geometry.get("cache_policy") == "lru",
+            },
+            "decode_target": {
+                "expected": "gpu",
+                "observed": geometry.get("decode_target"),
+                "matches": geometry.get("decode_target") == "gpu",
+            },
+            "stats_enabled": {
+                "expected": True,
+                "observed": collection.get("stats_enabled"),
+                "matches": collection.get("stats_enabled") is True,
+            },
+            "prefill_overlap_active": {
+                "expected": False,
+                "observed": geometry.get("prefill_overlap_active"),
+                "matches": geometry.get("prefill_overlap_active") is False,
+            },
+        }
+        return {"valid": all(item["matches"] for item in checks.values()), "checks": checks}
+
     def _run_generation(self, origin: str, workload: Any, model_id: str) -> dict:
         body = workload.request_body(model_id)
         result = stream_generation(origin, body, timeout=3600.0)
@@ -362,16 +603,64 @@ class RoutingCampaign:
                 cache_state = "post_server_start_before_workload"
 
             cold = _control(origin, "snapshot")
+            point_contract = None
+            if cache_point is not None:
+                point_contract = self._pressure_point_contract(
+                    cold, int(cache_point["resolved_slots"])
+                )
+                point_record = {
+                    "schema": PRESSURE_OBSERVATION_SCHEMA,
+                    "record_type": "point_pre_warmup",
+                    "session_id": self.session_id,
+                    "execution_index": execution_index,
+                    "class_id": workload.class_id,
+                    "cache_point": cache_point,
+                    "cache_rebuild": rebuild,
+                    "point_runtime_provenance": {
+                        "geometry": cold.get("geometry"),
+                        "collection": cold.get("collection"),
+                    },
+                    "point_contract": point_contract,
+                    "measured": False,
+                }
+                _append(output, point_record)
+                if not point_contract["valid"]:
+                    failures = [
+                        name
+                        for name, check in point_contract["checks"].items()
+                        if not check["matches"]
+                    ]
+                    self.validity.add(
+                        V.ROUTING_CACHE_PRESSURE_POINT_CONTRACT,
+                        f"cache-pressure point {cache_point['resolved_slots']} for "
+                        f"{workload.class_id} failed live checks {failures}; the point was "
+                        "refused before warmup and its boundary evidence was preserved",
+                        class_id=workload.class_id,
+                        execution_index=execution_index,
+                    )
+                    execution_index += self.warmups + self.repetitions
+                    continue
             warmup_observations = []
             for repetition in range(self.warmups):
-                warmup_observations.append(
-                    {
-                        "execution_index": execution_index,
-                        "mode": "exact_trace" if exact else "cache_pressure",
-                        "repetition": repetition,
-                        **self._run_generation(origin, workload, model_id),
-                    }
+                evidence = self._observe_generation(
+                    origin=origin,
+                    workload=workload,
+                    model_id=model_id,
+                    output=output,
+                    mode="exact_trace" if exact else "cache_pressure",
+                    phase="discarded_warmup",
+                    repetition=repetition,
+                    execution_index=execution_index,
                 )
+                if evidence is not None:
+                    warmup_observations.append(
+                        {
+                            "execution_index": execution_index,
+                            "mode": "exact_trace" if exact else "cache_pressure",
+                            "repetition": repetition,
+                            **evidence,
+                        }
+                    )
                 execution_index += 1
             before_measured = _control(origin, "reset")
             _append(
@@ -388,6 +677,15 @@ class RoutingCampaign:
                     "cold_state_kind": cache_state,
                     "cold_state_note": cache_state_note,
                     "cold_residency": cold["residency"],
+                    "point_runtime_provenance": (
+                        {
+                            "geometry": cold.get("geometry"),
+                            "collection": cold.get("collection"),
+                        }
+                        if cache_point is not None
+                        else None
+                    ),
+                    "point_contract": point_contract,
                     "discarded_warmup_observations": warmup_observations,
                     "discarded_warmup_counts": before_measured["aggregate"],
                     "residency_immediately_before_measured": before_measured["residency"],
@@ -399,7 +697,19 @@ class RoutingCampaign:
             )
             starting_residency = before_measured["residency"]
             for repetition in range(self.repetitions):
-                evidence = self._run_generation(origin, workload, model_id)
+                evidence = self._observe_generation(
+                    origin=origin,
+                    workload=workload,
+                    model_id=model_id,
+                    output=output,
+                    mode="exact_trace" if exact else "cache_pressure",
+                    phase="measured",
+                    repetition=repetition,
+                    execution_index=execution_index,
+                )
+                if evidence is None:
+                    execution_index += 1
+                    continue
                 snapshot = _control(origin, "reset")
                 record = {
                     "schema": (
@@ -452,22 +762,28 @@ class RoutingCampaign:
                 if exact and snapshot["trace"].get("truncated"):
                     message = (
                         f"exact trace truncated for {workload.class_id} repetition {repetition}; "
-                        "the observation is rejected"
+                        "the raw observation is preserved but invalid"
                     )
-                    if self.canonical:
-                        _append(output, {**record, "canonical_trace_rejection": message})
-                        raise RuntimeError(message)
-                    record["non_canonical_trace_rejection"] = message
+                    self.validity.add(
+                        V.ROUTING_TRACE_TRUNCATED,
+                        message,
+                        class_id=workload.class_id,
+                        execution_index=execution_index,
+                    )
+                    record["trace_contract_violation"] = message
                 if exact and not record["trace_completeness"]["complete"]:
                     message = (
                         f"exact trace step count does not cover the completion for "
                         f"{workload.class_id} repetition {repetition}: "
                         f"{record['trace_completeness']}"
                     )
-                    if self.canonical:
-                        _append(output, {**record, "canonical_trace_rejection": message})
-                        raise RuntimeError(message)
-                    record["non_canonical_trace_rejection"] = message
+                    self.validity.add(
+                        V.ROUTING_TRACE_INCOMPLETE,
+                        message,
+                        class_id=workload.class_id,
+                        execution_index=execution_index,
+                    )
+                    record["trace_contract_violation"] = message
                 _append(output, record)
                 starting_residency = snapshot["residency"]
                 execution_index += 1
@@ -487,6 +803,52 @@ class RoutingCampaign:
             echo=self.echo_server_output,
         )
         return handle, origin, command
+
+    def _finalize_document(self, doc: dict[str, Any], root: Path) -> dict[str, Any]:
+        complete = (
+            self.exact_phase_completed
+            and self.pressure_plan_resolved
+            and self.pressure_phase_completed
+            and not self.failures
+            and self.observed_observations == self.expected_observations
+        )
+        execution_status = (
+            V.EXECUTION_COMPLETE if complete else V.EXECUTION_INCOMPLETE
+        )
+        verdict = self.validity.verdict()
+        body = {key: value for key, value in doc.items() if key != "schema"}
+        final = {
+            "schema": ROUTING_RUN_SCHEMA,
+            "headline": V.headline(execution_status, verdict),
+            "execution_status": execution_status,
+            **self.validity.record(),
+            "label": "MEASURED" if complete else "INCOMPLETE",
+            **body,
+            "observations": {
+                "expected": self.expected_observations,
+                "observed": self.observed_observations,
+                "missing": max(0, self.expected_observations - self.observed_observations),
+            },
+            "phase_completion": {
+                "exact_trace": self.exact_phase_completed,
+                "cache_pressure_plan_resolved": self.pressure_plan_resolved,
+                "cache_pressure": self.pressure_phase_completed,
+            },
+            "failures": list(self.failures),
+            "run_directory": str(root),
+        }
+        (root / "run.json").write_text(json.dumps(final, indent=2) + "\n")
+        return final
+
+    def _record_mode_failure(self, mode: str, exc: Exception) -> None:
+        failure = {
+            "mode": mode,
+            "error": repr(exc),
+            "prompt_text_stored": False,
+            "output_text_stored": False,
+        }
+        self.failures.append(failure)
+        self.validity.add(V.SERVER_FAILED, f"{mode}: {exc!r}", arm_id=mode)
 
     def execute(self) -> dict:
         self._preflight()
@@ -508,8 +870,6 @@ class RoutingCampaign:
         plan = self.plan()
         doc: dict[str, Any] = {
             "schema": ROUTING_RUN_SCHEMA,
-            "canonical": self.canonical,
-            "non_canonical": not self.canonical,
             "synthetic_or_dummy_output_is_canonical_evidence": False,
             "issue": "supports/references Zutfen-LLC/inferswarm#3; does not complete it",
             "session_id": self.session_id,
@@ -523,19 +883,30 @@ class RoutingCampaign:
                 "server_logs": "server-logs/",
             },
             "claims_generated": [],
-            "execution_status": "IN_PROGRESS",
         }
-        (root / "run.json").write_text(json.dumps(doc, indent=2) + "\n")
+        self.expected_observations = len(self.manifest.workloads) * (
+            self.warmups + self.repetitions
+        )
+        self._finalize_document(doc, root)
 
         execution_index = 0
         handle = None
         try:
             handle, origin, command = self._start_mode(root, exact=True)
             model_id = _model_id(origin)
+            instrumentation = fetch_instrumentation(origin)
+            reported_gpus = gpu_mod.engine_gpus(origin)
+            gpu_verification = gpu_mod.verify_engine_gpu(
+                self.gpu_selection, reported_gpus
+            )
             doc["exact_trace_runtime"] = {
                 "serve_command": command,
-                "frontend_instrumentation": get_json(f"{origin}/v1/instrumentation"),
-                "engine_gpus": gpu_mod.engine_gpus(origin),
+                **self._check_runtime_identity(
+                    mode="exact_trace",
+                    instrumentation=instrumentation,
+                    gpu_verification=gpu_verification,
+                ),
+                "engine_gpus": reported_gpus,
                 "cache_status_at_start": get_json(f"{origin}/v1/cache/status"),
             }
             execution_index = self._run_blocks(
@@ -545,6 +916,9 @@ class RoutingCampaign:
                 exact=True,
                 execution_index=execution_index,
             )
+            self.exact_phase_completed = True
+        except Exception as exc:  # noqa: BLE001 -- preserve an incomplete artifact
+            self._record_mode_failure("exact_trace", exc)
         finally:
             if handle is not None:
                 stop_server(handle)
@@ -553,30 +927,42 @@ class RoutingCampaign:
         try:
             handle, origin, command = self._start_mode(root, exact=False)
             model_id = _model_id(origin)
-            runtime = get_json(f"{origin}/v1/instrumentation")
+            runtime = fetch_instrumentation(origin)
+            reported_gpus = gpu_mod.engine_gpus(origin)
+            gpu_verification = gpu_mod.verify_engine_gpu(
+                self.gpu_selection, reported_gpus
+            )
             status = get_json(f"{origin}/v1/cache/status")
             geometry = status.get("geometry") or {}
             auto_slots = int(geometry.get("moe_cache_size") or 0)
             minimum = int(((geometry.get("limits") or {}).get("moe_experts") or {}).get("min") or 0)
             if minimum < 1:
-                if self.canonical:
-                    raise RuntimeError("authoritative MoE cache minimum M is unavailable")
-                minimum = int(geometry.get("num_experts") or 0)
+                raise RuntimeError("authoritative MoE cache minimum M is unavailable")
             points = cache_sweep_points(
                 minimum,
                 auto_slots,
                 int(geometry.get("num_moe_layers") or 0),
                 int(geometry.get("num_experts") or 0),
             )
+            self.pressure_plan_resolved = True
+            self.expected_observations += len(points) * len(self.manifest.workloads) * (
+                self.warmups + self.repetitions
+            )
             if self.canonical and len(points) < 4:
-                raise RuntimeError(
+                self.validity.add(
+                    V.ROUTING_CACHE_PRESSURE_POINT_CONTRACT,
                     f"canonical cache-pressure result cannot be called a curve: only {len(points)} "
-                    "distinct feasible quartile points remain"
+                    "distinct feasible quartile points remain",
+                    arm_id="cache_pressure",
                 )
             doc["cache_pressure_runtime"] = {
                 "serve_command": command,
-                "frontend_instrumentation": runtime,
-                "engine_gpus": gpu_mod.engine_gpus(origin),
+                **self._check_runtime_identity(
+                    mode="cache_pressure",
+                    instrumentation=runtime,
+                    gpu_verification=gpu_verification,
+                ),
+                "engine_gpus": reported_gpus,
                 "authoritative_minimum_slots_M": minimum,
                 "auto_resolved_slots_A": auto_slots,
                 "predeclared_sweep_points": points,
@@ -591,12 +977,12 @@ class RoutingCampaign:
                     cache_point=point,
                     execution_index=execution_index,
                 )
+            self.pressure_phase_completed = True
+        except Exception as exc:  # noqa: BLE001 -- preserve an incomplete artifact
+            self._record_mode_failure("cache_pressure", exc)
         finally:
             if handle is not None:
                 stop_server(handle)
 
-        doc["execution_status"] = "COMPLETE"
         doc["execution_observations"] = execution_index
-        doc["run_directory"] = str(root)
-        (root / "run.json").write_text(json.dumps(doc, indent=2) + "\n")
-        return doc
+        return self._finalize_document(doc, root)
