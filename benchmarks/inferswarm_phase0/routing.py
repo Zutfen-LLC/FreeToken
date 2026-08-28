@@ -739,10 +739,13 @@ class RoutingCampaign:
                             "misses",
                             "fetches",
                             "decode_steps",
-                            "routing_histogram",
                             "resident_expert_ids",
-                        ] + (["exact_routes"] if exact else []),
-                        "derived": ["miss_rate", "cache_fraction", "routing_concentration"],
+                        ] + (
+                            ["routing_histogram", "exact_routes"] if exact else []
+                        ),
+                        "derived": ["miss_rate", "cache_fraction"] + (
+                            ["routing_concentration"] if exact else []
+                        ),
                     },
                     "latency_is_phase0_performance_evidence": False,
                 }

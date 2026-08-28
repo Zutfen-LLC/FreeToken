@@ -403,3 +403,41 @@ def test_pressure_point_provenance_pins_live_prefill_policy_at_the_minimum(
     assert minimum["cache_point"]["resolved_slots"] == 256
     assert minimum["point_runtime_provenance"]["geometry"]["prefill_overlap_active"] is False
     assert minimum["point_contract"]["valid"] is True
+
+
+def test_quantity_labels_match_the_data_each_routing_mode_actually_emits(
+    tmp_path, routed_server
+):
+    doc = _routing_campaign(tmp_path).execute()
+    root = Path(doc["run_directory"])
+
+    def first_measured(name):
+        return next(
+            json.loads(line)
+            for line in (root / name).read_text().splitlines()
+            if json.loads(line)["record_type"] == "measured_repetition"
+        )
+
+    exact = first_measured("exact-routing.jsonl")["quantity_labels"]
+    pressure = first_measured("cache-pressure.jsonl")["quantity_labels"]
+
+    assert set(exact["measured"]) == {
+            "active_selections",
+            "misses",
+            "fetches",
+            "decode_steps",
+            "resident_expert_ids",
+            "routing_histogram",
+            "exact_routes",
+    }
+    assert set(exact["derived"]) == {
+        "miss_rate", "cache_fraction", "routing_concentration"
+    }
+    assert set(pressure["measured"]) == {
+            "active_selections",
+            "misses",
+            "fetches",
+            "decode_steps",
+            "resident_expert_ids",
+    }
+    assert set(pressure["derived"]) == {"miss_rate", "cache_fraction"}
