@@ -28,11 +28,34 @@ def test_parser_accepts_no_secondary_without_changing_defaults():
     args = _parse()
     assert args.inferswarm_secondary_gpu is None
     assert args.inferswarm_secondary_gpu_assigned is None
+    assert args.inferswarm_placement is None
 
 
 def test_parser_accepts_exactly_one_secondary_spec():
     args = _parse("--inferswarm-secondary-gpu", SECONDARY_UUID)
     assert args.inferswarm_secondary_gpu == SECONDARY_UUID
+
+
+def test_placement_without_secondary_is_rejected_explicitly():
+    with pytest.raises(SystemExit):
+        _parse("--inferswarm-placement", "/tmp/placement.json")
+
+
+def test_secondary_without_placement_preserves_probe_only_configuration():
+    args = _parse("--inferswarm-secondary-gpu", SECONDARY_UUID)
+    assert args.inferswarm_secondary_gpu == SECONDARY_UUID
+    assert args.inferswarm_placement is None
+
+
+def test_secondary_and_placement_enable_p2_configuration():
+    args = _parse(
+        "--inferswarm-secondary-gpu",
+        SECONDARY_UUID,
+        "--inferswarm-placement",
+        "/tmp/placement.json",
+    )
+    assert args.inferswarm_secondary_gpu == SECONDARY_UUID
+    assert args.inferswarm_placement == "/tmp/placement.json"
 
 
 @pytest.mark.parametrize("value", ["0,1", f"{PRIMARY_UUID},{SECONDARY_UUID}"])

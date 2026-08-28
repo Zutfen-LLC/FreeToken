@@ -48,6 +48,10 @@ class ServerArgs(SchedulerConfig):
     # Full physical UUID resolved by the parent when NVML is available.  The worker still
     # verifies it against CUDA's visible enumeration before loading the model.
     inferswarm_secondary_gpu_assigned: str | None = None
+    # InferSwarm Phase-1 P2 frozen placement artifact. It is meaningful only alongside the
+    # explicitly resolved secondary above; the path is deliberately withheld from runtime
+    # provenance because it is host-local.
+    inferswarm_placement: str | None = None
 
     @property
     def share_tokenizer(self) -> bool:
@@ -267,6 +271,16 @@ def parse_args(
             "Experimental InferSwarm Phase-1 POC secondary GPU. Takes one GPU UUID "
             "(preferred) or one existing FreeToken GPU index; independent of tensor "
             "parallelism and never changes CUDA_VISIBLE_DEVICES"
+        ),
+    )
+
+    parser.add_argument(
+        "--inferswarm-placement",
+        type=str,
+        default=ServerArgs.inferswarm_placement,
+        help=(
+            "Experimental InferSwarm Phase-1 P2 frozen placement artifact. Requires "
+            "--inferswarm-secondary-gpu and loads an inert resident expert bank at startup"
         ),
     )
 
@@ -694,6 +708,11 @@ def parse_args(
             "--inferswarm-secondary-gpu is a two-device Phase-1 POC option and currently "
             "requires --tensor-parallel-size 1; it is not a TP rank"
         )
+    if (
+        kwargs["inferswarm_placement"] is not None
+        and kwargs["inferswarm_secondary_gpu"] is None
+    ):
+        parser.error("--inferswarm-placement requires --inferswarm-secondary-gpu")
 
     # resolve some arguments
     run_shell |= kwargs.pop("shell_mode")
@@ -711,6 +730,8 @@ def parse_args(
 
     if kwargs["model_path"].startswith("~"):
         kwargs["model_path"] = os.path.expanduser(kwargs["model_path"])
+    if kwargs["inferswarm_placement"] is not None:
+        kwargs["inferswarm_placement"] = os.path.expanduser(kwargs["inferswarm_placement"])
 
     if kwargs["served_model_name"] is None:
         kwargs["served_model_name"] = (

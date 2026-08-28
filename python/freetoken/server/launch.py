@@ -194,6 +194,10 @@ def launch_server(
             f"--inferswarm-secondary-gpu {server_args.inferswarm_secondary_gpu} -> "
             f"{server_args.inferswarm_secondary_gpu_assigned or 'resolved at CUDA init (no NVML)'}"
         )
+    if server_args.inferswarm_placement is not None:
+        logger.info(
+            "--inferswarm-placement configured (host-local path withheld from provenance)"
+        )
 
     def start_subprocess() -> "BackendHandle":
         import multiprocessing as mp
