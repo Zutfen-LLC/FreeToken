@@ -214,6 +214,12 @@ def test_runtime_report_records_secondary_as_explicitly_absent():
     assert secondary["configured"] is False
     assert secondary["requested_secondary_spec"] is None
     assert secondary["validation_passed"] is None
+    resident = report["inferswarm_resident_bank"]
+    assert resident["placement_configured"] is False
+    assert resident["resident_bank_loaded"] is False
+    assert resident["remote_execution_enabled"] is False
+    assert resident["decode_dispatches_to_secondary"] == 0
+    assert resident["steady_state_expert_weight_bytes_host_to_gpu1"] == 0
 
 
 def test_runtime_report_includes_validated_secondary_provenance():
@@ -243,6 +249,18 @@ def test_runtime_report_includes_validated_secondary_provenance():
     assert block["primary"]["uuid"] == "GPU-primary"
     assert block["secondary"]["visible_cuda_ordinal"] == 0
     assert block["transport_classification"] == HOST_STAGED_REQUIRED
+
+
+def test_runtime_report_includes_the_loaded_inert_resident_bank_report():
+    resident_report = {
+        "placement_configured": True,
+        "resident_bank_loaded": True,
+        "remote_execution_enabled": False,
+        "decode_dispatches_to_secondary": 0,
+    }
+    resident = SimpleNamespace(report=SimpleNamespace(as_dict=lambda: resident_report))
+    report = build_runtime_report(_engine(inferswarm_resident_bank=resident))
+    assert report["inferswarm_resident_bank"] == resident_report
 
 
 # --- criteria section 2.3 fields that live on SchedulerConfig, not EngineConfig ------------

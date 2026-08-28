@@ -314,11 +314,17 @@ class Engine:
         # model loading.  With the option absent this imports nothing, initializes no second
         # CUDA context, and preserves the existing one-GPU path exactly.
         self.inferswarm_secondary_device = None
-        if getattr(config, "inferswarm_secondary_gpu", None) is not None:
+        self.inferswarm_placement = None
+        self.inferswarm_resident_bank = None
+        placement_path = getattr(config, "inferswarm_placement", None)
+        secondary_spec = getattr(config, "inferswarm_secondary_gpu", None)
+        if placement_path is not None and secondary_spec is None:
+            raise ValueError("--inferswarm-placement requires --inferswarm-secondary-gpu")
+        if secondary_spec is not None:
             from freetoken.moe.inferswarm_secondary import probe_secondary_device
 
             self.inferswarm_secondary_device = probe_secondary_device(
-                config.inferswarm_secondary_gpu,
+                secondary_spec,
                 resolved_uuid=getattr(
                     config, "inferswarm_secondary_gpu_assigned", None
                 ),
@@ -329,12 +335,23 @@ class Engine:
                     else None
                 ),
             )
+        if placement_path is not None:
+            from freetoken.moe.inferswarm_resident_bank import load_frozen_placement
+
+            self.inferswarm_placement = load_frozen_placement(placement_path)
         # _adjust_config resolves `auto` IN PLACE, so the flag text is only readable before it.
         # Kept for the runtime report: "requested" and "resolved" are different provenance facts.
         self._requested_moe_backend = config.moe_backend
         self.moe_resolution: Dict[str, Any] | None = None
         self.moe_cache_auto_plan: Dict[str, Any] | None = None
         _adjust_config(config)
+        if self.inferswarm_placement is not None and not is_offload_moe_backend(
+            config.moe_backend
+        ):
+            raise ValueError(
+                "--inferswarm-placement requires an offload-family MoE backend so P2 can "
+                "reuse the existing normalized host expert banks"
+            )
         torch.manual_seed(42)
         self.stream = torch.cuda.Stream()
         torch.cuda.set_stream(self.stream)
@@ -558,6 +575,11 @@ class Engine:
                 "--moe-cache-auto is not supported for models with a custom "
                 "make_offload_moe_cache; pass --moe-cache-size explicitly."
             )
+        if cache_factory is not None and self.inferswarm_placement is not None:
+            raise ValueError(
+                "--inferswarm-placement is not supported by a custom MoE cache factory: "
+                "P2 requires the normalized ExpertBanks bundle returned by load_expert_banks"
+            )
         # decode_target picks the bank layout + the per-decode mechanism:
         #   "hybrid" -> GPU-cache + CPU-overflow co-compute, every layer (--moe-backend hybrid);
         #   "cpu"    -> CPU executor for the cpu_layer_ids set (all layers under --moe-backend
@@ -687,6 +709,8 @@ class Engine:
             cache.cpu_layer_ids = cpu_layer_ids
             cache.set_bank_sources(banks.sources, layer_residency=banks.layer_residency)
             cache.set_alphas(banks.gate_up_alpha, banks.down_alpha)
+            if self.inferswarm_placement is not None:
+                self._init_inferswarm_resident_bank(config, banks)
         else:
             cache = cache_factory(config, self.device)
             cache.decode_target = decode_target
@@ -717,6 +741,33 @@ class Engine:
         self.ctx.moe_offload_cache = cache
         self.moe_offload_cache = cache
         return cache
+
+    def _init_inferswarm_resident_bank(self, config: EngineConfig, banks) -> None:
+        """Build P2 storage from the exact ExpertBanks bundle already loaded for GPU 0.
+
+        This method intentionally does not receive the cache or MoE layers, so the P2 object
+        cannot become an execution backend by accidental attachment.
+        """
+        if self.inferswarm_placement is None:
+            return
+        secondary = self.inferswarm_secondary_device
+        assert secondary is not None, "placement validation requires a resolved secondary"
+        from freetoken.moe.inferswarm_resident_bank import load_secondary_resident_bank
+
+        self.inferswarm_resident_bank = load_secondary_resident_bank(
+            self.inferswarm_placement,
+            banks,
+            config.model_config,
+            secondary,
+            primary_visible_ordinal=self.device.index,
+        )
+        report = self.inferswarm_resident_bank.report
+        logger.info_rank0(
+            "InferSwarm P2 resident bank loaded and verified: "
+            f"{report.placement.remote_slots} slots, "
+            f"{report.total_live_resident_bytes} live bytes on "
+            f"cuda:{report.secondary_visible_ordinal}; remote execution remains disabled"
+        )
 
     def _resolve_hybrid_fetch(self, config: EngineConfig, cache) -> None:
         """Resolve --moe-hybrid-max-fetch -1 (auto) into a bandwidth-matched fetch fraction.
@@ -860,6 +911,14 @@ class Engine:
         if operation not in ("snapshot", "reset"):
             raise ValueError(f"unknown MoE instrumentation operation {operation!r}")
         payload = cache.instrumentation_snapshot()
+        from freetoken.moe.inferswarm_resident_bank import absent_resident_bank_report
+
+        resident = getattr(self, "inferswarm_resident_bank", None)
+        payload["inferswarm_resident_bank"] = (
+            resident.report.as_dict()
+            if resident is not None
+            else absent_resident_bank_report()
+        )
         payload["boundary"] = {
             "operation": operation,
             "idle": True,
