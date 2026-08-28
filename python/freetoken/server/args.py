@@ -54,6 +54,10 @@ class ServerArgs(SchedulerConfig):
     inferswarm_placement: str | None = None
     # InferSwarm Phase-1 P3 decode execution.  False preserves P1/P2 inert behavior.
     inferswarm_remote_decode: bool = False
+    # P4 intended scheduling shape; serialized is a diagnostic P3-equivalent control.
+    inferswarm_remote_mode: str = "overlap"
+    # Detailed records are bounded by decode steps; cumulative gates continue past it.
+    inferswarm_mechanism_max_steps: int = 256
 
     @property
     def share_tokenizer(self) -> bool:
@@ -168,7 +172,11 @@ def parse_args(
             return "minimax_m3"
         if "minimax" in marker:
             return "minimax"
-        if "muse_glimmer" in marker or "muse-glimmer" in marker or "museglimmer" in marker:
+        if (
+            "muse_glimmer" in marker
+            or "muse-glimmer" in marker
+            or "museglimmer" in marker
+        ):
             return "muse_glimmer"
         if "gemma4" in marker:
             return "gemma4"
@@ -223,13 +231,19 @@ def parse_args(
             return "minimax_m3"
         if "minimax" in marker:
             return "minimax"
-        if "muse_glimmer" in marker or "muse-glimmer" in marker or "museglimmer" in marker:
+        if (
+            "muse_glimmer" in marker
+            or "muse-glimmer" in marker
+            or "museglimmer" in marker
+        ):
             return "muse_glimmer"
         if "gemma4" in marker:
             return "gemma4"
         return None
 
-    parser = argparse.ArgumentParser(prog=prog, description="FreeToken Server Arguments")
+    parser = argparse.ArgumentParser(
+        prog=prog, description="FreeToken Server Arguments"
+    )
 
     parser.add_argument(
         "--model-path",
@@ -260,8 +274,7 @@ def parse_args(
         type=_lazy_gpu_arg,
         default=ServerArgs.gpu,
         help=(
-            "GPU(s) to run on, comma-separated; entry i is TP rank i. Each entry is a GPU "
-            "UUID (GPU-xxxx..., as nvidia-smi -L prints) or an nvidia-smi index"
+            "GPU(s) to run on, comma-separated; entry i is TP rank i. Each entry is a GPU UUID (GPU-xxxx..., as nvidia-smi -L prints) or an nvidia-smi index"
         ),
     )
 
@@ -281,8 +294,7 @@ def parse_args(
         type=str,
         default=ServerArgs.inferswarm_placement,
         help=(
-            "Experimental InferSwarm Phase-1 P2 frozen placement artifact. Requires "
-            "--inferswarm-secondary-gpu and loads an inert resident expert bank at startup"
+            "Experimental InferSwarm Phase-1 P2 frozen placement artifact. Requires --inferswarm-secondary-gpu and loads an inert resident expert bank at startup"
         ),
     )
 
@@ -291,8 +303,25 @@ def parse_args(
         action="store_true",
         default=ServerArgs.inferswarm_remote_decode,
         help=(
-            "Experimental InferSwarm Phase-1 P3 serialized remote decode. Requires "
-            "--inferswarm-secondary-gpu, --inferswarm-placement, and eager decode"
+            "Experimental InferSwarm Phase-1 P4 remote decode. Requires --inferswarm-secondary-gpu, --inferswarm-placement, and eager decode"
+        ),
+    )
+
+    parser.add_argument(
+        "--inferswarm-remote-mode",
+        choices=("overlap", "serialized"),
+        default=ServerArgs.inferswarm_remote_mode,
+        help=(
+            "InferSwarm remote scheduling: overlap is the P4 candidate; serialized is a diagnostic P3-equivalent control"
+        ),
+    )
+
+    parser.add_argument(
+        "--inferswarm-mechanism-max-steps",
+        type=_nonnegative_int,
+        default=ServerArgs.inferswarm_mechanism_max_steps,
+        help=(
+            "Retain bounded per-step/per-layer InferSwarm mechanism records; cumulative F-gate counters continue after this capacity"
         ),
     )
 
@@ -323,8 +352,7 @@ def parse_args(
         type=float,
         default=ServerArgs.memory_ratio,
         help=(
-            "Fraction of total GPU free memory the engine may use for weights + MoE "
-            "cache + KV cache combined; the remainder is reserved runtime headroom."
+            "Fraction of total GPU free memory the engine may use for weights + MoE cache + KV cache combined; the remainder is reserved runtime headroom."
         ),
     )
 
@@ -407,9 +435,7 @@ def parse_args(
         type=int,
         default=ServerArgs.num_token_override,
         help=(
-            "Total KV-cache capacity in tokens; must be a multiple of the resolved page "
-            "size (DSV4: 128 window page, TRTLLM backend: 64). Mutually exclusive with "
-            "--num-pages."
+            "Total KV-cache capacity in tokens; must be a multiple of the resolved page size (DSV4: 128 window page, TRTLLM backend: 64). Mutually exclusive with --num-pages."
         ),
     )
 
@@ -425,8 +451,7 @@ def parse_args(
         "--attn",
         type=validate_attn_backend,
         default=ServerArgs.attention_backend,
-        help="The attention backend to use. If two backends are specified,"
-        " the first one is used for prefill and the second one for decode.",
+        help="The attention backend to use. If two backends are specified, the first one is used for prefill and the second one for decode.",
     )
 
     parser.add_argument(
@@ -442,8 +467,7 @@ def parse_args(
         type=str,
         default=ServerArgs.cache_type,
         choices=SUPPORTED_CACHE_MANAGER.supported_names(),
-        help="KV cache strategy (naive | radix). For hybrid GDN models 'radix' is materialized "
-        "as a GDN-aware radix (cross-request GDN-state prefix reuse); pass 'naive' to opt out.",
+        help="KV cache strategy (naive | radix). For hybrid GDN models 'radix' is materialized as a GDN-aware radix (cross-request GDN-state prefix reuse); pass 'naive' to opt out.",
     )
 
     parser.add_argument(
@@ -507,8 +531,16 @@ def parse_args(
         type=str,
         default="auto",
         choices=[
-            "auto", "off", "deepseekv32", "gpt_oss", "qwen3", "glm",
-            "minimax", "minimax_m3", "muse_glimmer", "gemma4",
+            "auto",
+            "off",
+            "deepseekv32",
+            "gpt_oss",
+            "qwen3",
+            "glm",
+            "minimax",
+            "minimax_m3",
+            "muse_glimmer",
+            "gemma4",
         ],
         help=(
             "Reasoning parser that splits chain-of-thought into reasoning_content "
@@ -570,8 +602,7 @@ def parse_args(
         action="store_true",
         default=ServerArgs.moe_cache_auto,
         help=(
-            "Auto-pick --moe-cache-size from free VRAM and expert size, MoE-priority "
-            "(KV gets --kv-reserve-tokens as a floor). Not supported for owned-KV models."
+            "Auto-pick --moe-cache-size from free VRAM and expert size, MoE-priority (KV gets --kv-reserve-tokens as a floor). Not supported for owned-KV models."
         ),
     )
 
@@ -594,8 +625,7 @@ def parse_args(
         type=int,
         default=ServerArgs.moe_cpu_threads,
         help=(
-            "Number of CPU worker threads for --moe-backend cpu decode experts. "
-            "0 = auto (physical cores)."
+            "Number of CPU worker threads for --moe-backend cpu decode experts. 0 = auto (physical cores)."
         ),
     )
 
@@ -633,9 +663,7 @@ def parse_args(
         dest="moe_prefill_overlap",
         default=ServerArgs.moe_prefill_overlap,
         help=(
-            "Disable two-buffer overlap for prefill MoE expert copies. "
-            "By default, prefill overlap is enabled and requires "
-            "--moe-cache-size >= 2 * num_experts."
+            "Disable two-buffer overlap for prefill MoE expert copies. By default, prefill overlap is enabled and requires --moe-cache-size >= 2 * num_experts."
         ),
     )
 
@@ -672,8 +700,7 @@ def parse_args(
         action="store_true",
         default=ServerArgs.moe_collect_stats,
         help=(
-            "Opt in to device-side MoE decode hit/miss/fetch counters. Disabled by default; "
-            "read/reset only through POST /v1/moe/instrumentation at an idle boundary."
+            "Opt in to device-side MoE decode hit/miss/fetch counters. Disabled by default; read/reset only through POST /v1/moe/instrumentation at an idle boundary."
         ),
     )
 
@@ -689,6 +716,22 @@ def parse_args(
     )
 
     parser.add_argument(
+        "--moe-layer-timing-max-steps",
+        type=_nonnegative_int,
+        default=ServerArgs.moe_layer_timing_max_steps,
+        help=(
+            "Retain complete routed-MoE layer timing for this many decode steps (0 disables; compatible with CUDA graph replay)"
+        ),
+    )
+
+    parser.add_argument(
+        "--moe-layer-timing-role",
+        choices=("unspecified", "baseline", "candidate"),
+        default=ServerArgs.moe_layer_timing_role,
+        help="Optional diagnostic provenance for the common MoE timing schema",
+    )
+
+    parser.add_argument(
         "--shell-mode",
         action="store_true",
         help="Run the server in shell mode.",
@@ -699,8 +742,7 @@ def parse_args(
         type=str,
         default=ServerArgs.cors_origins,
         help=(
-            "Comma-separated CORS allow-list for browser/webview clients "
-            "(default: local Tauri/Vite dev origins). '' disables, '*' allows any."
+            "Comma-separated CORS allow-list for browser/webview clients (default: local Tauri/Vite dev origins). '' disables, '*' allows any."
         ),
     )
 
@@ -710,22 +752,28 @@ def parse_args(
     # reject a too-long list here with a clear reason, not as a dead rank later
     if len(kwargs["gpu"]) not in (0, kwargs["tensor_parallel_size"]):
         if kwargs["tensor_parallel_size"] == 1 and len(kwargs["gpu"]) > 1:
-            parser.error("tensor parallelism is not supported yet: --gpu takes one entry")
+            parser.error(
+                "tensor parallelism is not supported yet: --gpu takes one entry"
+            )
         parser.error(
-            f"--gpu has {len(kwargs['gpu'])} entries but --tensor-parallel-size is "
-            f"{kwargs['tensor_parallel_size']}; give one entry per TP rank"
+            f"--gpu has {len(kwargs['gpu'])} entries but --tensor-parallel-size is {kwargs['tensor_parallel_size']}; give one entry per TP rank"
         )
-    if kwargs["inferswarm_secondary_gpu"] is not None and kwargs["tensor_parallel_size"] != 1:
+    if (
+        kwargs["inferswarm_secondary_gpu"] is not None
+        and kwargs["tensor_parallel_size"] != 1
+    ):
         parser.error(
-            "--inferswarm-secondary-gpu is a two-device Phase-1 POC option and currently "
-            "requires --tensor-parallel-size 1; it is not a TP rank"
+            "--inferswarm-secondary-gpu is a two-device Phase-1 POC option and currently requires --tensor-parallel-size 1; it is not a TP rank"
         )
     if (
         kwargs["inferswarm_placement"] is not None
         and kwargs["inferswarm_secondary_gpu"] is None
     ):
         parser.error("--inferswarm-placement requires --inferswarm-secondary-gpu")
-    if kwargs["inferswarm_remote_decode"] and kwargs["inferswarm_secondary_gpu"] is None:
+    if (
+        kwargs["inferswarm_remote_decode"]
+        and kwargs["inferswarm_secondary_gpu"] is None
+    ):
         parser.error("--inferswarm-remote-decode requires --inferswarm-secondary-gpu")
     if kwargs["inferswarm_remote_decode"] and kwargs["inferswarm_placement"] is None:
         parser.error("--inferswarm-remote-decode requires --inferswarm-placement")
@@ -740,8 +788,7 @@ def parse_args(
 
     if kwargs["moe_trace_max_steps"] > 0 and kwargs["cuda_graph_max_bs"] != 0:
         parser.error(
-            "--moe-trace-max-steps requires --cuda-graph-max-bs 0; exact routing cannot "
-            "run under CUDA graph replay"
+            "--moe-trace-max-steps requires --cuda-graph-max-bs 0; exact routing cannot run under CUDA graph replay"
         )
     if kwargs["inferswarm_remote_decode"] and kwargs["cuda_graph_max_bs"] != 0:
         parser.error("--inferswarm-remote-decode requires --cuda-graph-max-bs 0")
@@ -749,11 +796,14 @@ def parse_args(
     if kwargs["model_path"].startswith("~"):
         kwargs["model_path"] = os.path.expanduser(kwargs["model_path"])
     if kwargs["inferswarm_placement"] is not None:
-        kwargs["inferswarm_placement"] = os.path.expanduser(kwargs["inferswarm_placement"])
+        kwargs["inferswarm_placement"] = os.path.expanduser(
+            kwargs["inferswarm_placement"]
+        )
 
     if kwargs["served_model_name"] is None:
         kwargs["served_model_name"] = (
-            os.path.basename(os.path.normpath(kwargs["model_path"])) or kwargs["model_path"]
+            os.path.basename(os.path.normpath(kwargs["model_path"]))
+            or kwargs["model_path"]
         )
 
     if kwargs["tool_call_parser"] == "auto":
@@ -799,8 +849,11 @@ def parse_args(
         cfg = cached_load_hf_config(kwargs["model_path"]).to_dict()
         text_cfg = cfg.get("text_config") or {}
         dtype_str = (
-            cfg.get("torch_dtype") or cfg.get("dtype")
-            or text_cfg.get("torch_dtype") or text_cfg.get("dtype") or "bfloat16"
+            cfg.get("torch_dtype")
+            or cfg.get("dtype")
+            or text_cfg.get("torch_dtype")
+            or text_cfg.get("dtype")
+            or "bfloat16"
         )
 
     DTYPE_MAP = {

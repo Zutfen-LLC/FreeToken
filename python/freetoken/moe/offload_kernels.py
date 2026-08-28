@@ -35,13 +35,21 @@ def ensure_experts(cache, layer_id: int, expert_ids: torch.Tensor) -> None:
         cache.src_indices,
         cache.evict_slots,
         cache.num_indices,
-        stats=cache.lru_stats[layer_id] if cache.collect_stats else None,
+        stats=(
+            cache.lru_stats[layer_id]
+            if cache.collect_stats or cache.layer_timing is not None
+            else None
+        ),
         id_base=layer_id * cache.num_experts,
     )
 
 
 def ensure_experts_hybrid(
-    cache, layer_id: int, expert_ids: torch.Tensor, max_fetch: int, fetch_fraction: float = 0.0
+    cache,
+    layer_id: int,
+    expert_ids: torch.Tensor,
+    max_fetch: int,
+    fetch_fraction: float = 0.0,
 ) -> None:
     """Capped-fetch variant of ``ensure_experts`` (hybrid backend).
 
@@ -56,7 +64,9 @@ def ensure_experts_hybrid(
     # Q16 fixed point so the GPU kernel and the CPU reference cap identically (no float).
     frac_q16 = min(1 << 16, max(0, round(fetch_fraction * (1 << 16))))
     if not expert_ids.is_cuda:
-        return _ensure_experts_hybrid_cpu(cache, layer_id, expert_ids, max_fetch, frac_q16)
+        return _ensure_experts_hybrid_cpu(
+            cache, layer_id, expert_ids, max_fetch, frac_q16
+        )
     _ensure_experts_hybrid_gpu(cache, layer_id, expert_ids, max_fetch, frac_q16)
 
 
@@ -88,10 +98,6 @@ def materialize_layer(cache, layer_id: int) -> None:
 
 def reset_cache(cache) -> None:
     _reset_cache_gpu(cache)
-
-
-
-
 
 
 def _ensure_experts_hybrid_gpu(
@@ -285,8 +291,6 @@ def _materialize_layer_kernel(
     tl.store(num_indices_ptr, num_experts)
 
 
-
-
 @triton.jit(do_not_specialize=["layer_id", "num_active", "max_fetch", "fetch_frac_q16"])
 def _ensure_experts_hybrid_kernel(
     expert_ids_ptr,
@@ -347,9 +351,12 @@ def _ensure_experts_hybrid_kernel(
         # F * (1 - frac), CPU time with (M - F) * frac; they balance at F = frac * M. Pick
         # the integer neighbor that minimizes the slower (max) side of the overlap.
         lo = (num_missing * fetch_frac_q16) >> 16
-        cost_lo = tl.maximum(lo * ((1 << 16) - fetch_frac_q16), (num_missing - lo) * fetch_frac_q16)
+        cost_lo = tl.maximum(
+            lo * ((1 << 16) - fetch_frac_q16), (num_missing - lo) * fetch_frac_q16
+        )
         cost_hi = tl.maximum(
-            (lo + 1) * ((1 << 16) - fetch_frac_q16), (num_missing - lo - 1) * fetch_frac_q16
+            (lo + 1) * ((1 << 16) - fetch_frac_q16),
+            (num_missing - lo - 1) * fetch_frac_q16,
         )
         max_fetch = tl.where(cost_lo <= cost_hi, lo, lo + 1)
     num_fetch = tl.minimum(num_missing, max_fetch)
@@ -362,9 +369,13 @@ def _ensure_experts_hybrid_kernel(
     # score so argmax has no ties (rec deltas are multiples of num_experts; the id term
     # spans only [0, num_experts), so it can only break exact-recency ties).
     if BY_RECENCY:
-        rec = tl.load(expert_recency_ptr + base + off_e, mask=e_mask, other=-1).to(tl.int64)
+        rec = tl.load(expert_recency_ptr + base + off_e, mask=e_mask, other=-1).to(
+            tl.int64
+        )
         score = tl.where(
-            is_missing, rec * num_experts + (num_experts - 1 - off_e), -1152921504606846976
+            is_missing,
+            rec * num_experts + (num_experts - 1 - off_e),
+            -1152921504606846976,
         ).to(tl.int64)
     else:
         missing_rank = tl.cumsum(is_missing.to(tl.int32)) - 1
@@ -374,7 +385,9 @@ def _ensure_experts_hybrid_kernel(
         off_c = tl.arange(0, BLOCK_C)
         c_mask = off_c < cache_size
         oid = tl.load(id_of_slot_ptr + off_c, mask=c_mask, other=-1)
-        u = tl.load(usage_ptr + off_c, mask=c_mask, other=9223372036854775807).to(tl.int64)
+        u = tl.load(usage_ptr + off_c, mask=c_mask, other=9223372036854775807).to(
+            tl.int64
+        )
         owner_active = c_mask & False
         for i in tl.range(num_active):
             ei = tl.load(expert_ids_ptr + i)
@@ -412,12 +425,12 @@ def _ensure_experts_hybrid_kernel(
 
 @triton.jit(do_not_specialize=["buffer_base"])
 def _prefill_hit_compact_kernel(
-    slot_ptr,     # [num_experts] int32: this layer's slot_for_id row
-    dst_ptr,      # [num_experts] int32 out: buffer rows, compacted
-    src_ptr,      # [num_experts] int32 out: cache slots, compacted
-    num_ptr,      # [1] int64 out: hit count
+    slot_ptr,  # [num_experts] int32: this layer's slot_for_id row
+    dst_ptr,  # [num_experts] int32 out: buffer rows, compacted
+    src_ptr,  # [num_experts] int32 out: cache slots, compacted
+    num_ptr,  # [1] int64 out: hit count
     buffer_base,  # buffer_id * num_experts
-    threshold,    # 2 * num_experts
+    threshold,  # 2 * num_experts
     num_experts,
     BLOCK: tl.constexpr,
 ):

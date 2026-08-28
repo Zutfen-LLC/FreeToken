@@ -87,6 +87,8 @@ See [models.md](models.md#moe-backends) for what each backend does.
 | `--moe-hybrid-max-fetch` | auto | With `hybrid`: max experts fetched over PCIe per layer per step; rest computed on CPU |
 | `--moe-prefill-hit-d2d` | off | Prefill: copy cache-hit experts device-side, stream only misses (CUDA >= 13) |
 | `--disable-moe-prefill-overlap` | overlap on | Disable the two-buffer prefill copy overlap |
+| `--moe-layer-timing-max-steps` | 0 | Opt-in bounded complete routed-MoE layer timing; graph replay remains enabled when otherwise configured |
+| `--moe-layer-timing-role` | unspecified | Diagnostic provenance: `unspecified`, `baseline`, or `candidate` |
 
 ### API behaviour
 

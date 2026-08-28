@@ -50,3 +50,46 @@ PYTHONPATH=python:benchmarks python -m inferswarm_phase1.p3_correctness \
 The JSON label deliberately says `MEASURED ENGINEERING FIXTURE (not canonical C3)`. This
 command does not reproduce the full warmed W1-W4 correctness-reference protocol and must
 not be cited as canonical C3 evidence.
+
+## P4 overlap fixture
+
+The P4 fixture runs one bounded multi-token deterministic mixed routed layer in explicit
+`serialized` and `overlap` modes. It checks numerical output, ownership, transfer-byte
+accounting, dispatch count, fallback state, direct GPU1-event pending state at GPU0 local
+service entry, and the persistent staging-buffer lifecycle. Complete-layer wall,
+GPU0-local branch, and GPU1-branch intervals are measured independently; the tool never
+sums concurrent branch durations or reports end-to-end token throughput.
+
+```bash
+PYTHONPATH=python:benchmarks python -m inferswarm_phase1.p4_overlap \
+  --model /path/to/nvidia/Qwen3.6-35B-A3B-NVFP4/491c2f1... \
+  --primary-gpu GPU-d5c05739-96c1-7e49-89b6-bf54c2121c55 \
+  --secondary-gpu GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176 \
+  --placement /path/to/phase1-qwen36-placement-v1.json \
+  --output p4-overlap-engineering.json
+```
+
+## P4 W1-W4 mechanism/timing smoke
+
+`p4_workload_smoke` drives an already-running candidate or B1 server without collecting
+request timestamps, throughput, TTFT, or a Phase-1 verdict. It performs two warmups,
+resets the idle instrumentation boundary, and snapshots every requested workload class
+independently. Candidate snapshots mechanically evaluate F1/F2/F3/F5/F6. B1 snapshots
+require active CUDA graph replay and use the same MoE timing schema with remote operations
+explicitly marked `not_applicable`.
+
+The OpenAI-compatible stream does not expose exact generated token IDs or step-0 logits.
+The tool therefore records decoded-text hashes and a tokenizer round-trip diagnostic but
+leaves C3 unevaluated; it never calls re-tokenized text exact token evidence.
+
+```bash
+PYTHONPATH=python:benchmarks python -m inferswarm_phase1.p4_workload_smoke \
+  --origin http://127.0.0.1:48145 \
+  --manifest /path/to/phase0-canonical-manifest.json \
+  --reference-jsonl /path/to/p0h-warmed-reference.jsonl \
+  --tokenizer-model /path/to/model-revision \
+  --model-id nvidia/Qwen3.6-35B-A3B-NVFP4 \
+  --role baseline \
+  --class W4 \
+  --output p4-b1-graph-timing.json
+```

@@ -28,8 +28,13 @@ from freetoken.moe.offload_cache import MARLIN_MAX_CACHE_SIZE
 
 def _model_config(**kw):
     base = dict(
-        expert_quant="nvfp4", moe_weight_format=None, num_moe_layers=40, num_experts=256,
-        num_experts_per_tok=8, hidden_act="silu", is_moe=True,
+        expert_quant="nvfp4",
+        moe_weight_format=None,
+        num_moe_layers=40,
+        num_experts=256,
+        num_experts_per_tok=8,
+        hidden_act="silu",
+        is_moe=True,
     )
     base.update(kw)
     return SimpleNamespace(**base)
@@ -37,23 +42,50 @@ def _model_config(**kw):
 
 def _config(**kw):
     base = dict(
-        moe_backend="offload", nvfp4_backend="auto", moe_cache_size=992, moe_cache_rate=None,
-        moe_cache_auto=True, kv_reserve_tokens=8192, moe_cache_policy="lru",
-        moe_cpu_threads=0, moe_cpu_layers=None, moe_hybrid_max_fetch=-1,
-        moe_prefill_overlap=True, moe_prefill_hit_d2d=False, moe_collect_stats=False,
-        attention_backend="auto", page_size=1, memory_ratio=0.9, max_running_req=1,
-        max_seq_len=8192, cuda_graph_max_bs=1, cuda_graph_bs=[1], expert_load="auto",
-        dtype="torch.bfloat16", model_config=_model_config(),
+        moe_backend="offload",
+        nvfp4_backend="auto",
+        moe_cache_size=992,
+        moe_cache_rate=None,
+        moe_cache_auto=True,
+        kv_reserve_tokens=8192,
+        moe_cache_policy="lru",
+        moe_cpu_threads=0,
+        moe_cpu_layers=None,
+        moe_hybrid_max_fetch=-1,
+        moe_prefill_overlap=True,
+        moe_prefill_hit_d2d=False,
+        moe_collect_stats=False,
+        attention_backend="auto",
+        page_size=1,
+        memory_ratio=0.9,
+        max_running_req=1,
+        max_seq_len=8192,
+        cuda_graph_max_bs=1,
+        cuda_graph_bs=[1],
+        expert_load="auto",
+        moe_trace_max_steps=0,
+        moe_layer_timing_max_steps=0,
+        moe_layer_timing_role="unspecified",
+        dtype="torch.bfloat16",
+        model_config=_model_config(),
     )
     base.update(kw)
     return SimpleNamespace(**base)
 
 
-def _cache(quant_format="nvfp4", decode_target="gpu", cache_size=992,
-           hybrid_max_fetch=1, hybrid_fetch_fraction=0.0):
+def _cache(
+    quant_format="nvfp4",
+    decode_target="gpu",
+    cache_size=992,
+    hybrid_max_fetch=1,
+    hybrid_fetch_fraction=0.0,
+):
     return SimpleNamespace(
-        quant_format=quant_format, decode_target=decode_target, cache_size=cache_size,
-        bank_caches={}, hybrid_max_fetch=hybrid_max_fetch,
+        quant_format=quant_format,
+        decode_target=decode_target,
+        cache_size=cache_size,
+        bank_caches={},
+        hybrid_max_fetch=hybrid_max_fetch,
         hybrid_fetch_fraction=hybrid_fetch_fraction,
     )
 
@@ -66,8 +98,11 @@ def _engine(config=None, cache=_DEFAULT, **kw):
         config=config or _config(),
         moe_offload_cache=_cache() if cache is _DEFAULT else cache,
         moe_resolution={
-            "moe_backend_requested": "auto", "cpu_layer_ids": [],
-            "auto_cpu_layers_fired": False, "auto_cpu_layer_ids": [], "split_residency": False,
+            "moe_backend_requested": "auto",
+            "cpu_layer_ids": [],
+            "auto_cpu_layers_fired": False,
+            "auto_cpu_layer_ids": [],
+            "split_residency": False,
         },
         moe_cache_auto_plan=None,
         num_pages=4096,
@@ -87,12 +122,17 @@ def test_report_separates_requested_from_resolved_moe_backend():
 def test_triton_resolution_is_read_from_the_bank_layout():
     report = build_runtime_report(_engine(cache=_cache("nvfp4", "gpu")))
     assert report["nvfp4"] == {
-        "requested": "auto", "resolved": "triton", "inert": False,
-        "expert_quant_format": "nvfp4", "decode_target": "gpu",
+        "requested": "auto",
+        "resolved": "triton",
+        "inert": False,
+        "expert_quant_format": "nvfp4",
+        "decode_target": "gpu",
     }
 
 
-@pytest.mark.parametrize("quant_format,expected", [("nvfp4_marlin", "marlin"), ("nvfp4_b12x", "b12x")])
+@pytest.mark.parametrize(
+    "quant_format,expected", [("nvfp4_marlin", "marlin"), ("nvfp4_b12x", "b12x")]
+)
 def test_repacked_layouts_name_their_backend(quant_format, expected):
     report = build_runtime_report(_engine(cache=_cache(quant_format, "gpu")))
     assert report["nvfp4"]["resolved"] == expected
@@ -104,7 +144,9 @@ def test_cpu_side_decode_records_the_flag_as_inert(decode_target):
     """--moe-backend cpu/hybrid load banks with decode_target=cpu, so the loader keeps the
     native ModelOpt layout and never calls select_nvfp4_backend."""
     report = build_runtime_report(
-        _engine(config=_config(nvfp4_backend="triton"), cache=_cache("nvfp4", decode_target))
+        _engine(
+            config=_config(nvfp4_backend="triton"), cache=_cache("nvfp4", decode_target)
+        )
     )
     assert report["nvfp4"]["inert"] is True
     assert report["nvfp4"]["resolved"].startswith("not selected")
@@ -118,8 +160,10 @@ def test_auto_cpu_layers_makes_the_flag_inert_on_an_offload_run():
         config=_config(moe_backend="offload", nvfp4_backend="auto"),
         cache=_cache("nvfp4", "cpu"),
         moe_resolution={
-            "moe_backend_requested": "offload", "cpu_layer_ids": [0, 1, 38, 39],
-            "auto_cpu_layers_fired": True, "auto_cpu_layer_ids": [0, 1, 38, 39],
+            "moe_backend_requested": "offload",
+            "cpu_layer_ids": [0, 1, 38, 39],
+            "auto_cpu_layers_fired": True,
+            "auto_cpu_layer_ids": [0, 1, 38, 39],
             "split_residency": True,
         },
     )
@@ -132,8 +176,10 @@ def test_auto_cpu_layers_makes_the_flag_inert_on_an_offload_run():
 def test_marlin_cap_applicability_and_binding_come_from_the_plan():
     plan = {"resolved_slots": MARLIN_MAX_CACHE_SIZE, "uncapped_slots": 3000}
     report = build_runtime_report(
-        _engine(cache=_cache("nvfp4_marlin", "gpu", MARLIN_MAX_CACHE_SIZE),
-                moe_cache_auto_plan=plan)
+        _engine(
+            cache=_cache("nvfp4_marlin", "gpu", MARLIN_MAX_CACHE_SIZE),
+            moe_cache_auto_plan=plan,
+        )
     )
     cap = report["marlin_cache_cap"]
     assert cap["limit_slots"] == 992
@@ -222,17 +268,48 @@ def test_runtime_report_records_secondary_as_explicitly_absent():
     assert remote["enabled"] is False
     assert "aggregate" not in remote
     assert "idle snapshot" in remote["counter_source"]
+    assert report["moe_layer_timing"]["enabled"] is False
+
+
+def test_runtime_report_includes_static_complete_layer_timing_provenance():
+    timing_report = {
+        "schema": "freetoken.moe-layer-timing/1",
+        "enabled": True,
+        "capacity_steps": 8,
+        "timer_mechanism": "cuda_globaltimer_marker_kernel",
+    }
+    timing = SimpleNamespace(configuration_report=lambda: timing_report)
+    report = build_runtime_report(
+        _engine(
+            config=_config(
+                moe_layer_timing_max_steps=8,
+                moe_layer_timing_role="baseline",
+            ),
+            moe_layer_timing=timing,
+        )
+    )
+    assert report["moe"]["layer_timing_max_steps"] == 8
+    assert report["moe"]["layer_timing_role"] == "baseline"
+    assert report["moe_layer_timing"] == timing_report
 
 
 def test_runtime_report_includes_validated_secondary_provenance():
     primary = CudaDeviceIdentity(
-        uuid="GPU-primary", visible_ordinal=1, name="primary", total_vram_bytes=12 << 30,
-        free_vram_bytes_at_probe=8 << 30, compute_capability_major=8,
+        uuid="GPU-primary",
+        visible_ordinal=1,
+        name="primary",
+        total_vram_bytes=12 << 30,
+        free_vram_bytes_at_probe=8 << 30,
+        compute_capability_major=8,
         compute_capability_minor=6,
     )
     secondary = CudaDeviceIdentity(
-        uuid="GPU-secondary", visible_ordinal=0, name="secondary", total_vram_bytes=12 << 30,
-        free_vram_bytes_at_probe=11 << 30, compute_capability_major=8,
+        uuid="GPU-secondary",
+        visible_ordinal=0,
+        name="secondary",
+        total_vram_bytes=12 << 30,
+        free_vram_bytes_at_probe=11 << 30,
+        compute_capability_major=8,
         compute_capability_minor=6,
     )
     device = InferSwarmSecondaryDevice(
@@ -280,6 +357,7 @@ def test_runtime_report_keeps_p3_execution_truth_separate_from_p2_storage():
 
 # --- criteria section 2.3 fields that live on SchedulerConfig, not EngineConfig ------------
 
+
 def test_the_report_carries_the_resolved_max_prefill_length():
     """--max-prefill-length's dest is max_extend_tokens on SchedulerConfig; the criteria
     require the resolved value, and the report previously carried neither."""
@@ -306,15 +384,21 @@ def test_the_report_carries_the_resolved_hybrid_fetch_fraction():
     """`--moe-hybrid-max-fetch auto` resolves to a bandwidth-matched split read off the
     `ft bench bw` profile; 0.0 means the fixed-cap fallback applied, which is a DIFFERENT
     configuration from a benched split and must not be reported as one."""
-    cache = _cache(decode_target="cpu", hybrid_max_fetch=256, hybrid_fetch_fraction=0.37)
-    report = build_runtime_report(_engine(config=_config(moe_backend="hybrid"), cache=cache))
+    cache = _cache(
+        decode_target="cpu", hybrid_max_fetch=256, hybrid_fetch_fraction=0.37
+    )
+    report = build_runtime_report(
+        _engine(config=_config(moe_backend="hybrid"), cache=cache)
+    )
     assert report["moe"]["hybrid_fetch_fraction_resolved"] == 0.37
     assert report["moe"]["hybrid_max_fetch_resolved"] == 256
 
 
 def test_the_fallback_fetch_fraction_is_reported_as_zero_not_omitted():
     cache = _cache(decode_target="cpu", hybrid_max_fetch=1, hybrid_fetch_fraction=0.0)
-    report = build_runtime_report(_engine(config=_config(moe_backend="hybrid"), cache=cache))
+    report = build_runtime_report(
+        _engine(config=_config(moe_backend="hybrid"), cache=cache)
+    )
     assert report["moe"]["hybrid_fetch_fraction_resolved"] == 0.0
 
 

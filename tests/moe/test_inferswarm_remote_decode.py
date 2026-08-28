@@ -10,6 +10,7 @@ from freetoken.layers.moe import OffloadMoELayer
 from freetoken.moe.inferswarm_remote_decode import (
     HostStagedRemoteTransport,
     InferSwarmRemoteDecodeExecutor,
+    TransferByteCounters,
     absent_remote_decode_report,
     build_remote_slot_lookup,
     validate_remote_decode_runtime,
@@ -20,6 +21,7 @@ class _Placement:
     num_layers = 2
     num_experts = 3
     remote_slots = 3
+    bytes_per_slot = 10
     artifact_sha256 = "a" * 64
     identities_in_rank_order = (
         SimpleNamespace(layer_id=1, expert_id=1, remote_slot=0),
@@ -38,6 +40,7 @@ class _Resident:
             bank_schema=("bank",),
         ),
         total_live_resident_bytes=18,
+        expert_bank_tensor_bytes=18,
     )
 
     def bank_views(self):
@@ -55,13 +58,17 @@ def _secondary():
 
 
 class _Cache:
-    def __init__(self):
+    def __init__(self, order=None):
         self.ensure_calls = []
         self.copy_calls = 0
         self.routing_records = []
         self.views = (torch.zeros(8, 1),)
+        self.layer_timing = None
+        self.order = order
 
     def ensure_experts(self, layer_id, ids, *, record_routing=True):
+        if self.order is not None:
+            self.order.append("local_ensure")
         raw = ids.clone()
         self.ensure_calls.append((layer_id, raw, record_routing))
         if record_routing:
@@ -82,9 +89,10 @@ class _Cache:
 
 
 class _Layer:
-    def __init__(self, layer_id):
+    def __init__(self, layer_id, order=None):
         self.layer_id = layer_id
         self.local_gemm_calls = 0
+        self.order = order
 
     def _expert_gemm(
         self,
@@ -101,6 +109,8 @@ class _Layer:
         assert views is cache.views
         assert n is None and alphas is None and is_prefill is False
         self.local_gemm_calls += 1
+        if self.order is not None:
+            self.order.append("local_gemm")
         experts = slots.float() - 100
         scalar = (weights * (experts + 1)).sum(dim=1, keepdim=True)
         return scalar.expand_as(hidden).to(hidden.dtype)
@@ -108,41 +118,111 @@ class _Layer:
 
 class _Transport:
     # P2 slot -> raw expert for the layer used by each test.
-    def __init__(self, slot_to_expert, fail=False):
+    def __init__(self, slot_to_expert, fail=False, fail_finish=False, order=None):
         self.slot_to_expert = slot_to_expert
         self.fail = fail
+        self.fail_finish = fail_finish
         self.calls = []
+        self.order = order
+        self.transfer_bytes = TransferByteCounters()
+        self.drains = 0
 
-    def execute(self, layer, cache, hidden, weights, slots):
+    def submit(self, layer, cache, hidden, weights, slots):
+        if self.order is not None:
+            self.order.append("remote_submit")
         self.calls.append(
             (layer.layer_id, hidden.clone(), weights.clone(), slots.clone())
         )
         if self.fail:
-            raise RuntimeError("injected remote failure")
+            raise RuntimeError("injected remote submit failure")
+        activation = hidden.numel() * hidden.element_size()
+        weight_bytes = weights.numel() * weights.element_size()
+        id_bytes = slots.numel() * slots.element_size()
+        self.transfer_bytes.gpu0_to_host_activation += activation
+        self.transfer_bytes.gpu0_to_host_routing_weights += weight_bytes
+        self.transfer_bytes.gpu0_to_host_routing_ids += id_bytes
+        self.transfer_bytes.host_to_gpu1_activation += activation
+        self.transfer_bytes.host_to_gpu1_routing_weights += weight_bytes
+        self.transfer_bytes.host_to_gpu1_routing_ids += id_bytes
+        transfer = {
+            "gpu0_to_host": {
+                "activation": activation,
+                "routing_weights": weight_bytes,
+                "routing_ids": id_bytes,
+            },
+            "host_to_gpu1": {
+                "activation": activation,
+                "routing_weights": weight_bytes,
+                "routing_ids": id_bytes,
+                "expert_weights": 0,
+            },
+            "gpu1_to_host": {"returned_partial": activation},
+            "host_to_gpu0": {"returned_partial": activation},
+        }
+        return SimpleNamespace(
+            slot_index=0,
+            generation=len(self.calls),
+            tokens=hidden.shape[0],
+            completion_event=None,
+            completion_recorded=True,
+            finished=False,
+            released=False,
+            timing_values={},
+            transfer_bytes=transfer,
+            payload=(hidden.clone(), weights.clone(), slots.clone()),
+        )
+
+    def finish(self, pending, **_kwargs):
+        if self.order is not None:
+            self.order.append("remote_finish")
+        if self.fail_finish:
+            raise RuntimeError("injected remote completion failure")
+        pending.finished = True
+        hidden, weights, slots = pending.payload
         expert = torch.zeros_like(slots, dtype=torch.float32)
         for slot, raw in self.slot_to_expert.items():
             expert = torch.where(slots == slot, expert.new_tensor(float(raw)), expert)
         scalar = (weights * (expert + 1)).sum(dim=1, keepdim=True)
+        activation = hidden.numel() * hidden.element_size()
+        self.transfer_bytes.gpu1_to_host_returned_partial += activation
+        self.transfer_bytes.host_to_gpu0_returned_partial += activation
         return scalar.expand_as(hidden).to(hidden.dtype)
+
+    def drain(self, pending):
+        self.drains += 1
+        pending.finished = True
+        pending.released = True
+
+    def release(self, pending):
+        if self.order is not None:
+            self.order.append("remote_release")
+        pending.released = True
+
+    def reset_counters(self):
+        self.transfer_bytes.reset()
 
     def report(self):
         return {"mode": "fake_host_staged"}
 
 
-def _executor(layer_id=0, *, fail=False):
+def _executor(layer_id=0, *, fail=False, fail_finish=False, mode="overlap", order=None):
     route_lookup = torch.tensor([[-1, -1, -1], [-1, -1, -1]], dtype=torch.int32)
     route_lookup[0, 0] = 1
     route_lookup[1, 1] = 0
     route_lookup[1, 2] = 2
     slot_to_expert = {1: 0} if layer_id == 0 else {0: 1, 2: 2}
-    transport = _Transport(slot_to_expert, fail=fail)
+    transport = _Transport(
+        slot_to_expert, fail=fail, fail_finish=fail_finish, order=order
+    )
     executor = InferSwarmRemoteDecodeExecutor(
         resident_bank=_Resident(),
         secondary_device=_secondary(),
         primary_device=torch.device("cpu"),
         transport=transport,
         route_lookup=route_lookup,
+        mode=mode,
     )
+    executor.begin_decode_step(0)
     return executor, transport
 
 
@@ -163,7 +243,7 @@ def test_invalid_raw_expert_id_fails_before_classification_or_service(invalid_id
     cache, layer = _Cache(), _Layer(0)
     counters_before = executor.counters.aggregate()
 
-    with pytest.raises(RuntimeError, match="invalid P3 raw expert routing"):
+    with pytest.raises(RuntimeError, match="invalid P4 raw expert routing"):
         executor.decode(
             layer,
             cache,
@@ -219,7 +299,7 @@ def test_mixed_partition_excludes_remote_ids_and_combines_once():
     out = executor.decode(layer, cache, hidden, weights, raw)
     torch.testing.assert_close(out, _reference(original, weights, hidden))
     assert raw.equal(original)
-    assert cache.ensure_calls[0][1].tolist() == [2]
+    assert cache.ensure_calls[0][1].tolist() == [[2, 2]]
     assert cache.ensure_calls[0][2] is False
     assert all(0 not in call[1].tolist() for call in cache.ensure_calls)
     assert cache.routing_records[0][1].tolist() == [[0, 2]]
@@ -237,6 +317,17 @@ def test_mixed_partition_excludes_remote_ids_and_combines_once():
     assert snap["ownership"]["successful_selection_arithmetic_exact"] is True
 
 
+def test_fixed_shape_placeholder_preserves_exact_multi_local_identity_set():
+    executor, _transport = _executor()
+    cache, layer = _Cache(), _Layer(0)
+    raw = torch.tensor([[0, 2], [1, 0]], dtype=torch.int32)
+    weights = torch.full((2, 2), 0.5)
+    executor.decode(layer, cache, torch.zeros(2, 2), weights, raw)
+    serviced = cache.ensure_calls[0][1]
+    assert set(serviced.reshape(-1).tolist()) == {1, 2}
+    assert 0 not in serviced
+
+
 def test_multiple_gpu1_experts_and_multiple_tokens_still_use_one_dispatch():
     executor, transport = _executor(layer_id=1)
     cache, layer = _Cache(), _Layer(1)
@@ -247,7 +338,7 @@ def test_multiple_gpu1_experts_and_multiple_tokens_still_use_one_dispatch():
     out = executor.decode(layer, cache, hidden, weights, raw)
     torch.testing.assert_close(out, _reference(original, weights, hidden))
     assert len(transport.calls) == 1
-    assert cache.ensure_calls[0][1].tolist() == [0]
+    assert cache.ensure_calls[0][1].tolist() == [[0, 0], [0, 0]]
     assert transport.calls[0][3].tolist() == [[0, 2], [2, 0]]
     snap = executor.snapshot()["aggregate"]
     assert snap["remote_dispatches"] == 1
@@ -255,10 +346,127 @@ def test_multiple_gpu1_experts_and_multiple_tokens_still_use_one_dispatch():
     assert snap["executed_on_gpu0"] == 1
 
 
+def test_overlap_submits_before_local_service_and_joins_after_local_branch():
+    order = []
+    executor, transport = _executor(order=order, mode="overlap")
+    cache, layer = _Cache(order), _Layer(0, order)
+    out = executor.decode(
+        layer,
+        cache,
+        torch.zeros(1, 2),
+        torch.tensor([[0.25, 0.75]]),
+        torch.tensor([[0, 2]], dtype=torch.int32),
+    )
+    torch.testing.assert_close(out, torch.full((1, 2), 2.5))
+    assert order == [
+        "remote_submit",
+        "local_ensure",
+        "local_gemm",
+        "remote_finish",
+        "remote_release",
+    ]
+    assert transport.drains == 0
+
+
+def test_serialized_diagnostic_joins_before_local_service_with_same_result_and_bytes():
+    overlap, _ = _executor(mode="overlap")
+    serialized_order = []
+    serialized, _ = _executor(mode="serialized", order=serialized_order)
+    hidden = torch.zeros(1, 2)
+    weights = torch.tensor([[0.25, 0.75]])
+    ids = torch.tensor([[0, 2]], dtype=torch.int32)
+    out_overlap = overlap.decode(_Layer(0), _Cache(), hidden, weights, ids.clone())
+    out_serialized = serialized.decode(
+        _Layer(0, serialized_order),
+        _Cache(serialized_order),
+        hidden,
+        weights,
+        ids.clone(),
+    )
+    torch.testing.assert_close(out_overlap, out_serialized)
+    assert serialized_order == [
+        "remote_submit",
+        "remote_finish",
+        "local_ensure",
+        "local_gemm",
+        "remote_release",
+    ]
+    assert overlap.snapshot()["aggregate"] == serialized.snapshot()["aggregate"]
+    assert (
+        overlap.snapshot()["steady_state_transfer_bytes"]
+        == serialized.snapshot()["steady_state_transfer_bytes"]
+    )
+
+
+def test_remote_completion_failure_is_explicit_and_drains_no_fallback():
+    executor, transport = _executor(fail_finish=True)
+    with pytest.raises(RuntimeError, match="remote completion failure"):
+        executor.decode(
+            _Layer(0),
+            _Cache(),
+            torch.zeros(1, 2),
+            torch.tensor([[0.5, 0.5]]),
+            torch.tensor([[0, 2]], dtype=torch.int32),
+        )
+    snap = executor.snapshot()["aggregate"]
+    assert snap["explicit_failure"] == 1
+    assert snap["fallback_elsewhere"] == 0
+    assert transport.drains == 1
+
+
+def test_local_failure_drains_pending_remote_before_surfacing():
+    order = []
+    executor, transport = _executor(order=order)
+
+    class FailLocal(_Layer):
+        def _expert_gemm(self, cache, *args, views, **kwargs):
+            if views is cache.views:
+                raise RuntimeError("injected local failure")
+            return super()._expert_gemm(cache, *args, views=views, **kwargs)
+
+    with pytest.raises(RuntimeError, match="injected local failure"):
+        executor.decode(
+            FailLocal(0, order),
+            _Cache(order),
+            torch.zeros(1, 2),
+            torch.tensor([[0.5, 0.5]]),
+            torch.tensor([[0, 2]], dtype=torch.int32),
+        )
+    assert order == ["remote_submit", "local_ensure"]
+    assert transport.drains == 1
+    snap = executor.snapshot()["aggregate"]
+    assert snap["explicit_failure"] == 1
+    assert snap["fallback_elsewhere"] == 0
+
+
+def test_serialized_local_failure_after_remote_success_still_fails_f6():
+    executor, transport = _executor(mode="serialized")
+
+    class FailLocal(_Layer):
+        def _expert_gemm(self, cache, *args, views, **kwargs):
+            if views is cache.views:
+                raise RuntimeError("injected serialized local failure")
+            return super()._expert_gemm(cache, *args, views=views, **kwargs)
+
+    with pytest.raises(RuntimeError, match="serialized local failure"):
+        executor.decode(
+            FailLocal(0),
+            _Cache(),
+            torch.zeros(1, 2),
+            torch.tensor([[0.5, 0.5]]),
+            torch.tensor([[0, 2]], dtype=torch.int32),
+        )
+    snapshot = executor.snapshot()
+    assert transport.drains == 1
+    assert snapshot["aggregate"]["executed_on_gpu1"] == 1
+    assert snapshot["aggregate"]["explicit_failure"] == 1
+    assert snapshot["gates"]["F6"]["passed"] is False
+
+
 def test_remote_failure_is_explicit_and_has_zero_local_fallback():
     executor, _transport = _executor(fail=True)
     cache, layer = _Cache(), _Layer(0)
-    with pytest.raises(RuntimeError, match="injected remote failure"):
+    with pytest.raises(RuntimeError, match="injected remote submit failure"):
         executor.decode(
             layer,
             cache,
@@ -297,18 +505,22 @@ def test_engine_idle_reset_clears_p3_counters_and_preserves_both_residencies():
     cache = SimpleNamespace(
         instrumentation_snapshot=lambda: {"cache_residency": "warm"},
         reset_instrumentation=lambda: calls.append("cache_reset"),
+        cache_size=8,
+        expert_bank_tensor_bytes=lambda: 80,
     )
     resident = SimpleNamespace(
         report=SimpleNamespace(as_dict=lambda: {"resident_slots": 3})
     )
     remote = SimpleNamespace(
-        snapshot=lambda: {"aggregate": {"remote_dispatches": 4}},
+        snapshot=lambda **_kwargs: {"aggregate": {"remote_dispatches": 4}},
         reset=lambda: calls.append("remote_reset"),
     )
     engine = SimpleNamespace(
         moe_offload_cache=cache,
         inferswarm_resident_bank=resident,
         inferswarm_remote_decode=remote,
+        moe_layer_timing=None,
+        _moe_measurement_step=3,
     )
     payload = Engine.moe_instrumentation(engine, "reset")
     assert payload["cache_residency"] == "warm"
@@ -386,6 +598,56 @@ class _FakeCuda:
     def memory_reserved(self, _ordinal):
         return 0
 
+    def Stream(self, device=None):
+        return _FakeStream()
+
+    def Event(self, enable_timing=False):
+        return _FakeEvent()
+
+    def current_stream(self, _device=None):
+        return _FakeStream()
+
+    def stream(self, _stream):
+        return _FakeContext()
+
+
+class _FakeContext:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+
+class _FakeEvent:
+    def record(self, _stream=None):
+        pass
+
+    def synchronize(self):
+        pass
+
+    def query(self):
+        return True
+
+    def elapsed_time(self, _other):
+        return 1.0
+
+
+class _FakeStream:
+    def synchronize(self):
+        pass
+
+
+class _BlockingReturnEvent(_FakeEvent):
+    def __init__(self):
+        self.synchronize_calls = 0
+
+    def query(self):
+        return False
+
+    def synchronize(self):
+        self.synchronize_calls += 1
+
 
 def _cpu_transport_for_device_restore():
     transport = object.__new__(HostStagedRemoteTransport)
@@ -399,14 +661,32 @@ def _cpu_transport_for_device_restore():
     transport.hidden_dtype = torch.float32
     transport.resident_bank = _Resident()
     transport._torch = SimpleNamespace(cuda=_FakeCuda())
-    transport.host_activation = torch.empty(2, 2)
-    transport.host_slots = torch.empty(2, 2, dtype=torch.int32)
-    transport.host_weights = torch.empty(2, 2)
-    transport.host_partial = torch.empty(2, 2)
-    transport.gpu1_activation = torch.empty(2, 2)
-    transport.gpu1_slots = torch.empty(2, 2, dtype=torch.int32)
-    transport.gpu1_weights = torch.empty(2, 2)
-    transport.gpu0_partial = torch.empty(2, 2)
+    transport.timing_enabled = False
+    transport.transfer_bytes = TransferByteCounters()
+    transport._next_slot = 0
+    transport._buffer_reuse_waits = 0
+    transport.stream = _FakeStream()
+
+    def slot():
+        return SimpleNamespace(
+            host_activation=torch.empty(2, 2),
+            host_slots=torch.empty(2, 2, dtype=torch.int32),
+            host_weights=torch.empty(2, 2),
+            host_partial=torch.empty(2, 2),
+            gpu1_activation=torch.empty(2, 2),
+            gpu1_slots=torch.empty(2, 2, dtype=torch.int32),
+            gpu1_weights=torch.empty(2, 2),
+            gpu0_partial=torch.empty(2, 2),
+            stage_ready_event=_FakeEvent(),
+            completion_event=_FakeEvent(),
+            return_consumed_event=_FakeEvent(),
+            timing_events={},
+            generation=0,
+            inflight=False,
+            return_pending=False,
+        )
+
+    transport._slots = [slot(), slot()]
     return transport
 
 
@@ -453,4 +733,57 @@ def test_transport_restores_primary_after_success_and_kernel_failure(fail):
             transport.execute(*args)
     else:
         torch.testing.assert_close(transport.execute(*args), torch.ones(1, 2))
+    assert transport._torch.cuda.current_device() == 0
+
+
+def test_transport_repeated_calls_wait_before_reusing_return_buffers():
+    transport = _cpu_transport_for_device_restore()
+    events = [_BlockingReturnEvent(), _BlockingReturnEvent()]
+    for slot, event in zip(transport._slots, events, strict=True):
+        slot.return_consumed_event = event
+
+    class Layer:
+        def _expert_gemm(self, _cache, hidden, *_args, **_kwargs):
+            return hidden + 1
+
+    args = (
+        Layer(),
+        SimpleNamespace(),
+        torch.zeros(1, 2),
+        torch.tensor([[0.5, 0.5]]),
+        torch.tensor([[0, 1]], dtype=torch.int32),
+    )
+    for _ in range(8):
+        torch.testing.assert_close(transport.execute(*args), torch.ones(1, 2))
+    assert transport._buffer_reuse_waits == 6
+    assert [event.synchronize_calls for event in events] == [3, 3]
+    assert all(not slot.inflight for slot in transport._slots)
+
+
+def test_returned_partial_copy_failure_releases_slot_and_restores_primary():
+    transport = _cpu_transport_for_device_restore()
+
+    class Layer:
+        def _expert_gemm(self, _cache, hidden, *_args, **_kwargs):
+            return hidden + 1
+
+    class FailCopy:
+        def __getitem__(self, _key):
+            return self
+
+        def copy_(self, _source, non_blocking=False):
+            del non_blocking
+            raise RuntimeError("injected returned-partial copy failure")
+
+    transport._slots[0].gpu0_partial = FailCopy()
+    pending = transport.submit(
+        Layer(),
+        SimpleNamespace(),
+        torch.zeros(1, 2),
+        torch.tensor([[0.5, 0.5]]),
+        torch.tensor([[0, 1]], dtype=torch.int32),
+    )
+    with pytest.raises(RuntimeError, match="returned-partial copy failure"):
+        transport.finish(pending)
+    assert transport._slots[0].inflight is False
     assert transport._torch.cuda.current_device() == 0

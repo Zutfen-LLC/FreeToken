@@ -77,8 +77,7 @@ def _resolved_nvfp4(cache, requested: str) -> Dict[str, Any]:
             "expert_quant_format": quant_format,
             "decode_target": decode_target,
             "note": (
-                "banks loaded with decode_target=cpu, so the loader kept the native "
-                "ModelOpt layout and skipped backend selection"
+                "banks loaded with decode_target=cpu, so the loader kept the native ModelOpt layout and skipped backend selection"
             ),
         }
     resolved = _QUANT_FORMAT_BACKEND.get(quant_format, "triton")
@@ -100,7 +99,9 @@ def _marlin_cap(cache, plan: Dict[str, Any] | None) -> Dict[str, Any]:
     the user chose the number, so the cap can only have *rejected* it, never silently
     clamped it -- and the run would have failed instead of reaching this report.
     """
-    quant_format = str(getattr(cache, "quant_format", "") or "") if cache is not None else ""
+    quant_format = (
+        str(getattr(cache, "quant_format", "") or "") if cache is not None else ""
+    )
     applicable = quant_format == "nvfp4_marlin"
     out: Dict[str, Any] = {
         "limit_slots": MARLIN_MAX_CACHE_SIZE,
@@ -108,13 +109,14 @@ def _marlin_cap(cache, plan: Dict[str, Any] | None) -> Dict[str, Any]:
     }
     if not applicable:
         out["bound"] = False
-        out["reason"] = f"expert bank layout is {quant_format or 'unknown'}, not nvfp4_marlin"
+        out["reason"] = (
+            f"expert bank layout is {quant_format or 'unknown'}, not nvfp4_marlin"
+        )
         return out
     if plan is None or plan.get("uncapped_slots") is None:
         out["bound"] = None
         out["unavailable"] = (
-            "cache size was set explicitly (--moe-cache-size/--moe-cache-rate); "
-            "the cap rejects an over-large size rather than clamping it"
+            "cache size was set explicitly (--moe-cache-size/--moe-cache-rate); the cap rejects an over-large size rather than clamping it"
         )
         return out
     resolved = int(plan.get("resolved_slots") or 0)
@@ -130,18 +132,23 @@ def _cache_block(engine, cache) -> Dict[str, Any]:
     plan = getattr(engine, "moe_cache_auto_plan", None)
     block: Dict[str, Any] = {
         "policy_requested": (
-            "auto" if config.moe_cache_auto
+            "auto"
+            if config.moe_cache_auto
             else ("rate" if config.moe_cache_rate is not None else "size")
         ),
         "moe_cache_rate_flag": config.moe_cache_rate,
         "kv_reserve_tokens": config.kv_reserve_tokens,
         "moe_cache_policy": config.moe_cache_policy,
-        "resolved_slots": int(getattr(cache, "cache_size", 0) or 0) if cache is not None else None,
+        "resolved_slots": int(getattr(cache, "cache_size", 0) or 0)
+        if cache is not None
+        else None,
         "auto_plan": plan,
     }
     if cache is None:
         block["resolved_slots"] = None
-        block["unavailable_resolved_slots"] = "no offload MoE cache on this configuration"
+        block["unavailable_resolved_slots"] = (
+            "no offload MoE cache on this configuration"
+        )
         block["resolved_bytes"] = None
         return block
     try:
@@ -154,12 +161,16 @@ def _cache_block(engine, cache) -> Dict[str, Any]:
         block["resolved_bytes"] = None
         block["unavailable_resolved_bytes"] = f"could not measure bank caches: {e!r}"
     mc = config.model_config
-    total_experts = int(getattr(mc, "num_moe_layers", 0)) * int(getattr(mc, "num_experts", 0))
+    total_experts = int(getattr(mc, "num_moe_layers", 0)) * int(
+        getattr(mc, "num_experts", 0)
+    )
     block["total_expert_slots"] = total_experts or None
     if total_experts and cache.cache_size:
         # Placement fact only. Coverage is not hit rate and is not throughput
         # (InferSwarm phase-1 criteria section 13); it is reported, never cited.
-        block["resident_expert_coverage"] = round(int(cache.cache_size) / total_experts, 6)
+        block["resident_expert_coverage"] = round(
+            int(cache.cache_size) / total_experts, 6
+        )
     else:
         block["resident_expert_coverage"] = None
     return block
@@ -174,7 +185,9 @@ def _moe_block(engine, cache) -> Dict[str, Any]:
         # config.moe_backend is mutated in place by _adjust_config when `auto` resolves,
         # so the live value IS the resolved one.
         "backend_resolved": config.moe_backend,
-        "decode_target": getattr(cache, "decode_target", None) if cache is not None else None,
+        "decode_target": getattr(cache, "decode_target", None)
+        if cache is not None
+        else None,
         "cpu_threads": config.moe_cpu_threads,
         "cpu_layers_flag": config.moe_cpu_layers,
         "hybrid_max_fetch_flag": config.moe_hybrid_max_fetch,
@@ -193,6 +206,10 @@ def _moe_block(engine, cache) -> Dict[str, Any]:
         "collect_stats": config.moe_collect_stats,
         "trace_max_steps": int(getattr(config, "moe_trace_max_steps", 0) or 0),
         "trace_enabled": bool(getattr(config, "moe_trace_max_steps", 0) or 0),
+        "layer_timing_max_steps": int(
+            getattr(config, "moe_layer_timing_max_steps", 0) or 0
+        ),
+        "layer_timing_role": getattr(config, "moe_layer_timing_role", "unspecified"),
     }
     block.update(
         {
@@ -275,6 +292,7 @@ def build_runtime_report(engine) -> Dict[str, Any]:
         secondary = getattr(engine, "inferswarm_secondary_device", None)
         resident = getattr(engine, "inferswarm_resident_bank", None)
         remote_decode = getattr(engine, "inferswarm_remote_decode", None)
+        layer_timing = getattr(engine, "moe_layer_timing", None)
         report: Dict[str, Any] = {
             "schema": SCHEMA,
             "offload_family": is_offload_moe_backend(config.moe_backend),
@@ -282,7 +300,9 @@ def build_runtime_report(engine) -> Dict[str, Any]:
             "moe": _moe_block(engine, cache),
             "nvfp4": _resolved_nvfp4(cache, config.nvfp4_backend),
             "cache": _cache_block(engine, cache),
-            "marlin_cache_cap": _marlin_cap(cache, getattr(engine, "moe_cache_auto_plan", None)),
+            "marlin_cache_cap": _marlin_cap(
+                cache, getattr(engine, "moe_cache_auto_plan", None)
+            ),
             "runtime": _runtime_block(engine),
             # Downstream experimental schema: P1 discovery/provenance only.  This is not an
             # upstream-stable FreeToken API and does not imply remote model execution.
@@ -302,6 +322,15 @@ def build_runtime_report(engine) -> Dict[str, Any]:
                 remote_decode.configuration_report()
                 if remote_decode is not None
                 else absent_remote_decode_configuration_report()
+            ),
+            "moe_layer_timing": (
+                layer_timing.configuration_report()
+                if layer_timing is not None
+                else {
+                    "schema": "freetoken.moe-layer-timing/1",
+                    "enabled": False,
+                    "capacity_steps": 0,
+                }
             ),
         }
         return report

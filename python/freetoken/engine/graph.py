@@ -25,7 +25,9 @@ class GraphCaptureBuffer:
     out_loc: torch.Tensor
     positions: torch.Tensor
     logits: torch.Tensor
-    table_idx: torch.Tensor  # per-request slot id for GatedDeltaNet state gather/scatter
+    table_idx: (
+        torch.Tensor
+    )  # per-request slot id for GatedDeltaNet state gather/scatter
     # Decode GDN query indptr = arange(bs+1); a constant per captured bs, filled once.
     fla_cu_seqlens: torch.Tensor
 
@@ -52,7 +54,8 @@ class GraphCaptureBuffer:
         # Decode GDN metadata reads the persistent cu_seqlens (constant arange) and the
         # persistent table_idx slot map, so the captured kernels see stable addresses.
         batch.fla_metadata = FLAMetadata(
-            cu_seqlens=self.fla_cu_seqlens[: bs + 1], cache_indices=self.table_idx[_slice]
+            cu_seqlens=self.fla_cu_seqlens[: bs + 1],
+            cache_indices=self.table_idx[_slice],
         )
 
     def copy_from(self, batch: Batch) -> None:
@@ -135,17 +138,25 @@ class GraphRunner:
         if self.max_graph_bs == 0:
             return logger.info_rank0("CUDA graph is disabled.")
 
-        self.attn_backend.init_capture_graph(max_seq_len=max_seq_len, bs_list=self.graph_bs_list)
+        self.attn_backend.init_capture_graph(
+            max_seq_len=max_seq_len, bs_list=self.graph_bs_list
+        )
 
         torch.cuda.synchronize(self.device)
         torch.cuda.empty_cache()
         torch.cuda.reset_peak_memory_stats(self.device)
 
-        logger.info_rank0(f"Start capturing CUDA graphs with sizes: {self.graph_bs_list}")
+        logger.info_rank0(
+            f"Start capturing CUDA graphs with sizes: {self.graph_bs_list}"
+        )
         free_memory = get_free_memory(self.device)
-        logger.info_rank0(f"Free GPU memory before capturing CUDA graphs: {mem_GB(free_memory)}")
+        logger.info_rank0(
+            f"Free GPU memory before capturing CUDA graphs: {mem_GB(free_memory)}"
+        )
 
-        self.buffer = GraphCaptureBuffer.init(self.max_graph_bs, vocab_size, self.device)
+        self.buffer = GraphCaptureBuffer.init(
+            self.max_graph_bs, vocab_size, self.device
+        )
         self._reset_moe_offload_cache()
 
         pbar = tqdm(
@@ -157,7 +168,9 @@ class GraphRunner:
         pool = None
         for bs in pbar:
             free_memory = get_free_memory(self.device)
-            pbar.desc = f"Capturing graphs: bs = {bs:<3} | avail_mem = {mem_GB(free_memory)}"
+            pbar.desc = (
+                f"Capturing graphs: bs = {bs:<3} | avail_mem = {mem_GB(free_memory)}"
+            )
             pbar.refresh()
             graph = torch.cuda.CUDAGraph()
             batch = Batch(reqs=[self.dummy_req] * bs, phase="decode")
@@ -167,9 +180,11 @@ class GraphRunner:
             # capture on the dummy linear-state slot so GatedDeltaNet gather/scatter
             # touches scratch (real slot indices are written by copy_from on replay). Hybrid-
             # radix decouples the GDN slot from table_idx -> use the GDN padding slot.
-            dummy_slot = (self.dummy_req.linear_slot_idx
-                          if self.dummy_req.linear_slot_idx is not None
-                          else self.dummy_req.table_idx)
+            dummy_slot = (
+                self.dummy_req.linear_slot_idx
+                if self.dummy_req.linear_slot_idx is not None
+                else self.dummy_req.table_idx
+            )
             self.buffer.table_idx[:bs].fill_(dummy_slot)
             with get_global_ctx().forward_batch(batch):
                 self.buffer.logits[:bs] = model.forward()
@@ -183,8 +198,24 @@ class GraphRunner:
             self.graph_map[bs] = graph
 
         self._reset_moe_offload_cache()
+        # Graph capture/warmup executed the timing marker nodes. Clear those capture-only
+        # observations while retaining the same device allocations referenced by every
+        # captured graph. Real replay then starts at decode step zero.
+        timing = (
+            getattr(self.moe_offload_cache, "layer_timing", None)
+            if self.moe_offload_cache is not None
+            else None
+        )
+        if timing is not None:
+            # The capture warmups also executed flashlib's graph-resident cumulative
+            # LRU counters. Clear those capture-only observations while retaining cache
+            # payload residency and every tensor address referenced by the graph.
+            self.moe_offload_cache.reset_stats()
+            timing.reset()
         free_memory = get_free_memory(self.device)
-        logger.info_rank0(f"Free GPU memory after capturing CUDA graphs: {mem_GB(free_memory)}")
+        logger.info_rank0(
+            f"Free GPU memory after capturing CUDA graphs: {mem_GB(free_memory)}"
+        )
 
     def can_use_cuda_graph(self, batch: Batch) -> bool:
         return batch.is_decode and batch.size <= self.max_graph_bs

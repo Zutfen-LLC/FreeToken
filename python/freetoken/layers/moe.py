@@ -5,7 +5,11 @@ import torch
 from freetoken.core import get_global_ctx
 from freetoken.distributed import DistributedCommunicator, get_tp_info
 from freetoken.moe import is_offload_moe_backend
-from freetoken.moe.fused import fused_experts_decode_impl, fused_experts_impl, fused_topk
+from freetoken.moe.fused import (
+    fused_experts_decode_impl,
+    fused_experts_impl,
+    fused_topk,
+)
 from freetoken.moe.offload_cache import OffloadMoeCache
 from freetoken.utils import div_even
 
@@ -75,7 +79,9 @@ class MoELayer(BaseOP):
                 n, 2 * i // blk, h // blk, dtype=torch.bfloat16
             )
             self.down_proj = torch.empty(n, h, i, dtype=FP8)
-            self.down_scale_inv = torch.empty(n, h // blk, i // blk, dtype=torch.bfloat16)
+            self.down_scale_inv = torch.empty(
+                n, h // blk, i // blk, dtype=torch.bfloat16
+            )
             return
         assert self.weight_format == "bf16", (
             f"no resident expert allocation for weight_format {self.weight_format!r}"
@@ -131,13 +137,23 @@ class MoELayer(BaseOP):
 
             if get_global_ctx().batch.is_prefill:
                 return fused_experts_fp8_block(
-                    hidden_states, self.gate_up_proj, self.gate_up_scale_inv,
-                    self.down_proj, self.down_scale_inv,
-                    topk_weights, topk_ids, self.num_experts,
+                    hidden_states,
+                    self.gate_up_proj,
+                    self.gate_up_scale_inv,
+                    self.down_proj,
+                    self.down_scale_inv,
+                    topk_weights,
+                    topk_ids,
+                    self.num_experts,
                 )
             return fused_experts_decode_fp8_block(
-                hidden_states, self.gate_up_proj, self.gate_up_scale_inv,
-                self.down_proj, self.down_scale_inv, topk_weights, topk_ids,
+                hidden_states,
+                self.gate_up_proj,
+                self.gate_up_scale_inv,
+                self.down_proj,
+                self.down_scale_inv,
+                topk_weights,
+                topk_ids,
             )
         assert self.weight_format == "bf16", (
             f"no resident expert kernel for weight_format {self.weight_format!r}"
@@ -306,6 +322,9 @@ class OffloadMoELayer(MoELayer):
         ids), so no ``ensure_experts``/``copy_missing`` here."""
         cache = self.offload_cache
         assert cache is not None
+        timing = cache.layer_timing
+        if timing is not None:
+            timing.mark(self.layer_id, "complete_start", begin_layer=True)
         if self.inferswarm_remote_decode is not None:
             return self.inferswarm_remote_decode.decode(
                 self, cache, hidden_states, topk_weights, topk_ids
@@ -316,9 +335,18 @@ class OffloadMoELayer(MoELayer):
             return executor.decode(self.layer_id, hidden_states, topk_weights, topk_ids)
         if cache.decode_target == "hybrid":
             return self._decode_hybrid(cache, hidden_states, topk_weights, topk_ids)
+        if timing is not None:
+            timing.mark(self.layer_id, "local_start")
         cache.ensure_experts(self.layer_id, topk_ids)
+        if timing is not None:
+            timing.mark(self.layer_id, "cache_service_end")
+            timing.record_cache_metadata(
+                self.layer_id, cache, total_routes=topk_ids.numel()
+            )
         cache.copy_missing()
-        return self._expert_gemm(
+        if timing is not None:
+            timing.mark(self.layer_id, "weight_fetch_end")
+        out = self._expert_gemm(
             cache,
             hidden_states,
             topk_weights,
@@ -328,6 +356,11 @@ class OffloadMoELayer(MoELayer):
             alphas=cache.alphas_for_slots(self.layer_id),
             is_prefill=False,
         )
+        if timing is not None:
+            timing.mark(self.layer_id, "local_expert_end")
+            timing.mark(self.layer_id, "local_branch_end")
+            timing.mark(self.layer_id, "complete_end")
+        return out
 
     def _decode_hybrid(
         self,
@@ -348,13 +381,17 @@ class OffloadMoELayer(MoELayer):
         executor = cache.cpu_executor
         assert executor is not None, "CPU MoE executor was not initialized"
         raw = topk_ids.clone()  # raw expert ids for the CPU partial
-        cache.ensure_experts_hybrid(self.layer_id, topk_ids)  # -> slot (hit/fetched) or -1
+        cache.ensure_experts_hybrid(
+            self.layer_id, topk_ids
+        )  # -> slot (hit/fetched) or -1
         if cache.collect_stats:
             cache.record_decode_stats_hybrid(self.layer_id)
         on_gpu = topk_ids >= 0
 
         cpu_ids = torch.where(on_gpu, raw.new_full((), -1), raw).contiguous()
-        pending = executor.decode_submit(self.layer_id, hidden_states, topk_weights, cpu_ids)
+        pending = executor.decode_submit(
+            self.layer_id, hidden_states, topk_weights, cpu_ids
+        )
 
         # Measurement knob: FREETOKEN_HYBRID_OVERLAP=0 syncs the CPU pool *before* the
         # PCIe fetch + GPU GEMM, serializing the two so an A/B isolates the overlap win.
@@ -364,7 +401,9 @@ class OffloadMoELayer(MoELayer):
 
         cache.copy_missing()
         gpu_slots = topk_ids.clamp_min(0)  # -1 -> slot 0 (zero-weighted below)
-        gpu_w = torch.where(on_gpu, topk_weights, topk_weights.new_zeros(())).contiguous()
+        gpu_w = torch.where(
+            on_gpu, topk_weights, topk_weights.new_zeros(())
+        ).contiguous()
         gpu_routed = self._expert_gemm(
             cache,
             hidden_states,
@@ -375,7 +414,9 @@ class OffloadMoELayer(MoELayer):
             alphas=cache.alphas_for_slots(self.layer_id),
             is_prefill=False,
         )
-        cpu_routed = cpu_routed_early if not _HYBRID_OVERLAP else executor.decode_sync(pending)
+        cpu_routed = (
+            cpu_routed_early if not _HYBRID_OVERLAP else executor.decode_sync(pending)
+        )
         return gpu_routed + cpu_routed
 
     def _prefill_routed(
@@ -452,11 +493,16 @@ class OffloadMoELayer(MoELayer):
             # Borrowed W4A16 fused MoE -- Marlin (vLLM, sm_80-99) or b12x
             # (flashinfer, sm_120) over their pre-tiled banks; one kernel serves
             # prefill and decode, with the movement-matched per-row global scales.
-            from freetoken.moe.nvfp4_backends import b12x_fused_experts, marlin_fused_experts
+            from freetoken.moe.nvfp4_backends import (
+                b12x_fused_experts,
+                marlin_fused_experts,
+            )
 
             assert alphas is not None
             gate_up_packed, gate_up_scale, down_packed, down_scale = views
-            fused = marlin_fused_experts if fmt == "nvfp4_marlin" else b12x_fused_experts
+            fused = (
+                marlin_fused_experts if fmt == "nvfp4_marlin" else b12x_fused_experts
+            )
             return fused(
                 hidden_states,
                 gate_up_packed,
@@ -521,13 +567,27 @@ class OffloadMoELayer(MoELayer):
             gate_up, gate_up_scale, down, down_scale = views
             if is_prefill:
                 return fused_experts_fp8_block(
-                    hidden_states, gate_up, gate_up_scale, down, down_scale,
-                    topk_weights, topk_ids, n, self.activation,
+                    hidden_states,
+                    gate_up,
+                    gate_up_scale,
+                    down,
+                    down_scale,
+                    topk_weights,
+                    topk_ids,
+                    n,
+                    self.activation,
                     self.apply_router_weight_on_input,
                 )
             return fused_experts_decode_fp8_block(
-                hidden_states, gate_up, gate_up_scale, down, down_scale,
-                topk_weights, topk_ids, self.activation, self.apply_router_weight_on_input,
+                hidden_states,
+                gate_up,
+                gate_up_scale,
+                down,
+                down_scale,
+                topk_weights,
+                topk_ids,
+                self.activation,
+                self.apply_router_weight_on_input,
             )
         if fmt == "q4_0":
             # Native GGUF Q4_0 experts: dequant-in-kernel grouped GEMV (MMVQ) over the
@@ -548,10 +608,21 @@ class OffloadMoELayer(MoELayer):
             )
 
             gu_blocks, gu_scales, gu_bias, dn_blocks, dn_scales, dn_bias = views
-            run = run_mxfp4_prefill_experts_t if is_prefill else run_mxfp4_splitk_decode_experts
+            run = (
+                run_mxfp4_prefill_experts_t
+                if is_prefill
+                else run_mxfp4_splitk_decode_experts
+            )
             return run(
-                hidden_states, topk_weights, topk_ids,
-                gu_blocks, gu_scales, gu_bias, dn_blocks, dn_scales, dn_bias,
+                hidden_states,
+                topk_weights,
+                topk_ids,
+                gu_blocks,
+                gu_scales,
+                gu_bias,
+                dn_blocks,
+                dn_scales,
+                dn_bias,
                 top_k=self.top_k,
                 hidden_act_alpha=self.hidden_act_alpha,
                 swiglu_limit=self.swiglu_limit,
@@ -566,15 +637,26 @@ class OffloadMoELayer(MoELayer):
                 from freetoken.moe.fused_ds_fp4 import routed_experts_fp4_prefill
 
                 return routed_experts_fp4_prefill(
-                    hidden_states, topk_ids, topk_weights,
-                    gate_up_packed, gate_up_scale, down_packed, down_scale,
-                    self.swiglu_limit, n,
+                    hidden_states,
+                    topk_ids,
+                    topk_weights,
+                    gate_up_packed,
+                    gate_up_scale,
+                    down_packed,
+                    down_scale,
+                    self.swiglu_limit,
+                    n,
                 )
             from freetoken.moe.fused_ds_fp4 import routed_experts_fp4
 
             return routed_experts_fp4(
-                hidden_states, topk_ids, topk_weights,
-                gate_up_packed, gate_up_scale, down_packed, down_scale,
+                hidden_states,
+                topk_ids,
+                topk_weights,
+                gate_up_packed,
+                gate_up_scale,
+                down_packed,
+                down_scale,
                 self.swiglu_limit,
             )
         assert fmt == "bf16", f"unknown quant_format {fmt!r}"
@@ -620,13 +702,17 @@ def make_moe_layer(
     subclasses constructible through the same seam.
     """
     offload = is_offload_moe_backend(config.moe_backend)
-    layer_cls = (offload_cls or OffloadMoELayer) if offload else (resident_cls or MoELayer)
+    layer_cls = (
+        (offload_cls or OffloadMoELayer) if offload else (resident_cls or MoELayer)
+    )
     kwargs = dict(
         num_experts=num_experts if num_experts is not None else config.num_experts,
         top_k=top_k if top_k is not None else config.num_experts_per_tok,
         hidden_size=hidden_size if hidden_size is not None else config.hidden_size,
         intermediate_size=(
-            intermediate_size if intermediate_size is not None else config.moe_intermediate_size
+            intermediate_size
+            if intermediate_size is not None
+            else config.moe_intermediate_size
         ),
         renormalize=renormalize if renormalize is not None else config.norm_topk_prob,
         activation=activation,
