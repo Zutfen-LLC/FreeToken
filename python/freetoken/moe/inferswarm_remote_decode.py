@@ -560,6 +560,7 @@ class HostStagedRemoteTransport:
             self.secondary_ordinal,
         )
         partial_b = self._payload_bytes(pending.tokens)[3]
+        primary_return_enqueued = False
         try:
             cuda.set_device(secondary)
             tic = time.perf_counter_ns()
@@ -590,6 +591,7 @@ class HostStagedRemoteTransport:
             out.copy_(
                 self._active(slot.host_partial, pending.tokens), non_blocking=True
             )
+            primary_return_enqueued = True
             self.transfer_bytes.host_to_gpu0_returned_partial += partial_b
             pending.transfer_bytes["host_to_gpu0"]["returned_partial"] = partial_b
             if after_return_copy:
@@ -601,8 +603,15 @@ class HostStagedRemoteTransport:
             return out
         except Exception:
             try:
-                cuda.set_device(secondary)
-                self.stream.synchronize()
+                if primary_return_enqueued:
+                    # Failure cleanup may block. Once the returned-partial H2D has been
+                    # enqueued, prove GPU0 no longer consumes the slot buffers before making
+                    # the generation reusable. The successful path remains asynchronous.
+                    cuda.set_device(primary)
+                    cuda.current_stream(self.primary_device).synchronize()
+                else:
+                    cuda.set_device(secondary)
+                    self.stream.synchronize()
             finally:
                 slot.inflight = False
                 cuda.set_device(primary)

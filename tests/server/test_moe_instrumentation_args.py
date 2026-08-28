@@ -3,7 +3,6 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
-
 from freetoken.server.args import parse_args
 
 
@@ -26,6 +25,7 @@ def test_moe_instrumentation_cli_is_opt_in():
     assert args.moe_trace_max_steps == 0
     assert args.moe_layer_timing_max_steps == 0
     assert args.moe_layer_timing_role == "unspecified"
+    assert args.inferswarm_correctness_diagnostics is False
 
 
 def test_moe_instrumentation_cli_enables_stats_and_bounded_trace():
@@ -59,4 +59,14 @@ def test_complete_layer_timing_is_bounded_and_graph_compatible():
     )
     assert args.moe_layer_timing_max_steps == 16
     assert args.moe_layer_timing_role == "baseline"
+    assert args.cuda_graph_max_bs == 1
+
+
+def test_c3_correctness_diagnostics_are_explicit_and_graph_compatible():
+    args = _parse(
+        "--inferswarm-correctness-diagnostics",
+        "--cuda-graph-max-bs",
+        "1",
+    )
+    assert args.inferswarm_correctness_diagnostics is True
     assert args.cuda_graph_max_bs == 1

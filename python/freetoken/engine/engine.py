@@ -7,6 +7,7 @@ from datetime import timedelta
 from typing import Any, Dict, Iterable, NamedTuple, Tuple
 
 import torch
+
 from freetoken.attention import (
     AttnType,
     attention_backend_info,
@@ -20,6 +21,14 @@ from freetoken.distributed import (
 )
 from freetoken.env import ENV
 from freetoken.gpu_select import gpu_identity
+from freetoken.kvcache import create_kv_pool, resolve_pool_class
+from freetoken.kvcache.base import CacheRebuildRejected
+from freetoken.kvcache.cache_status import _supports_swa_ratio
+from freetoken.kvcache.linear_state_pool import (
+    _linear_pool_min_slots,
+    _linear_pool_num_slots,
+    state_pool_bytes,
+)
 from freetoken.layers import set_rope_device
 from freetoken.models import create_model, load_weight
 from freetoken.moe import create_moe_backend, is_offload_moe_backend
@@ -37,14 +46,6 @@ from freetoken.utils import (
 from .config import EngineConfig
 from .graph import GraphRunner, get_free_memory
 from .sample import BatchSamplingArgs, Sampler
-from freetoken.kvcache import create_kv_pool, resolve_pool_class
-from freetoken.kvcache.base import CacheRebuildRejected
-from freetoken.kvcache.cache_status import _supports_swa_ratio
-from freetoken.kvcache.linear_state_pool import (
-    _linear_pool_min_slots,
-    _linear_pool_num_slots,
-    state_pool_bytes,
-)
 
 logger = init_logger(__name__)
 
@@ -354,11 +355,16 @@ class Engine:
         self.inferswarm_placement = None
         self.inferswarm_resident_bank = None
         self.inferswarm_remote_decode = None
+        self.inferswarm_correctness_diagnostics = None
         self.moe_layer_timing = None
         self._moe_measurement_step = 0
         placement_path = getattr(config, "inferswarm_placement", None)
         secondary_spec = getattr(config, "inferswarm_secondary_gpu", None)
         remote_decode = bool(getattr(config, "inferswarm_remote_decode", False))
+        if getattr(config, "inferswarm_correctness_diagnostics", False):
+            from .correctness_diagnostics import CorrectnessDiagnostics
+
+            self.inferswarm_correctness_diagnostics = CorrectnessDiagnostics()
         if placement_path is not None and secondary_spec is None:
             raise ValueError(
                 "--inferswarm-placement requires --inferswarm-secondary-gpu"
@@ -1110,6 +1116,14 @@ class Engine:
             if timing is not None
             else absent_moe_layer_timing_report()
         )
+        from .correctness_diagnostics import absent_correctness_diagnostics_report
+
+        correctness = getattr(self, "inferswarm_correctness_diagnostics", None)
+        payload["inferswarm_correctness_diagnostics"] = (
+            correctness.snapshot()
+            if correctness is not None
+            else absent_correctness_diagnostics_report()
+        )
         payload["boundary"] = {
             "operation": operation,
             "idle": True,
@@ -1124,6 +1138,8 @@ class Engine:
                 remote_decode.reset()
             if timing is not None:
                 timing.reset()
+            if correctness is not None:
+                correctness.reset()
             self._moe_measurement_step = 0
         return payload
 
@@ -1334,6 +1350,14 @@ class Engine:
             req.complete_one()
 
         batch_logits = logits[: batch.size]
+        correctness = self.inferswarm_correctness_diagnostics
+        if correctness is not None:
+            for index, req in enumerate(batch.reqs):
+                # ChunkedReq forwards are never accepted as generated tokens. The final
+                # prefill and every decode Req have can_decode=True; the recorder keeps only
+                # the first sampler-input row for each uid.
+                if req.can_decode:
+                    correctness.capture_step0_logits(req.uid, batch_logits[index])
         next_tokens_gpu = self.sampler.sample(batch_logits, args).to(torch.int32)
         next_tokens_cpu = next_tokens_gpu.to("cpu", non_blocking=True)
         copy_done_event = torch.cuda.Event()

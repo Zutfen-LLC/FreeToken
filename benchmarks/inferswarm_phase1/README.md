@@ -78,9 +78,10 @@ independently. Candidate snapshots mechanically evaluate F1/F2/F3/F5/F6. B1 snap
 require active CUDA graph replay and use the same MoE timing schema with remote operations
 explicitly marked `not_applicable`.
 
-The OpenAI-compatible stream does not expose exact generated token IDs or step-0 logits.
-The tool therefore records decoded-text hashes and a tokenizer round-trip diagnostic but
-leaves C3 unevaluated; it never calls re-tokenized text exact token evidence.
+The ordinary OpenAI-compatible stream remains unchanged and does not expose exact generated
+token IDs or step-0 logits. This mechanism tool therefore retains its decoded-text diagnostic
+without calling it C3. Exact C3 evidence is collected separately through the opt-in internal
+generation-state recorder described below.
 
 ```bash
 PYTHONPATH=python:benchmarks python -m inferswarm_phase1.p4_workload_smoke \
@@ -93,3 +94,43 @@ PYTHONPATH=python:benchmarks python -m inferswarm_phase1.p4_workload_smoke \
   --class W4 \
   --output p4-b1-graph-timing.json
 ```
+
+## Exact C3 correctness diagnostic
+
+`c3_correctness` uses the disabled-by-default
+`--inferswarm-correctness-diagnostics` recorder. The recorder copies the actual step-0
+sampler-input logit vector inside the engine and appends scheduler-accepted token IDs before
+detokenization. It does not change ordinary SSE payloads, sampling parameters, or generation
+logic. Its first-logit host copy is intentionally incompatible with performance evidence, so
+never enable it for a performance run.
+
+Start the frozen `CORRECTNESS_REFERENCE` configuration with
+`--inferswarm-correctness-diagnostics`, then capture two independent exact reference
+sequences per W1-W4 fixture after the frozen two warmups:
+
+```bash
+PYTHONPATH=python:benchmarks python -m inferswarm_phase1.c3_correctness \
+  --origin http://127.0.0.1:48145 \
+  --manifest /path/to/phase0-canonical-manifest.json \
+  --model-id nvidia/Qwen3.6-35B-A3B-NVFP4 \
+  --role reference \
+  --output c3-reference-exact.json
+```
+
+Restart with the frozen distributed candidate, also with the recorder enabled, and compare
+against those exact reference bytes:
+
+```bash
+PYTHONPATH=python:benchmarks python -m inferswarm_phase1.c3_correctness \
+  --origin http://127.0.0.1:48145 \
+  --manifest /path/to/phase0-canonical-manifest.json \
+  --model-id nvidia/Qwen3.6-35B-A3B-NVFP4 \
+  --role candidate \
+  --reference-evidence c3-reference-exact.json \
+  --output c3-candidate-exact.json
+```
+
+The tool applies the frozen criterion without a new tolerance: first 64 generated token IDs
+exact, step-0 argmax and top-5 ordering exact, and the full step-0 logit vector within
+`rtol=2e-3, atol=2e-3`. Reference self-consistency must pass first. The JSON explicitly
+contains no throughput, TTFT, prefill ratio, aggregate speedup, or Phase-1 verdict field.

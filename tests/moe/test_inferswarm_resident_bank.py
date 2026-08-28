@@ -7,14 +7,18 @@ import json
 from dataclasses import replace
 from types import SimpleNamespace
 
+import freetoken.moe.inferswarm_resident_bank as resident_mod
 import pytest
 import torch
-
-import freetoken.moe.inferswarm_resident_bank as resident_mod
 from freetoken.engine.engine import Engine
 from freetoken.layers.moe import OffloadMoELayer
 from freetoken.moe.expert_banks import ExpertBanks
 from freetoken.moe.inferswarm_resident_bank import (
+    KNOWN_PLACEMENT_CONTRACTS,
+    V1_ARTIFACT_SHA256,
+    V1_CONTRACT,
+    V2_ARTIFACT_SHA256,
+    V2_CONTRACT,
     LayerPlacement,
     PlacementContract,
     ResolvedBankLayout,
@@ -25,7 +29,6 @@ from freetoken.moe.inferswarm_resident_bank import (
     validate_runtime_bank_layout,
 )
 from freetoken.moe.offload_cache import _BANK_SCHEMAS
-
 
 CONTRACT = PlacementContract(
     schema="test.placement/1",
@@ -74,6 +77,10 @@ def _placement_doc(contract: PlacementContract = CONTRACT) -> dict:
         "source": {
             "model_repository": contract.model_repository,
             "model_revision": contract.model_revision,
+            "workload_manifest_sha256": contract.workload_manifest_sha256,
+            "run_json_sha256": contract.run_json_sha256,
+            "exact_routing_sha256": contract.exact_routing_sha256,
+            "cache_pressure_sha256": contract.cache_pressure_sha256,
         },
         "geometry": {
             "num_moe_layers": contract.num_layers,
@@ -133,6 +140,29 @@ def test_load_computes_the_hash_of_exact_file_bytes(tmp_path):
         load_frozen_placement(path, expected_sha256="0" * 64, contract=CONTRACT)
 
 
+def test_only_exact_v1_and_v2_frozen_policy_descriptors_are_known():
+    assert dict(KNOWN_PLACEMENT_CONTRACTS) == {
+        V1_ARTIFACT_SHA256: V1_CONTRACT,
+        V2_ARTIFACT_SHA256: V2_CONTRACT,
+    }
+    assert V1_CONTRACT.policy == "phase1-qwen36-placement-v1"
+    assert V1_CONTRACT.canonical_placement == "complement_5442"
+    assert V2_CONTRACT.policy == "phase1-qwen36-placement-v2"
+    assert V2_CONTRACT.canonical_placement == "coverage_constrained_complement_5442"
+    assert V1_CONTRACT.remote_slots == V2_CONTRACT.remote_slots == 5_442
+    assert (
+        V1_CONTRACT.remote_resident_bytes
+        == V2_CONTRACT.remote_resident_bytes
+        == 9_662_902_272
+    )
+
+
+def test_structurally_valid_but_unknown_policy_bytes_are_rejected():
+    raw = _raw(_placement_doc())
+    with pytest.raises(ValueError, match="not a known frozen Phase-1 policy"):
+        parse_frozen_placement_bytes(raw)
+
+
 @pytest.mark.parametrize(
     "mutation,match",
     [
@@ -146,6 +176,22 @@ def test_load_computes_the_hash_of_exact_file_bytes(tmp_path):
         (
             lambda d: d["source"].__setitem__("model_revision", "b" * 40),
             "model_revision disagreement",
+        ),
+        (
+            lambda d: d["source"].__setitem__("workload_manifest_sha256", "b" * 64),
+            "workload_manifest_sha256 disagreement",
+        ),
+        (
+            lambda d: d["source"].__setitem__("run_json_sha256", "b" * 64),
+            "run_json_sha256 disagreement",
+        ),
+        (
+            lambda d: d["source"].__setitem__("exact_routing_sha256", "b" * 64),
+            "exact_routing_sha256 disagreement",
+        ),
+        (
+            lambda d: d["source"].__setitem__("cache_pressure_sha256", "b" * 64),
+            "cache_pressure_sha256 disagreement",
         ),
         (
             lambda d: d["geometry"].__setitem__("num_moe_layers", 3),

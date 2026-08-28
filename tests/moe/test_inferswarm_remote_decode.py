@@ -515,10 +515,15 @@ def test_engine_idle_reset_clears_p3_counters_and_preserves_both_residencies():
         snapshot=lambda **_kwargs: {"aggregate": {"remote_dispatches": 4}},
         reset=lambda: calls.append("remote_reset"),
     )
+    correctness = SimpleNamespace(
+        snapshot=lambda: {"enabled": True, "records": [{"uid": 7}]},
+        reset=lambda: calls.append("correctness_reset"),
+    )
     engine = SimpleNamespace(
         moe_offload_cache=cache,
         inferswarm_resident_bank=resident,
         inferswarm_remote_decode=remote,
+        inferswarm_correctness_diagnostics=correctness,
         moe_layer_timing=None,
         _moe_measurement_step=3,
     )
@@ -526,7 +531,8 @@ def test_engine_idle_reset_clears_p3_counters_and_preserves_both_residencies():
     assert payload["cache_residency"] == "warm"
     assert payload["inferswarm_resident_bank"]["resident_slots"] == 3
     assert payload["inferswarm_remote_decode"]["aggregate"]["remote_dispatches"] == 4
-    assert calls == ["cache_reset", "remote_reset"]
+    assert payload["inferswarm_correctness_diagnostics"]["records"] == [{"uid": 7}]
+    assert calls == ["cache_reset", "remote_reset", "correctness_reset"]
     assert engine.moe_offload_cache is cache
     assert engine.inferswarm_resident_bank is resident
 
@@ -582,6 +588,7 @@ def test_p3_source_has_no_implicit_cuda_one_and_prefill_has_no_remote_branch():
 class _FakeCuda:
     def __init__(self):
         self.current = 0
+        self.streams = {0: _FakeStream(), 1: _FakeStream()}
 
     def set_device(self, ordinal):
         self.current = int(ordinal)
@@ -605,7 +612,7 @@ class _FakeCuda:
         return _FakeEvent()
 
     def current_stream(self, _device=None):
-        return _FakeStream()
+        return self.streams[self.current]
 
     def stream(self, _stream):
         return _FakeContext()
@@ -634,8 +641,11 @@ class _FakeEvent:
 
 
 class _FakeStream:
+    def __init__(self):
+        self.synchronize_calls = 0
+
     def synchronize(self):
-        pass
+        self.synchronize_calls += 1
 
 
 class _BlockingReturnEvent(_FakeEvent):
@@ -666,6 +676,10 @@ def _cpu_transport_for_device_restore():
     transport._next_slot = 0
     transport._buffer_reuse_waits = 0
     transport.stream = _FakeStream()
+    transport._gpu1_allocated_before_init = 0
+    transport._gpu1_allocated_after_init = 0
+    transport._gpu1_reserved_before_init = 0
+    transport._gpu1_reserved_after_init = 0
 
     def slot():
         return SimpleNamespace(
@@ -787,3 +801,101 @@ def test_returned_partial_copy_failure_releases_slot_and_restores_primary():
         transport.finish(pending)
     assert transport._slots[0].inflight is False
     assert transport._torch.cuda.current_device() == 0
+
+
+def test_post_return_copy_failure_drains_primary_before_generation_reuse():
+    transport = _cpu_transport_for_device_restore()
+
+    class Layer:
+        def _expert_gemm(self, _cache, hidden, *_args, **_kwargs):
+            return hidden + 1
+
+    args = (
+        Layer(),
+        SimpleNamespace(),
+        torch.zeros(1, 2),
+        torch.tensor([[0.5, 0.5]]),
+        torch.tensor([[0, 1]], dtype=torch.int32),
+    )
+    pending = transport.submit(*args)
+    old_generation = pending.generation
+
+    def fail_after_copy():
+        raise RuntimeError("injected post-return-copy timing failure")
+
+    with pytest.raises(RuntimeError, match="post-return-copy timing failure"):
+        transport.finish(pending, after_return_copy=fail_after_copy)
+
+    primary_stream = transport._torch.cuda.streams[transport.primary_ordinal]
+    assert primary_stream.synchronize_calls == 1
+    assert transport._slots[0].inflight is False
+    assert pending.finished is False and pending.released is False
+    assert transport._torch.cuda.current_device() == transport.primary_ordinal
+
+    # Slot 1 is next, then slot 0 is safely reused at a new generation. The failed
+    # handle cannot finish or release that reused storage.
+    transport.execute(*args)
+    transport.execute(*args)
+    assert transport._slots[0].generation == old_generation + 1
+    with pytest.raises(RuntimeError, match="stale generation"):
+        transport.finish(pending)
+    with pytest.raises(RuntimeError, match="stale generation"):
+        transport.release(pending)
+    assert all(not slot.inflight for slot in transport._slots)
+    assert transport._torch.cuda.current_device() == transport.primary_ordinal
+
+
+def test_post_return_copy_failure_is_explicit_and_cannot_pass_f6():
+    executor, _ = _executor(mode="overlap")
+    transport = _cpu_transport_for_device_restore()
+    executor.transport = transport
+    cache = _Cache()
+
+    class Timing:
+        def mark(self, _layer_id, marker, *, begin_layer=False):
+            del begin_layer
+            if marker == "returned_partial_h2d_end":
+                raise RuntimeError("injected post-return-copy timing failure")
+
+        def record_cache_metadata(self, *_args, **_kwargs):
+            pass
+
+        def annotate(self, *_args, **_kwargs):
+            pass
+
+    class Layer(_Layer):
+        def _expert_gemm(
+            self, cache, hidden, weights, slots, *, views, n, alphas, is_prefill
+        ):
+            if views is cache.views:
+                return super()._expert_gemm(
+                    cache,
+                    hidden,
+                    weights,
+                    slots,
+                    views=views,
+                    n=n,
+                    alphas=alphas,
+                    is_prefill=is_prefill,
+                )
+            return hidden + 1
+
+    cache.layer_timing = Timing()
+    with pytest.raises(RuntimeError, match="post-return-copy timing failure"):
+        executor.decode(
+            Layer(0),
+            cache,
+            torch.zeros(1, 2),
+            torch.tensor([[0.5, 0.5]]),
+            torch.tensor([[0, 2]], dtype=torch.int32),
+        )
+    snapshot = executor.snapshot()
+    aggregate = snapshot["aggregate"]
+    assert aggregate["selected_for_gpu1"] == 1
+    assert aggregate["executed_on_gpu1"] == 0
+    assert aggregate["explicit_failure"] == 1
+    assert aggregate["fallback_elsewhere"] == 0
+    assert aggregate["combine_operations"] == 0
+    assert snapshot["gates"]["F6"]["passed"] is False
+    assert all(not slot.inflight for slot in transport._slots)
+    assert transport._torch.cuda.current_device() == transport.primary_ordinal

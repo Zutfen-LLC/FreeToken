@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import List, Tuple
 
 import torch
+
 from freetoken.distributed import DistributedInfo
 from freetoken.scheduler import SchedulerConfig
 from freetoken.utils import init_logger
@@ -322,6 +323,17 @@ def parse_args(
         default=ServerArgs.inferswarm_mechanism_max_steps,
         help=(
             "Retain bounded per-step/per-layer InferSwarm mechanism records; cumulative F-gate counters continue after this capacity"
+        ),
+    )
+
+    parser.add_argument(
+        "--inferswarm-correctness-diagnostics",
+        action="store_true",
+        default=ServerArgs.inferswarm_correctness_diagnostics,
+        help=(
+            "Correctness-only InferSwarm C3 capture of exact generated token IDs and "
+            "step-0 logits through the idle instrumentation snapshot. Disabled by default; "
+            "must not be enabled for performance measurement"
         ),
     )
 

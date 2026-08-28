@@ -5,6 +5,7 @@ from functools import cached_property
 from typing import TYPE_CHECKING, List
 
 import torch
+
 from freetoken.distributed import DistributedInfo
 from freetoken.models.register import _load_attr, get_model_spec
 from freetoken.utils import cached_load_hf_config
@@ -51,6 +52,9 @@ class EngineConfig:
     # path allocation- and marker-free. Role is optional diagnostic provenance.
     moe_layer_timing_max_steps: int = 0
     moe_layer_timing_role: str = "unspecified"
+    # Correctness-only capture of exact accepted token IDs and step-0 logits. Disabled by
+    # default and forbidden as performance evidence because the first-logit host copy blocks.
+    inferswarm_correctness_diagnostics: bool = False
     # CPU MoE backend (--moe-backend cpu): number of CPU worker threads computing
     # the decode experts. 0 = auto (physical cores). Ignored by other backends.
     moe_cpu_threads: int = 0
