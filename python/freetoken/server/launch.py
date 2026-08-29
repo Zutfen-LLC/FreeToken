@@ -63,7 +63,9 @@ def _run_scheduler(args: ServerArgs, ack_queue: mp.Queue[str]) -> None:
     from freetoken.gpu_select import set_assigned_gpu
 
     # resolved UUIDs when we have them, the raw --gpu entries when NVML could not resolve them, else one CUDA ordinal per rank
-    targets = args.gpu_assigned or args.gpu or tuple(str(r) for r in range(args.tp_info.size))
+    targets = (
+        args.gpu_assigned or args.gpu or tuple(str(r) for r in range(args.tp_info.size))
+    )
     set_assigned_gpu(targets[args.tp_info.rank])
 
     import torch
@@ -151,8 +153,7 @@ def _resolve_server_gpu_args(server_args: ServerArgs) -> ServerArgs:
             primary_uuid = primary_assigned[0]
             if primary_uuid.upper() == secondary_assigned.upper():
                 raise ValueError(
-                    "--inferswarm-secondary-gpu resolves to the same physical GPU as "
-                    f"the primary ({primary_uuid})"
+                    f"--inferswarm-secondary-gpu resolves to the same physical GPU as the primary ({primary_uuid})"
                 )
 
     return replace(
@@ -186,13 +187,11 @@ def launch_server(
             raise SystemExit(f"{prog or 'ft serve'}: error: {exc}") from exc
     if server_args.gpu:
         logger.info(
-            f"--gpu {','.join(server_args.gpu)} -> "
-            f"{', '.join(server_args.gpu_assigned) if server_args.gpu_assigned else 'resolved at CUDA init (no NVML)'}"
+            f"--gpu {','.join(server_args.gpu)} -> {', '.join(server_args.gpu_assigned) if server_args.gpu_assigned else 'resolved at CUDA init (no NVML)'}"
         )
     if server_args.inferswarm_secondary_gpu is not None:
         logger.info(
-            f"--inferswarm-secondary-gpu {server_args.inferswarm_secondary_gpu} -> "
-            f"{server_args.inferswarm_secondary_gpu_assigned or 'resolved at CUDA init (no NVML)'}"
+            f"--inferswarm-secondary-gpu {server_args.inferswarm_secondary_gpu} -> {server_args.inferswarm_secondary_gpu_assigned or 'resolved at CUDA init (no NVML)'}"
         )
     if server_args.inferswarm_placement is not None:
         logger.info(
@@ -200,8 +199,7 @@ def launch_server(
         )
     if server_args.inferswarm_remote_decode:
         logger.info(
-            "--inferswarm-remote-decode enabled "
-            "(correctness-first serialized, explicit host-staged transport)"
+            f"--inferswarm-remote-decode enabled (mode={server_args.inferswarm_remote_mode}, persistent-stream explicit host-staged transport)"
         )
 
     def start_subprocess() -> "BackendHandle":

@@ -5,6 +5,7 @@ from functools import cached_property
 from typing import TYPE_CHECKING, List
 
 import torch
+
 from freetoken.distributed import DistributedInfo
 from freetoken.models.register import _load_attr, get_model_spec
 from freetoken.utils import cached_load_hf_config
@@ -31,18 +32,29 @@ class EngineConfig:
     moe_cache_size: int = 0
     moe_cache_rate: float | None = None
     moe_cache_auto: bool = False
-    kv_reserve_tokens: int = 8192  # KV floor for --moe-cache-auto; small by design (MoE-priority)
+    kv_reserve_tokens: int = (
+        8192  # KV floor for --moe-cache-auto; small by design (MoE-priority)
+    )
     moe_cache_policy: str = "lru"
     moe_prefill_overlap: bool = True
     # Prefill hit/miss split: serve cache-resident experts D2D during prefill
     # prefetch instead of re-streaming the full layer over PCIe. Needs CUDA >= 12.8
     # (cudaMemcpyBatchAsync); no-op unless moe_cache_size > 2 * num_experts.
     moe_prefill_hit_d2d: bool = False
-    moe_collect_stats: bool = False  # capture decode miss-rate counters into the cuda graph
+    moe_collect_stats: bool = (
+        False  # capture decode miss-rate counters into the cuda graph
+    )
     # Exact decode routes retained on-device until an explicit idle snapshot. Zero disables
     # tracing and allocates nothing. Exact tracing is eager-only; server argument validation
     # requires --cuda-graph-max-bs 0 when this is positive.
     moe_trace_max_steps: int = 0
+    # Complete routed-MoE timing for eager or graph replay. Zero leaves the ordinary
+    # path allocation- and marker-free. Role is optional diagnostic provenance.
+    moe_layer_timing_max_steps: int = 0
+    moe_layer_timing_role: str = "unspecified"
+    # Correctness-only capture of exact accepted token IDs and step-0 logits. Disabled by
+    # default and forbidden as performance evidence because the first-logit host copy blocks.
+    inferswarm_correctness_diagnostics: bool = False
     # CPU MoE backend (--moe-backend cpu): number of CPU worker threads computing
     # the decode experts. 0 = auto (physical cores). Ignored by other backends.
     moe_cpu_threads: int = 0
@@ -80,7 +92,9 @@ class EngineConfig:
     use_dummy_weight: bool = False
     use_pynccl: bool = True
     max_seq_len_override: int | None = None
-    num_page_override: int | None = None  # if not None, will override the number of pages
+    num_page_override: int | None = (
+        None  # if not None, will override the number of pages
+    )
     # KV capacity in tokens; resolved into num_page_override by _adjust_config once page_size
     # is final. Mutually exclusive with num_page_override.
     num_token_override: int | None = None

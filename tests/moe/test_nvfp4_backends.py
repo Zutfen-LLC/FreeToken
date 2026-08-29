@@ -411,6 +411,111 @@ def test_triton_decode_marlin_matches_baseline_kernel():
     torch.testing.assert_close(marlin.float(), base.float(), rtol=2e-3, atol=2e-3)
 
 
+@cuda
+def test_triton_decode_route_contributions_reproduce_ordinary_wrapper_exactly():
+    """The ordinary production wrapper remains exactly route GEMMs + one old reduce."""
+    from freetoken.kernel import moe_sum_reduce_triton
+    from freetoken.moe.fused_nvfp4 import (
+        fused_experts_decode_nvfp4_marlin,
+        fused_experts_decode_nvfp4_marlin_route_contributions,
+    )
+
+    device = torch.device("cuda")
+    cache, _ = _triton_cache(device)
+    torch.manual_seed(31)
+    hidden = torch.randn(3, H, dtype=torch.bfloat16, device=device) / 4
+    weights = torch.rand(3, TOPK, dtype=torch.float32, device=device)
+    ids = torch.tensor([[1, 6], [3, 4], [7, 2]], dtype=torch.int32, device=device)
+    cache.ensure_experts(0, ids)
+    cache.copy_missing()
+    banks = cache.bank_views()
+
+    ordinary = fused_experts_decode_nvfp4_marlin(
+        hidden, *banks, weights, ids, "silu", False
+    )
+    routes = fused_experts_decode_nvfp4_marlin_route_contributions(
+        hidden, *banks, weights, ids, "silu", False
+    )
+    assert routes.shape == (3, TOPK, H)
+    reconstructed = torch.empty_like(hidden)
+    moe_sum_reduce_triton(routes, reconstructed)
+    assert torch.equal(ordinary, reconstructed)
+
+    persistent = torch.empty_like(routes)
+    returned = fused_experts_decode_nvfp4_marlin_route_contributions(
+        hidden, *banks, weights, ids, "silu", False, out=persistent
+    )
+    assert returned is persistent
+    assert torch.equal(routes, persistent)
+
+
+@cuda
+def test_offload_native_nvfp4_route_seam_accepts_canonical_none_alphas():
+    from freetoken.layers.moe import OffloadMoELayer
+    from freetoken.moe.fused_nvfp4 import (
+        fused_experts_decode_nvfp4_marlin_route_contributions,
+    )
+
+    device = torch.device("cuda")
+    cache, _ = _triton_cache(device)
+    torch.manual_seed(33)
+    hidden = torch.randn(2, H, dtype=torch.bfloat16, device=device) / 4
+    weights = torch.rand(2, TOPK, dtype=torch.float32, device=device)
+    ids = torch.tensor([[1, 6], [3, 4]], dtype=torch.int32, device=device)
+    cache.ensure_experts(0, ids)
+    cache.copy_missing()
+    views = cache.bank_views()
+    alphas = cache.alphas_for_slots(0)
+    assert len(views) == 6
+    assert alphas is None
+
+    layer = types.SimpleNamespace(
+        activation="silu", apply_router_weight_on_input=False
+    )
+    through_seam = OffloadMoELayer._expert_route_contributions(
+        layer,
+        cache,
+        hidden,
+        weights,
+        ids,
+        views=views,
+        alphas=alphas,
+    )
+    direct = fused_experts_decode_nvfp4_marlin_route_contributions(
+        hidden, *views, weights, ids, "silu", False
+    )
+    assert through_seam.shape == (2, TOPK, H)
+    assert torch.equal(through_seam, direct)
+
+
+@cuda
+def test_triton_decode_route_refactor_remains_cuda_graph_replay_safe():
+    from freetoken.moe.fused_nvfp4 import fused_experts_decode_nvfp4_marlin
+
+    device = torch.device("cuda")
+    cache, _ = _triton_cache(device)
+    torch.manual_seed(32)
+    hidden = torch.randn(1, H, dtype=torch.bfloat16, device=device) / 4
+    weights = torch.rand(1, TOPK, dtype=torch.float32, device=device)
+    ids = torch.tensor([[1, 6]], dtype=torch.int32, device=device)
+    cache.ensure_experts(0, ids)
+    cache.copy_missing()
+    banks = cache.bank_views()
+
+    eager = fused_experts_decode_nvfp4_marlin(
+        hidden, *banks, weights, ids, "silu", False
+    )
+    torch.cuda.synchronize(device)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        replayed = fused_experts_decode_nvfp4_marlin(
+            hidden, *banks, weights, ids, "silu", False
+        )
+    graph.replay()
+    torch.cuda.synchronize(device)
+    assert torch.equal(eager, replayed)
+
+
 def test_nvfp4_backend_selection():
     """--nvfp4-backend selection + the flashinfer/marlin device gates -- runs without a GPU
     via the CPU branch (forced backends need a usable device, so they error loudly there)."""

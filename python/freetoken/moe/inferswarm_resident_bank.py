@@ -21,14 +21,36 @@ from .expert_banks import ExpertBanks
 from .offload_cache import _BANK_BYTES_PER_EXPERT, _BANK_SCHEMAS
 
 PLACEMENT_SCHEMA = "inferswarm.phase1.placement/1"
-PLACEMENT_POLICY = "phase1-qwen36-placement-v1"
 PLACEMENT_STATUS = "FROZEN_BEFORE_PHASE1_PERFORMANCE"
-CANONICAL_PLACEMENT = "complement_5442"
 CANONICAL_MODEL_REPOSITORY = "nvidia/Qwen3.6-35B-A3B-NVFP4"
 CANONICAL_MODEL_REVISION = "491c2f1ea524c639598bf8fa787a93fed5a6fbce"
-CANONICAL_ARTIFACT_SHA256 = (
+CANONICAL_WORKLOAD_MANIFEST_SHA256 = (
+    "10f81e5418a71a68f387632de422c3337cc7ba0518111a8746ad856d0210b24a"
+)
+CANONICAL_RUN_JSON_SHA256 = (
+    "1ecd14c8c157eb6cde62f8514b8f2af82a36dfe69e3a7241f5be6c9908e539dc"
+)
+CANONICAL_EXACT_ROUTING_SHA256 = (
+    "4071e2bfd3c18f39e5c5a0b5ff8913ca0fb99b843cf7abca0ecc1f4ebd0a252f"
+)
+CANONICAL_CACHE_PRESSURE_SHA256 = (
+    "f02d96a079a6af94b3fec9d2c571322a1274cd408a3a9ff2ef162f538babab3a"
+)
+V1_PLACEMENT_POLICY = "phase1-qwen36-placement-v1"
+V1_CANONICAL_PLACEMENT = "complement_5442"
+V1_ARTIFACT_SHA256 = (
     "255dce5d335c5017de06eff54cfd1c8a0599d2dbd6c84c7fb0fb856701596a2c"
 )
+V2_PLACEMENT_POLICY = "phase1-qwen36-placement-v2"
+V2_CANONICAL_PLACEMENT = "coverage_constrained_complement_5442"
+V2_ARTIFACT_SHA256 = (
+    "2f62bb84df40d4cc5649e940a39cb53d2975eadecbc320fb97d2b037d4e005f4"
+)
+# Compatibility names remain pinned to historical v1. Runtime auto-resolution below accepts
+# only the exact SHA-addressed v1/v2 descriptors; it never treats this alias as a wildcard.
+PLACEMENT_POLICY = V1_PLACEMENT_POLICY
+CANONICAL_PLACEMENT = V1_CANONICAL_PLACEMENT
+CANONICAL_ARTIFACT_SHA256 = V1_ARTIFACT_SHA256
 MAPPING_RULE = "remote_slot = index within canonical flat_ids_in_rank_order"
 
 
@@ -49,9 +71,26 @@ class PlacementContract:
     hidden_size: int = 2_048
     intermediate_size: int = 512
     architecture: str = "Qwen3_5MoeForConditionalGeneration"
+    workload_manifest_sha256: str = CANONICAL_WORKLOAD_MANIFEST_SHA256
+    run_json_sha256: str = CANONICAL_RUN_JSON_SHA256
+    exact_routing_sha256: str = CANONICAL_EXACT_ROUTING_SHA256
+    cache_pressure_sha256: str = CANONICAL_CACHE_PRESSURE_SHA256
+    artifact_sha256: str = V1_ARTIFACT_SHA256
 
 
-CANONICAL_CONTRACT = PlacementContract()
+V1_CONTRACT = PlacementContract()
+V2_CONTRACT = PlacementContract(
+    policy=V2_PLACEMENT_POLICY,
+    canonical_placement=V2_CANONICAL_PLACEMENT,
+    artifact_sha256=V2_ARTIFACT_SHA256,
+)
+KNOWN_PLACEMENT_CONTRACTS: Mapping[str, PlacementContract] = MappingProxyType(
+    {
+        V1_CONTRACT.artifact_sha256: V1_CONTRACT,
+        V2_CONTRACT.artifact_sha256: V2_CONTRACT,
+    }
+)
+CANONICAL_CONTRACT = V1_CONTRACT
 
 
 @dataclass(frozen=True)
@@ -122,11 +161,23 @@ def _require_equal(actual: Any, expected: Any, field: str) -> None:
 def parse_frozen_placement_bytes(
     raw: bytes,
     *,
-    expected_sha256: str = CANONICAL_ARTIFACT_SHA256,
-    contract: PlacementContract = CANONICAL_CONTRACT,
+    expected_sha256: str | None = None,
+    contract: PlacementContract | None = None,
 ) -> FrozenPlacement:
     """Parse and mechanically cross-check every canonical placement representation."""
     digest = hashlib.sha256(raw).hexdigest()
+    if expected_sha256 is None and contract is None:
+        contract = KNOWN_PLACEMENT_CONTRACTS.get(digest)
+        if contract is None:
+            raise ValueError(
+                "placement artifact SHA-256 is not a known frozen Phase-1 policy: "
+                f"{digest}"
+            )
+        expected_sha256 = contract.artifact_sha256
+    elif expected_sha256 is None or contract is None:
+        raise ValueError(
+            "custom placement parsing requires both expected_sha256 and contract"
+        )
     if digest != expected_sha256:
         raise ValueError(
             "placement artifact SHA-256 disagreement: "
@@ -153,6 +204,26 @@ def parse_frozen_placement_bytes(
     )
     _require_equal(
         source.get("model_revision"), contract.model_revision, "source.model_revision"
+    )
+    _require_equal(
+        source.get("workload_manifest_sha256"),
+        contract.workload_manifest_sha256,
+        "source.workload_manifest_sha256",
+    )
+    _require_equal(
+        source.get("run_json_sha256"),
+        contract.run_json_sha256,
+        "source.run_json_sha256",
+    )
+    _require_equal(
+        source.get("exact_routing_sha256"),
+        contract.exact_routing_sha256,
+        "source.exact_routing_sha256",
+    )
+    _require_equal(
+        source.get("cache_pressure_sha256"),
+        contract.cache_pressure_sha256,
+        "source.cache_pressure_sha256",
     )
 
     geometry = _expect_dict(doc.get("geometry"), "geometry")
@@ -326,8 +397,8 @@ def parse_frozen_placement_bytes(
 def load_frozen_placement(
     path: str | Path,
     *,
-    expected_sha256: str = CANONICAL_ARTIFACT_SHA256,
-    contract: PlacementContract = CANONICAL_CONTRACT,
+    expected_sha256: str | None = None,
+    contract: PlacementContract | None = None,
 ) -> FrozenPlacement:
     try:
         raw = Path(path).read_bytes()

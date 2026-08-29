@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, List, NamedTuple, NoReturn, Set, Tuple, TypeAlias
 
 import torch
+
 from freetoken.attention.linear import build_fla_metadata
 from freetoken.core import Batch, Req
 from freetoken.env import ENV
@@ -13,11 +14,11 @@ from freetoken.message import (
     BatchBackendMsg,
     CacheRebuildBackendMsg,
     CacheRebuildResultMsg,
-    MoeInstrumentationBackendMsg,
-    MoeInstrumentationResultMsg,
     DetokenizeMsg,
     ErrorReplyMsg,
     ExitMsg,
+    MoeInstrumentationBackendMsg,
+    MoeInstrumentationResultMsg,
     PrefillMeasurement,
     PromptAdmittedMsg,
     UserMsg,
@@ -351,6 +352,13 @@ class Scheduler(SchedulerIOMixin):
                 next_token = next_tokens_cpu[i]
                 req.append_host(next_token.unsqueeze(0))
                 next_token = int(next_token.item())
+                correctness = getattr(
+                    getattr(self, "engine", None),
+                    "inferswarm_correctness_diagnostics",
+                    None,
+                )
+                if correctness is not None:
+                    correctness.record_accepted_token(req.uid, next_token)
                 # EOS / stop-string -> "stop", output budget exhausted -> "length";
                 # EOS and stop strings win over length.
                 # Under overlap scheduling the next forward may already have advanced
@@ -794,7 +802,10 @@ class Scheduler(SchedulerIOMixin):
         """One-line readout of every pool's new size + VRAM after a rebuild changed them:
         full KV always; swa/mamba/MoE only for models with the pool. Byte figures are
         best-effort (0 when a unit cost cannot be measured) and must never block the reply."""
-        from freetoken.kvcache.cache_status import compute_cache_pools, compute_cache_unit_bytes
+        from freetoken.kvcache.cache_status import (
+            compute_cache_pools,
+            compute_cache_unit_bytes,
+        )
 
         try:
             pools = compute_cache_pools(self.engine)

@@ -30,6 +30,8 @@ def test_parser_accepts_no_secondary_without_changing_defaults():
     assert args.inferswarm_secondary_gpu_assigned is None
     assert args.inferswarm_placement is None
     assert args.inferswarm_remote_decode is False
+    assert args.inferswarm_remote_mode == "overlap"
+    assert args.inferswarm_mechanism_max_steps == 256
 
 
 def test_parser_accepts_exactly_one_secondary_spec():
@@ -85,6 +87,25 @@ def test_secondary_placement_and_eager_remote_decode_enable_p3():
         "0",
     )
     assert args.inferswarm_remote_decode is True
+    assert args.inferswarm_remote_mode == "overlap"
+
+
+def test_remote_serialized_diagnostic_mode_is_explicit_and_bounded():
+    args = _parse(
+        "--inferswarm-secondary-gpu",
+        SECONDARY_UUID,
+        "--inferswarm-placement",
+        "/tmp/placement.json",
+        "--inferswarm-remote-decode",
+        "--inferswarm-remote-mode",
+        "serialized",
+        "--inferswarm-mechanism-max-steps",
+        "12",
+        "--cuda-graph-max-bs",
+        "0",
+    )
+    assert args.inferswarm_remote_mode == "serialized"
+    assert args.inferswarm_mechanism_max_steps == 12
 
 
 def test_remote_decode_refuses_cuda_graph_capture():
