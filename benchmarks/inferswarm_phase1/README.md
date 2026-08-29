@@ -134,3 +134,166 @@ The tool applies the frozen criterion without a new tolerance: first 64 generate
 exact, step-0 argmax and top-5 ordering exact, and the full step-0 logit vector within
 `rtol=2e-3, atol=2e-3`. Reference self-consistency must pass first. The JSON explicitly
 contains no throughput, TTFT, prefill ratio, aggregate speedup, or Phase-1 verdict field.
+
+## P5 canonical campaign runner
+
+`campaign*.py` + the `benchmarks/phase1_campaign.py` entry point are the P5 canonical
+Phase-1 A/B campaign runner, built on the Phase-0 benchmark contract implementation in
+`benchmarks/inferswarm_phase0/` (manifest, provenance, client, statistics, validity) —
+not a second benchmarking framework.
+
+### P5 / P6 boundary
+
+P5 delivers the runner and proves by dry-run/provenance validation that baseline and
+candidate are comparable. P5 collects **no** candidate/baseline ratio and emits no
+campaign verdict. P6 (only after the InferSwarm campaign-order amendment merges) runs
+the physical two-session campaign and the analysis that applies the frozen decision
+criteria.
+
+### Canonical commands
+
+```bash
+# the complete two-session plan, no model started
+python benchmarks/phase1_campaign.py plan \
+  --model /path/to/nvidia/Qwen3.6-35B-A3B-NVFP4/491c2f1... \
+  --manifest /path/to/phase0-v1-2026-08-27/manifest.json \
+  --model-revision 491c2f1ea524c639598bf8fa787a93fed5a6fbce \
+  --placement /path/to/phase1-qwen36-placement-v2.json \
+  --inferswarm-commit <40-hex> \
+  --correctness-prerequisites /path/to/prerequisites.json \
+  --output campaign-plan.json
+
+# dry-run validation: preflight refusals, held-constant comparison, counts, ordering
+python benchmarks/phase1_campaign.py validate ...same flags... --output campaign-validation.json
+
+# P6 execution surface (one session at a time; session 2 needs the thermal attestation)
+python benchmarks/phase1_campaign.py run-session --session 1 ...same flags...
+python benchmarks/phase1_campaign.py run-session --session 2 \
+  --thermal-reset-attested "independently cooled reset observed at ..." ...same flags...
+```
+
+`plan` and `validate` never start a model. A canonical session refuses to start on a
+dirty FreeToken tree, a non-40-hex model revision, the wrong workload-manifest
+identity (`phase0-v1-2026-08-27` at its frozen SHA-256), a placement artifact whose
+SHA-256 is not the frozen `2f62bb84...` value, unresolvable GPU UUIDs, or a missing
+correctness prerequisite manifest.
+
+### Two counterbalanced arm-major sessions
+
+Repetition-level `A/B/A/B` interleaving is physically impossible on this rig: both
+arms require exclusive use of the same 12-GB GPU 0, and reloading a server between
+individual measured repetitions would destroy the warmed serving state the protocol
+measures. The executable ordering (frozen by the InferSwarm campaign-order amendment
+before any candidate performance existed) is:
+
+- **Session 1** (fresh thermal reset): `baseline_b1` → `candidate_v2`;
+- **Session 2** (independent operator-attested thermal reset): `candidate_v2` →
+  `baseline_b1`;
+- within every arm/server process: `W1 → W2 → W3 → W4` in **both** sessions (workload
+  order is never reversed), 2 discarded warmups + 10 measured generations per class,
+  one fresh server process per arm per session, no restart between classes, no radix
+  cache clearing between classes.
+
+Per arm: 48 generations. Per session: 96 primary generations. Campaign: 192 primary
+generations. Supplementary arms are counted separately. The whole plan is built
+before the first server starts and cannot be shortened dynamically.
+
+### The arms
+
+`baseline_b1` is the frozen Phase-0 `CANONICAL_PERFORMANCE_BASELINE` identity (B1)
+remeasured on the exact campaign build — single GPU 0, offload backend, auto NVFP4,
+auto expert cache, graphs enabled, no InferSwarm treatment. If it no longer resolves
+to the recorded configuration (Triton, GPU decode, zero CPU MoE layers, ~3,774
+slots), the session **stops before candidate performance** and the Phase-0 baseline
+must be refreshed; no other arm is substituted.
+
+`candidate_v2` is the exact landed candidate: GPU0 cache fixed at 3,774 slots,
+`--num-tokens 17075`, graphs disabled for the cross-device path, the frozen
+`phase1-qwen36-placement-v2` placement (SHA verified before startup) on the secondary
+GPU, host-staged remote decode in overlap mode.
+
+`baseline_b1_kv_matched` (optional, supplementary) is B1 with the candidate's
+resolved `--num-tokens`; it exists to separate KV-capacity effects from
+remote-expert effects when the two primary arms resolve different KV capacities. The
+requirement is derived mechanically from the recorded capacities after both primary
+arms resolve; the arm never replaces B1 in the primary comparison.
+
+### Held constants and intended differences
+
+`validate` emits the machine-readable comparison. Held equal: GPU0, model revision,
+workload manifest, output lengths, sampling, memory ratio, KV reserve, batch size
+(`--max-running-requests 1`), prefill instrumentation. Intended differences
+(exhaustively enumerated; an undeclared difference fails validation): InferSwarm
+remote execution flags, the fixed candidate expert placement/cache flags, CUDA graph
+state, the candidate's KV-capacity pin, and the timing-role label.
+
+### Dry-run evidence
+
+A passing `validate` document has `canonical: true`, empty `preflight_refusals`,
+`held_equal_all: true`, no `undeclared_differences`, counts exactly
+96 primary generations per session / 192 per campaign, session orders
+`[baseline_b1, candidate_v2]` then `[candidate_v2, baseline_b1]`, and identical
+`W1 → W2 → W3 → W4` class order in both sessions.
+
+### Artifact layout
+
+```
+phase1-campaign/
+  campaign-plan.json              (from `plan`)
+  session-1/
+    plan.json                     every expected generation of the session
+    provenance.json               repo/model/workload/GPU/software/host/placement/prerequisites
+    baseline_b1/                  startup.json runtime.json W1..W4.jsonl summary.json server.log
+    candidate_v2/                 ... + block-mechanism-W*.json
+    session-summary.json          execution order, block identities, completion, checks
+  session-2/ ...
+```
+
+Every generation (warmups and failures included) is one JSON line with schema, block
+identity, execution index, full per-token timings, TTFT, prefill record, and output
+hash. No repetition is ever deleted or invisibly retried; a failed generation is
+preserved in place and its block is incomplete. Block reruns create a NEW block
+identity (`block-2`, `block-3`, ...) with the discard reason recorded; the original
+block is never overwritten.
+
+### Mechanism and issue-#5 timing evidence
+
+Per (arm, class) measured block the runner resets the engine instrumentation at an
+idle boundary after the discarded warmups and snapshots it after the last measured
+repetition. The candidate block artifacts retain `selected_for_gpu1`,
+`executed_on_gpu1`, `explicit_failure`, `fallback_elsewhere`, dispatch/
+reconstruction/reduction counts, remote prefill dispatches, startup vs steady-state
+expert-weight H2D bytes, activation/routing and route-contribution traffic, and the
+complete MoE-layer timing (`complete_layer`, GPU0 branch, remote dispatch/control,
+GPU1 branch, join/reconstruct/reduce) from the shared timing schema. Baseline blocks
+retain cache service, weight fetch, local expert execution, and complete-layer wall.
+Complete-layer wall is measured independently, never summed from overlapping
+components; absolute timestamps from independent GPU clocks are never combined.
+
+### Instrumentation performance-compatibility audit
+
+Surfaces used by canonical performance runs and their classification:
+
+| Surface | Classification |
+|---|---|
+| SSE streaming client with arrival timestamps (`measure_generation`) | compatible (it IS the measurement) |
+| `FREETOKEN_INSTRUMENT_PREFILL=1` CUDA-event prefill timing (both arms) | compatible (Phase-0 contract) |
+| `OffloadMoeCache` miss/counters via idle-boundary snapshot | compatible (graph-safe) |
+| InferSwarm ownership counters + transport byte counters | compatible (execution-boundary counters) |
+| `--moe-layer-timing-max-steps` marker-kernel timing ring (both arms) | compatible (device markers, bounded ring, no per-step host sync) |
+| `--inferswarm-correctness-diagnostics` C3 full-logit recorder | **incompatible** — forbidden in every campaign arm; correctness is a separate preflight run |
+| serialized `--inferswarm-remote-mode` control | **diagnostic only** — not part of the canonical candidate arm |
+
+### Dev-smoke distinction and the no-early-stopping rule
+
+`--dev-smoke` is the only way to alter repetitions, warmups, or class selection.
+Every alteration is recorded as a deviation, forces `canonical=false`, and the
+artifacts are labelled `NON_CANONICAL_DEV_SMOKE` — unusable by the canonical
+analysis. Without `--dev-smoke`, protocol changes are rejected.
+
+While a campaign is executing, the runner computes no candidate/baseline ratio, no
+aggregate statistic, and no significance test. Per-arm descriptive values (min/
+median/max/IQR/CV, TTFT/prefill/token-latency percentiles) are computed only after a
+block completes and can never affect whether later blocks execute. The runner's
+complete output vocabulary is `COMPLETE` / `INCOMPLETE` / `VALID` / `INVALID` /
+`NON_CANONICAL_DEV_SMOKE`; the performance-decision vocabulary belongs to P6.

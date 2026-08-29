@@ -32,6 +32,19 @@ instead — it writes the JSON profile the engine reads.
 
 ---
 
+## InferSwarm Phase-1 campaign runner
+
+**`phase1_campaign.py`** (package: `inferswarm_phase1/`, `campaign*.py` modules) — the P5
+canonical Phase-1 A/B campaign runner for
+[InferSwarm issues #4 and #5](https://github.com/Zutfen-LLC/inferswarm/issues/4), built on
+the Phase-0 harness modules. `plan` and `validate` prove by dry-run that the frozen
+`baseline_b1` and `candidate_v2` arms are comparable before any expensive campaign starts;
+`run-session` is the P6 execution surface. It computes no cross-arm ratio and emits no
+campaign verdict. See `benchmarks/inferswarm_phase1/README.md` for the full contract,
+artifact layout, and the P5/P6 boundary.
+
+---
+
 ## InferSwarm Phase-0 baseline harness
 
 **`phase0_baseline.py`** (package: `inferswarm_phase0/`) — the reproducible Phase-0
