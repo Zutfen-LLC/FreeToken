@@ -18,7 +18,7 @@ from typing import Any
 
 import torch
 
-MOE_LAYER_TIMING_SCHEMA = "freetoken.moe-layer-timing/1"
+MOE_LAYER_TIMING_SCHEMA = "freetoken.moe-layer-timing/2"
 TIMER_MECHANISM = "cuda_globaltimer_marker_kernel"
 TIMER_UNIT = "nanoseconds"
 
@@ -29,10 +29,12 @@ MARKERS = (
     "weight_fetch_end",
     "local_expert_end",
     "local_branch_end",
-    "returned_partial_h2d_start",
-    "returned_partial_h2d_end",
-    "combine_start",
-    "combine_end",
+    "returned_route_contributions_h2d_start",
+    "returned_route_contributions_h2d_end",
+    "route_reconstruction_start",
+    "route_reconstruction_end",
+    "final_sum_reduce_start",
+    "final_sum_reduce_end",
     "complete_end",
 )
 MARKER_ID = {name: i for i, name in enumerate(MARKERS)}
@@ -302,11 +304,15 @@ class MoeLayerTiming:
             "host_to_gpu1_payload_h2d": self._annotation_duration(
                 annotation, "host_to_gpu1_payload_h2d", applicable=remote_participated
             ),
-            "remote_expert_execution": self._annotation_duration(
-                annotation, "remote_expert_execution", applicable=remote_participated
+            "gpu1_route_contribution_execution": self._annotation_duration(
+                annotation,
+                "gpu1_route_contribution_execution",
+                applicable=remote_participated,
             ),
-            "gpu1_to_host_partial_d2h": self._annotation_duration(
-                annotation, "gpu1_to_host_partial_d2h", applicable=remote_participated
+            "gpu1_to_host_route_contributions_d2h": self._annotation_duration(
+                annotation,
+                "gpu1_to_host_route_contributions_d2h",
+                applicable=remote_participated,
             ),
             "complete_gpu1_branch": self._annotation_duration(
                 annotation, "complete_gpu1_branch", applicable=remote_participated
@@ -316,16 +322,22 @@ class MoeLayerTiming:
             "host_remote_join_wait": self._annotation_duration(
                 annotation, "host_remote_join_wait", applicable=remote_participated
             ),
-            "host_to_gpu0_returned_partial": self._marker_duration(
+            "host_to_gpu0_returned_route_contributions": self._marker_duration(
                 marker_row,
-                "returned_partial_h2d_start",
-                "returned_partial_h2d_end",
+                "returned_route_contributions_h2d_start",
+                "returned_route_contributions_h2d_end",
                 applicable=remote_participated,
             ),
-            "combine": self._marker_duration(
+            "route_reconstruction": self._marker_duration(
                 marker_row,
-                "combine_start",
-                "combine_end",
+                "route_reconstruction_start",
+                "route_reconstruction_end",
+                applicable=remote_participated,
+            ),
+            "final_moe_sum_reduce": self._marker_duration(
+                marker_row,
+                "final_sum_reduce_start",
+                "final_sum_reduce_end",
                 applicable=remote_participated,
             ),
         }
@@ -349,9 +361,11 @@ class MoeLayerTiming:
                     "routing_ids": not_applicable_bytes(),
                     "expert_weights": not_applicable_bytes(),
                 },
-                "gpu1_to_host": {"returned_partial": not_applicable_bytes()},
+                "gpu1_to_host": {
+                    "returned_route_contributions": not_applicable_bytes()
+                },
                 "host_to_gpu0": {
-                    "returned_partial": not_applicable_bytes(),
+                    "returned_route_contributions": not_applicable_bytes(),
                     "expert_weights": measured_bytes(weight_bytes),
                 },
             }
@@ -366,7 +380,7 @@ class MoeLayerTiming:
                 "gpu0_branch": local_durations,
                 "remote_dispatch_control": remote_durations,
                 "gpu1_branch": gpu1_durations,
-                "join_return_combine": join_durations,
+                "join_reconstruct_reduce": join_durations,
             },
             "step_context": (
                 self._step_contexts[step].__dict__.copy()

@@ -17,6 +17,17 @@ from freetoken.moe.inferswarm_remote_decode import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _cpu_moe_sum_reduce(monkeypatch):
+    """The executor unit fixtures are CPU-only; production coverage uses Triton below."""
+    import freetoken.moe.inferswarm_remote_decode as remote_decode
+
+    def reduce_routes(routes, out):
+        out.copy_(routes.sum(dim=1))
+
+    monkeypatch.setattr(remote_decode, "moe_sum_reduce_triton", reduce_routes)
+
+
 class _Placement:
     num_layers = 2
     num_experts = 3
@@ -92,6 +103,7 @@ class _Layer:
     def __init__(self, layer_id, order=None):
         self.layer_id = layer_id
         self.local_gemm_calls = 0
+        self.route_calls = []
         self.order = order
 
     def _expert_gemm(
@@ -108,12 +120,41 @@ class _Layer:
     ):
         assert views is cache.views
         assert n is None and alphas is None and is_prefill is False
+        routes = self._expert_route_contributions(
+            cache,
+            hidden,
+            weights,
+            slots,
+            views=views,
+            alphas=alphas,
+        )
+        return routes.sum(dim=1)
+
+    def _expert_route_contributions(
+        self,
+        cache,
+        hidden,
+        weights,
+        slots,
+        *,
+        views,
+        alphas,
+        out=None,
+    ):
+        assert views is cache.views
+        assert alphas is None
         self.local_gemm_calls += 1
         if self.order is not None:
             self.order.append("local_gemm")
         experts = slots.float() - 100
-        scalar = (weights * (experts + 1)).sum(dim=1, keepdim=True)
-        return scalar.expand_as(hidden).to(hidden.dtype)
+        routes = (weights * (experts + 1)).unsqueeze(-1).expand(
+            *weights.shape, hidden.shape[1]
+        ).to(hidden.dtype)
+        self.route_calls.append((weights.clone(), slots.clone(), routes.clone()))
+        if out is not None:
+            out.copy_(routes)
+            return out
+        return routes.contiguous()
 
 
 class _Transport:
@@ -126,6 +167,7 @@ class _Transport:
         self.order = order
         self.transfer_bytes = TransferByteCounters()
         self.drains = 0
+        self.returned_routes = []
 
     def submit(self, layer, cache, hidden, weights, slots):
         if self.order is not None:
@@ -156,8 +198,12 @@ class _Transport:
                 "routing_ids": id_bytes,
                 "expert_weights": 0,
             },
-            "gpu1_to_host": {"returned_partial": activation},
-            "host_to_gpu0": {"returned_partial": activation},
+            "gpu1_to_host": {
+                "returned_route_contributions": activation * weights.shape[1]
+            },
+            "host_to_gpu0": {
+                "returned_route_contributions": activation * weights.shape[1]
+            },
         }
         return SimpleNamespace(
             slot_index=0,
@@ -182,11 +228,16 @@ class _Transport:
         expert = torch.zeros_like(slots, dtype=torch.float32)
         for slot, raw in self.slot_to_expert.items():
             expert = torch.where(slots == slot, expert.new_tensor(float(raw)), expert)
-        scalar = (weights * (expert + 1)).sum(dim=1, keepdim=True)
+        routes = (weights * (expert + 1)).unsqueeze(-1).expand(
+            *weights.shape, hidden.shape[1]
+        )
         activation = hidden.numel() * hidden.element_size()
-        self.transfer_bytes.gpu1_to_host_returned_partial += activation
-        self.transfer_bytes.host_to_gpu0_returned_partial += activation
-        return scalar.expand_as(hidden).to(hidden.dtype)
+        route_bytes = activation * weights.shape[1]
+        self.transfer_bytes.gpu1_to_host_returned_route_contributions += route_bytes
+        self.transfer_bytes.host_to_gpu0_returned_route_contributions += route_bytes
+        routes = routes.to(hidden.dtype).contiguous()
+        self.returned_routes.append(routes.clone())
+        return routes
 
     def drain(self, pending):
         self.drains += 1
@@ -289,7 +340,16 @@ def test_remote_only_dispatches_once_skips_gpu0_cache_and_local_gemm():
     assert executor.snapshot()["aggregate"]["executed_on_gpu0"] == 0
 
 
-def test_mixed_partition_excludes_remote_ids_and_combines_once():
+def test_mixed_partition_preserves_route_positions_and_reduces_once(monkeypatch):
+    import freetoken.moe.inferswarm_remote_decode as remote_decode
+
+    reduced = []
+
+    def record_reduce(routes, out):
+        reduced.append(routes.clone())
+        out.copy_(routes.sum(dim=1))
+
+    monkeypatch.setattr(remote_decode, "moe_sum_reduce_triton", record_reduce)
     executor, transport = _executor()
     cache, layer = _Cache(), _Layer(0)
     hidden = torch.zeros(1, 3)
@@ -308,12 +368,20 @@ def test_mixed_partition_excludes_remote_ids_and_combines_once():
     assert remote_slots.tolist() == [
         [1, 0]
     ]  # slot 0 is the valid zero-weight placeholder
+    local_weights, _, local_routes = layer.route_calls[0]
+    assert local_weights.tolist() == [[0.0, 0.75]]
+    assert local_routes[:, 0].count_nonzero() == 0
+    assert transport.returned_routes[0][:, 1].count_nonzero() == 0
+    assert len(reduced) == 1
+    assert reduced[0][:, :, 0].tolist() == [[0.25, 2.25]]
     snap = executor.snapshot()
     assert snap["aggregate"]["total_router_selections"] == 2
     assert snap["aggregate"]["selected_for_gpu1"] == 1
     assert snap["aggregate"]["executed_on_gpu1"] == 1
     assert snap["aggregate"]["executed_on_gpu0"] == 1
     assert snap["aggregate"]["combine_operations"] == 1
+    assert snap["aggregate"]["route_reconstruction_operations"] == 1
+    assert snap["aggregate"]["final_sum_reductions"] == 1
     assert snap["ownership"]["successful_selection_arithmetic_exact"] is True
 
 
@@ -419,10 +487,12 @@ def test_local_failure_drains_pending_remote_before_surfacing():
     executor, transport = _executor(order=order)
 
     class FailLocal(_Layer):
-        def _expert_gemm(self, cache, *args, views, **kwargs):
+        def _expert_route_contributions(self, cache, *args, views, **kwargs):
             if views is cache.views:
                 raise RuntimeError("injected local failure")
-            return super()._expert_gemm(cache, *args, views=views, **kwargs)
+            return super()._expert_route_contributions(
+                cache, *args, views=views, **kwargs
+            )
 
     with pytest.raises(RuntimeError, match="injected local failure"):
         executor.decode(
@@ -443,10 +513,12 @@ def test_serialized_local_failure_after_remote_success_still_fails_f6():
     executor, transport = _executor(mode="serialized")
 
     class FailLocal(_Layer):
-        def _expert_gemm(self, cache, *args, views, **kwargs):
+        def _expert_route_contributions(self, cache, *args, views, **kwargs):
             if views is cache.views:
                 raise RuntimeError("injected serialized local failure")
-            return super()._expert_gemm(cache, *args, views=views, **kwargs)
+            return super()._expert_route_contributions(
+                cache, *args, views=views, **kwargs
+            )
 
     with pytest.raises(RuntimeError, match="serialized local failure"):
         executor.decode(
@@ -585,6 +657,92 @@ def test_p3_source_has_no_implicit_cuda_one_and_prefill_has_no_remote_branch():
     assert absent_remote_decode_report()["aggregate"]["prefill_remote_dispatches"] == 0
 
 
+def test_offload_native_nvfp4_route_contribution_seam_accepts_none_alphas(monkeypatch):
+    import freetoken.layers.moe as moe_layers
+    import freetoken.moe.fused_nvfp4 as fused_nvfp4
+
+    monkeypatch.setattr(moe_layers, "get_tp_info", lambda: SimpleNamespace(size=1))
+    layer = OffloadMoELayer(
+        layer_id=0,
+        num_experts=3,
+        top_k=2,
+        hidden_size=16,
+        intermediate_size=16,
+        activation="silu",
+    )
+    hidden = torch.zeros(1, 16)
+    weights = torch.tensor([[0.25, 0.75]])
+    ids = torch.tensor([[0, 1]], dtype=torch.int32)
+    views = (
+        torch.empty(3, 32, 8, dtype=torch.uint8),
+        torch.empty(3, 32, 1, dtype=torch.float8_e4m3fn),
+        torch.empty(3, 32, dtype=torch.float16),
+        torch.empty(3, 16, 8, dtype=torch.uint8),
+        torch.empty(3, 16, 1, dtype=torch.float8_e4m3fn),
+        torch.empty(3, 16, dtype=torch.float16),
+    )
+    persistent = torch.empty(1, 2, 16)
+    calls = []
+
+    def route_kernel(*args, out, **_kwargs):
+        calls.append(args)
+        return out.fill_(7)
+
+    monkeypatch.setattr(
+        fused_nvfp4,
+        "fused_experts_decode_nvfp4_marlin_route_contributions",
+        route_kernel,
+    )
+    cache = SimpleNamespace(
+        quant_format="nvfp4",
+        bank_schema=(
+            "gate_up_packed",
+            "gate_up_scale",
+            "gate_up_global",
+            "down_packed",
+            "down_scale",
+            "down_global",
+        ),
+    )
+    returned = layer._expert_route_contributions(
+        cache,
+        hidden,
+        weights,
+        ids,
+        views=views,
+        alphas=None,
+        out=persistent,
+    )
+    assert returned is persistent
+    assert all(
+        actual is expected
+        for actual, expected in zip(calls[0][:8], (hidden, *views, weights), strict=True)
+    )
+    assert calls[0][8] is ids
+
+    cache.quant_format = "fp8_block"
+    with pytest.raises(RuntimeError, match="native NVFP4/Triton"):
+        layer._expert_route_contributions(
+            cache,
+            hidden,
+            weights,
+            ids,
+            views=views,
+            alphas=None,
+        )
+
+    cache.quant_format = "nvfp4"
+    with pytest.raises(RuntimeError, match="six-bank layout"):
+        layer._expert_route_contributions(
+            cache,
+            hidden,
+            weights,
+            ids,
+            views=views[:4],
+            alphas=None,
+        )
+
+
 class _FakeCuda:
     def __init__(self):
         self.current = 0
@@ -686,11 +844,12 @@ def _cpu_transport_for_device_restore():
             host_activation=torch.empty(2, 2),
             host_slots=torch.empty(2, 2, dtype=torch.int32),
             host_weights=torch.empty(2, 2),
-            host_partial=torch.empty(2, 2),
+            host_route_contributions=torch.empty(2, 2, 2),
             gpu1_activation=torch.empty(2, 2),
             gpu1_slots=torch.empty(2, 2, dtype=torch.int32),
             gpu1_weights=torch.empty(2, 2),
-            gpu0_partial=torch.empty(2, 2),
+            gpu1_route_contributions=torch.empty(2, 2, 2),
+            gpu0_route_contributions=torch.empty(2, 2, 2),
             stage_ready_event=_FakeEvent(),
             completion_event=_FakeEvent(),
             return_consumed_event=_FakeEvent(),
@@ -730,10 +889,12 @@ def test_transport_restores_primary_after_success_and_kernel_failure(fail):
     transport = _cpu_transport_for_device_restore()
 
     class Layer:
-        def _expert_gemm(self, _cache, hidden, *_args, **_kwargs):
+        def _expert_route_contributions(
+            self, _cache, hidden, _weights, slots, *, out, **_kwargs
+        ):
             if fail:
                 raise RuntimeError("kernel failed")
-            return hidden + 1
+            return out.copy_((hidden + 1).unsqueeze(1).expand(-1, slots.shape[1], -1))
 
     args = (
         Layer(),
@@ -746,7 +907,7 @@ def test_transport_restores_primary_after_success_and_kernel_failure(fail):
         with pytest.raises(RuntimeError, match="kernel failed"):
             transport.execute(*args)
     else:
-        torch.testing.assert_close(transport.execute(*args), torch.ones(1, 2))
+        torch.testing.assert_close(transport.execute(*args), torch.ones(1, 2, 2))
     assert transport._torch.cuda.current_device() == 0
 
 
@@ -757,8 +918,10 @@ def test_transport_repeated_calls_wait_before_reusing_return_buffers():
         slot.return_consumed_event = event
 
     class Layer:
-        def _expert_gemm(self, _cache, hidden, *_args, **_kwargs):
-            return hidden + 1
+        def _expert_route_contributions(
+            self, _cache, hidden, _weights, slots, *, out, **_kwargs
+        ):
+            return out.copy_((hidden + 1).unsqueeze(1).expand(-1, slots.shape[1], -1))
 
     args = (
         Layer(),
@@ -768,18 +931,54 @@ def test_transport_repeated_calls_wait_before_reusing_return_buffers():
         torch.tensor([[0, 1]], dtype=torch.int32),
     )
     for _ in range(8):
-        torch.testing.assert_close(transport.execute(*args), torch.ones(1, 2))
+        torch.testing.assert_close(transport.execute(*args), torch.ones(1, 2, 2))
     assert transport._buffer_reuse_waits == 6
     assert [event.synchronize_calls for event in events] == [3, 3]
     assert all(not slot.inflight for slot in transport._slots)
 
 
-def test_returned_partial_copy_failure_releases_slot_and_restores_primary():
+def test_transport_buffers_and_accounting_use_full_route_geometry():
     transport = _cpu_transport_for_device_restore()
 
     class Layer:
-        def _expert_gemm(self, _cache, hidden, *_args, **_kwargs):
-            return hidden + 1
+        def _expert_route_contributions(
+            self, _cache, hidden, _weights, slots, *, out, **_kwargs
+        ):
+            routes = (hidden + 1).unsqueeze(1).expand(-1, slots.shape[1], -1)
+            return out.copy_(routes)
+
+    routes = transport.execute(
+        Layer(),
+        SimpleNamespace(),
+        torch.zeros(1, 2),
+        torch.tensor([[0.5, 0.5]]),
+        torch.tensor([[0, 1]], dtype=torch.int32),
+    )
+    assert routes.shape == (1, 2, 2)
+    report = transport.report()
+    capacity = report["payload_capacity_bytes_per_slot"]
+    assert capacity == {
+        "activation": 16,
+        "routing_ids": 16,
+        "routing_weights": 16,
+        "returned_route_contributions": 32,
+    }
+    assert report["pinned_host_staging_bytes"] == 160
+    assert report["gpu1_persistent_payload_bytes"] == 160
+    assert report["gpu0_persistent_return_bytes"] == 64
+    transfer = report["steady_state_transfer_bytes"]
+    assert transfer["gpu1_to_host"]["returned_route_contributions"] == 16
+    assert transfer["host_to_gpu0"]["returned_route_contributions"] == 16
+
+
+def test_returned_route_copy_failure_releases_slot_and_restores_primary():
+    transport = _cpu_transport_for_device_restore()
+
+    class Layer:
+        def _expert_route_contributions(
+            self, _cache, hidden, _weights, slots, *, out, **_kwargs
+        ):
+            return out.copy_((hidden + 1).unsqueeze(1).expand(-1, slots.shape[1], -1))
 
     class FailCopy:
         def __getitem__(self, _key):
@@ -787,9 +986,9 @@ def test_returned_partial_copy_failure_releases_slot_and_restores_primary():
 
         def copy_(self, _source, non_blocking=False):
             del non_blocking
-            raise RuntimeError("injected returned-partial copy failure")
+            raise RuntimeError("injected returned-route copy failure")
 
-    transport._slots[0].gpu0_partial = FailCopy()
+    transport._slots[0].gpu0_route_contributions = FailCopy()
     pending = transport.submit(
         Layer(),
         SimpleNamespace(),
@@ -797,7 +996,7 @@ def test_returned_partial_copy_failure_releases_slot_and_restores_primary():
         torch.tensor([[0.5, 0.5]]),
         torch.tensor([[0, 1]], dtype=torch.int32),
     )
-    with pytest.raises(RuntimeError, match="returned-partial copy failure"):
+    with pytest.raises(RuntimeError, match="returned-route copy failure"):
         transport.finish(pending)
     assert transport._slots[0].inflight is False
     assert transport._torch.cuda.current_device() == 0
@@ -807,8 +1006,10 @@ def test_post_return_copy_failure_drains_primary_before_generation_reuse():
     transport = _cpu_transport_for_device_restore()
 
     class Layer:
-        def _expert_gemm(self, _cache, hidden, *_args, **_kwargs):
-            return hidden + 1
+        def _expert_route_contributions(
+            self, _cache, hidden, _weights, slots, *, out, **_kwargs
+        ):
+            return out.copy_((hidden + 1).unsqueeze(1).expand(-1, slots.shape[1], -1))
 
     args = (
         Layer(),
@@ -854,7 +1055,7 @@ def test_post_return_copy_failure_is_explicit_and_cannot_pass_f6():
     class Timing:
         def mark(self, _layer_id, marker, *, begin_layer=False):
             del begin_layer
-            if marker == "returned_partial_h2d_end":
+            if marker == "returned_route_contributions_h2d_end":
                 raise RuntimeError("injected post-return-copy timing failure")
 
         def record_cache_metadata(self, *_args, **_kwargs):
@@ -864,21 +1065,23 @@ def test_post_return_copy_failure_is_explicit_and_cannot_pass_f6():
             pass
 
     class Layer(_Layer):
-        def _expert_gemm(
-            self, cache, hidden, weights, slots, *, views, n, alphas, is_prefill
+        def _expert_route_contributions(
+            self, cache, hidden, weights, slots, *, views, alphas, out=None
         ):
             if views is cache.views:
-                return super()._expert_gemm(
+                return super()._expert_route_contributions(
                     cache,
                     hidden,
                     weights,
                     slots,
                     views=views,
-                    n=n,
                     alphas=alphas,
-                    is_prefill=is_prefill,
+                    out=out,
                 )
-            return hidden + 1
+            routes = (hidden + 1).unsqueeze(1).expand(-1, slots.shape[1], -1)
+            if out is not None:
+                return out.copy_(routes)
+            return routes.contiguous()
 
     cache.layer_timing = Timing()
     with pytest.raises(RuntimeError, match="post-return-copy timing failure"):

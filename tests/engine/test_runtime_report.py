@@ -273,7 +273,7 @@ def test_runtime_report_records_secondary_as_explicitly_absent():
 
 def test_runtime_report_includes_static_complete_layer_timing_provenance():
     timing_report = {
-        "schema": "freetoken.moe-layer-timing/1",
+        "schema": "freetoken.moe-layer-timing/2",
         "enabled": True,
         "capacity_steps": 8,
         "timer_mechanism": "cuda_globaltimer_marker_kernel",
