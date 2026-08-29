@@ -57,12 +57,12 @@ KV_RULE_UNRESOLVED = "UNRESOLVED"
 # the frozen expectations a material deviation from is a preflight failure, never
 # something the runner fixes.
 EXPECTED_BASELINE_NVFP4 = "triton"
-EXPECTED_BASELINE_CACHE_SLOTS = 3774
-# "approximately 3,774 slots": the auto plan legitimately moves a little with driver /
-# reporting noise. Frozen here (before any campaign) at +/-10%, the same way the
-# workload manifest froze the criteria's "~" tolerances, so "~" is a machine-checked
-# rule rather than a judgement call made after seeing the number.
-BASELINE_CACHE_SLOT_TOLERANCE = 0.10
+# The exact slot count Phase-0 recorded for B1's auto expert cache. PROVENANCE ONLY:
+# the canonical methodology (campaign-order amendment) requires --moe-cache-auto and
+# records the exact resolved slot count, but fixes NO numeric validity band on it --
+# a hidden threshold living only in runner code is exactly what the amendment forbids.
+# KV-capacity consequences are owned by the predeclared supplementary-KV rule.
+PHASE0_RECORDED_BASELINE_CACHE_SLOTS = 3774
 
 # The Phase-0 baseline was measured on this FreeToken commit (criteria section 2.2
 # record). P5/P6 remeasures the same B1 identity on the campaign build instead of

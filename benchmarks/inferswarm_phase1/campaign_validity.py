@@ -119,8 +119,24 @@ class SessionValidity(_Phase0Validity):
         return VALIDITY_INVALID if self.invalidations else VALIDITY_VALID
 
 
-class BaselineIdentityError(RuntimeError):
+class RuntimeContractError(RuntimeError):
+    """A runtime-contract failure discovered after ``/health`` and before warmups.
+
+    Every such failure stops measurement for the affected arm: the runner never
+    benchmarks a configuration it already knows is not the declared experiment,
+    and no generation of that arm is recorded as a successful measurement. The
+    arm's planned generations are preserved as not-executed evidence and the
+    session is INVALID/INCOMPLETE.
+    """
+
+
+class BaselineIdentityError(RuntimeContractError):
     """B1 no longer resolves to the frozen Phase-0 baseline identity.
+
+    Identity failure means the resolved identity properties drifted OR the
+    InferSwarm treatment leaked into a baseline arm OR the resolved report was
+    too incomplete to prove the identity — all three are the same statement:
+    this is not B1.
 
     Session-aware by design (campaign-order amendment): in Session 1 (B1 first)
     this STOPs the session before any candidate generation — the campaign-build
@@ -133,6 +149,29 @@ class BaselineIdentityError(RuntimeError):
     no candidate data is reused or spliced. Either way the amendment forbids
     reopening baseline selection from candidate data or silently substituting
     another arm.
+    """
+
+
+class CandidateContractError(RuntimeContractError):
+    """The candidate arm's pre-warmup runtime contract did not hold exactly.
+
+    Raised after ``/health`` ready and before the first warmup: wrong placement
+    SHA, wrong GPU UUIDs/devices, wrong resident slots or bytes, wrong
+    transport, remote mode not overlap, unexpected CUDA-graph state, wrong
+    backend/CPU-layer shape, wrong GPU0 cache size, resolved KV != the pinned
+    capacity, or a resolved report too incomplete to check. The arm is aborted
+    with no candidate performance collected; the session is INVALID/INCOMPLETE
+    with the planned generations preserved as not-executed evidence.
+    """
+
+
+class SupplementaryContractError(RuntimeContractError):
+    """The supplementary KV-matched arm failed the B1 runtime contract.
+
+    The arm is aborted before its first warmup exactly like a primary arm; it
+    gates nothing, so the session's already-collected primary measurements
+    stand, but the session is still INVALID/INCOMPLETE because a required
+    supplementary block now exists only as not-executed evidence.
     """
 
 
@@ -202,10 +241,14 @@ def validate_baseline_runtime(
 ) -> dict[str, Any]:
     """The B1 identity contract, read off the live engine before warmups.
 
-    ``strict`` (the primary baseline) raises ``BaselineIdentityError`` on identity
-    drift and applies the auto-slot band; the supplementary KV-matched arm records
-    its findings without stopping the session, and its pinned ``--num-tokens``
-    legitimately moves the auto cache plan, so the slot band is not applied to it.
+    ``strict`` (the primary baseline) raises ``BaselineIdentityError`` on any
+    identity failure; the supplementary KV-matched arm records its findings and
+    the runner aborts the arm before its first warmup without stopping the
+    session (it gates nothing). There is deliberately NO numeric validity band
+    on the resolved auto expert-cache slot count: the methodology requires
+    ``--moe-cache-auto`` and the other resolved identity properties, records
+    the exact resolved slot count as provenance, and lets the predeclared
+    supplementary-KV rule own capacity differences.
     """
     ok = check_required_fields(
         state, runtime_config, COMMON_REQUIRED_FIELDS, arm_id=arm_id
@@ -224,7 +267,7 @@ def validate_baseline_runtime(
         if not condition:
             findings.append(message)
 
-    # one GPU, no InferSwarm treatment
+    # one GPU, no InferSwarm treatment: leakage IS a B1 identity failure
     secondary = _lookup(runtime_config, "inferswarm_secondary_device") or {}
     resident = _lookup(runtime_config, "inferswarm_resident_bank") or {}
     remote = _lookup(runtime_config, "inferswarm_remote_decode") or {}
@@ -270,27 +313,16 @@ def validate_baseline_runtime(
             f"nvfp4 auto resolved to {nvfp4!r}; the Phase-0 record resolved triton. This "
             "is a material resolution change on the campaign build"
         )
-    # expert cache auto with the recorded slot scale
+    # expert cache must be the AUTO policy; the resolved slot count is provenance,
+    # never a numeric validity gate (no hidden band; the supplementary-KV rule
+    # owns KV-capacity differences)
     slots = _lookup(runtime_config, "cache.resolved_slots")
     if _lookup(runtime_config, "cache.policy_requested") != "auto":
         identity.append(
             f"cache.policy_requested={_lookup(runtime_config, 'cache.policy_requested')!r}, expected 'auto'"
         )
-    from .campaign_arms import (
-        BASELINE_CACHE_SLOT_TOLERANCE,
-        EXPECTED_BASELINE_CACHE_SLOTS,
-    )
+    from .campaign_arms import PHASE0_RECORDED_BASELINE_CACHE_SLOTS
 
-    if not isinstance(slots, int) or (
-        strict
-        and abs(slots - EXPECTED_BASELINE_CACHE_SLOTS)
-        > round(EXPECTED_BASELINE_CACHE_SLOTS * BASELINE_CACHE_SLOT_TOLERANCE)
-    ):
-        identity.append(
-            f"cache.resolved_slots={slots!r} is outside the frozen ~{EXPECTED_BASELINE_CACHE_SLOTS} "
-            f"band (+/-{BASELINE_CACHE_SLOT_TOLERANCE:.0%}); a materially different auto plan "
-            "is a different baseline"
-        )
     # graphs stay enabled on the baseline
     if _lookup(runtime_config, "runtime.cuda_graph_max_bs") != 1 or _lookup(
         runtime_config, "runtime.cuda_graph_capture_happened"
@@ -326,11 +358,15 @@ def validate_baseline_runtime(
             "auto_cpu_layers_fired": False,
             "nvfp4_resolved": "triton",
             "cache_policy": "auto",
-            "cache_resolved_slots_approx": EXPECTED_BASELINE_CACHE_SLOTS,
-            "cache_slot_tolerance": BASELINE_CACHE_SLOT_TOLERANCE,
             "cuda_graph_max_bs": 1,
             "cuda_graph_capture_happened": True,
         },
+        "cache_slots_rule": (
+            "the resolved auto expert-cache slot count is recorded exactly as "
+            f"provenance (Phase-0 recorded {PHASE0_RECORDED_BASELINE_CACHE_SLOTS}); it is "
+            "not a validity threshold, and KV-capacity differences are handled by the "
+            "predeclared supplementary-KV rule, never by a numeric slot band"
+        ),
         "identity_findings": identity,
         "inferswarm_leakage_findings": findings,
         "historical_note": (

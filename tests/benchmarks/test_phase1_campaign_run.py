@@ -226,7 +226,7 @@ def test_no_generation_is_ever_duplicated_or_lost(tmp_path, mocked_server):
     for arm in (BASELINE_ARM_ID, CANDIDATE_ARM_ID):
         for c in ALL_CLASSES:
             path = Path(doc["run_directory"]) / arm / f"{c}.jsonl"
-            all_records.extend(json.loads(l) for l in path.read_text().splitlines())
+            all_records.extend(json.loads(line) for line in path.read_text().splitlines())
     indices = [r["execution_index"] for r in all_records]
     assert sorted(indices) == list(range(96))
     assert len(indices) == len(set(indices))
@@ -257,8 +257,8 @@ def test_a_dead_server_fails_the_remaining_generations_in_place(tmp_path, mocked
     assert doc["validity"] == "INVALID"
     assert doc["completion"]["failed_generations"] == 48  # whole candidate arm preserved as failures
     candidate_w1 = [
-        json.loads(l)
-        for l in (Path(doc["run_directory"]) / CANDIDATE_ARM_ID / "W1.jsonl").read_text().splitlines()
+        json.loads(line)
+        for line in (Path(doc["run_directory"]) / CANDIDATE_ARM_ID / "W1.jsonl").read_text().splitlines()
     ]
     assert len(candidate_w1) == 12
     assert all(r["failed"] for r in candidate_w1)
@@ -275,7 +275,7 @@ def test_baseline_identity_drift_stops_the_session_before_candidate_performance(
     )
     doc = SessionExecution(definition=_definition(tmp_path), session_number=1).execute()
     assert doc["stopped_early_reason"] is not None
-    assert "identity drift" in doc["stopped_early_reason"]
+    assert "identity failure" in doc["stopped_early_reason"]
     assert "marlin" in doc["stopped_early_reason"]
     # the candidate server was NEVER started: no candidate performance exists
     served = [s["arm"] for s in mocked_server["started"]]
@@ -295,7 +295,136 @@ def test_baseline_cpu_layer_autolocking_stops_the_session(tmp_path, mocked_serve
     assert [s["arm"] for s in mocked_server["started"]] == [BASELINE_ARM_ID]
 
 
-def test_candidate_contract_mismatch_invalidates_but_records(tmp_path, mocked_server):
+def test_baseline_inferswarm_leakage_is_a_b1_identity_failure(tmp_path, mocked_server):
+    """InferSwarm treatment on a baseline arm is an identity failure, not an
+    invalidation that still benchmarks: the session stops before any candidate
+    generation, exactly like a resolution drift."""
+    mocked_server["runtime_by_arm"][BASELINE_ARM_ID] = baseline_runtime_config(
+        inferswarm_remote_decode={
+            "enabled": True, "execution_mode": "overlap", "transport": "host_staged",
+            "placement_sha256": None, "primary": {"uuid": GPU0_UUID},
+            "secondary": {"uuid": GPU1_UUID},
+        },
+    )
+    doc = SessionExecution(definition=_definition(tmp_path), session_number=1).execute()
+    assert doc["stopped_early_reason"] is not None
+    assert "InferSwarm leakage" in doc["stopped_early_reason"]
+    assert [s["arm"] for s in mocked_server["started"]] == [BASELINE_ARM_ID]
+    assert doc["validity"] == "INVALID"
+    assert "runtime.baseline_inferswarm_present" in doc["campaign_invalidation_codes"]
+    assert doc["baseline_identity_gate"]["passed"] is False
+    # no candidate performance exists
+    assert doc["completion"]["failed_generations"] == 48
+    assert ("reset", CANDIDATE_ARM_ID) not in mocked_server["moe_ops"]
+
+
+def test_wrong_engine_gpu_stops_the_arm_before_warmups(tmp_path, mocked_server, monkeypatch):
+    """The engine reporting a different physical GPU stops the arm before any
+    generation: nothing at all is measured, the B1 gate cannot pass, and the
+    remaining arms are preserved as not-executed evidence."""
+    from unittest import mock
+
+    def wrong_engine_gpus(origin):
+        return [{
+            "index": 0,
+            "uuid": "GPU-00000000-0000-0000-0000-000000000000",
+            "name": "NVIDIA GeForce RTX 3060",
+            "total_bytes": 12 << 30,
+        }]
+
+    with mock.patch.object(campaign_mod.gpu_mod, "engine_gpus", wrong_engine_gpus):
+        doc = SessionExecution(definition=_definition(tmp_path), session_number=1).execute()
+    assert doc["stopped_early_reason"] is not None
+    assert "physical GPU" in doc["stopped_early_reason"]
+    assert doc["validity"] == "INVALID"
+    assert "gpu.mismatch" in doc["campaign_invalidation_codes"]
+    assert doc["baseline_identity_gate"]["passed"] is False
+    # nothing was measured anywhere: no generation, no instrumentation window
+    assert mocked_server["generations"] == []
+    assert mocked_server["moe_ops"] == []
+    assert [s["arm"] for s in mocked_server["started"]] == [BASELINE_ARM_ID]
+    # the candidate arm's planned generations are preserved as not-executed evidence
+    assert doc["completion"]["failed_generations"] == 48
+    candidate_w1 = [
+        json.loads(line)
+        for line in (Path(doc["run_directory"]) / CANDIDATE_ARM_ID / "W1.jsonl").read_text().splitlines()
+    ]
+    assert all(r["failed"] and "not executed" in r["error"] for r in candidate_w1)
+
+
+def test_supplementary_arm_contract_failure_aborts_it_before_warmups(
+    tmp_path, mocked_server
+):
+    """A required supplementary arm that fails the B1 contract is aborted with its
+    generations preserved as not-executed evidence; the primary arms stand."""
+    mocked_server["runtime_by_arm"][BASELINE_ARM_ID] = baseline_runtime_config(
+        runtime={"num_pages": 19000},
+    )
+    mocked_server["runtime_by_arm"]["baseline_b1_kv_matched"] = baseline_runtime_config(
+        runtime={"num_pages": 17075},
+        moe={"cpu_layers_resolved": [4], "auto_cpu_layers_fired": True},
+    )
+    doc = SessionExecution(definition=_definition(tmp_path), session_number=1).execute()
+    assert doc["completion"]["supplementary_condition"]["required"] is True
+    assert doc["execution_status"] == "INCOMPLETE"
+    assert doc["validity"] == "INVALID"
+    assert doc["stopped_early_reason"] is not None
+    assert "baseline_b1_kv_matched" in doc["stopped_early_reason"]
+    kv_w1 = [
+        json.loads(line)
+        for line in (
+            Path(doc["run_directory"]) / "baseline_b1_kv_matched" / "W1.jsonl"
+        ).read_text().splitlines()
+    ]
+    assert len(kv_w1) == 12
+    assert all(r["failed"] and "not executed" in r["error"] for r in kv_w1)
+    # the primaries really completed before the supplementary abort
+    assert doc["completion"]["failed_generations"] == 48
+    assert ("reset", BASELINE_ARM_ID) in mocked_server["moe_ops"]
+    assert ("reset", CANDIDATE_ARM_ID) in mocked_server["moe_ops"]
+
+
+# --- resolved expert-cache slots: provenance, not a validity band ------------------------------
+
+
+def test_resolved_cache_slots_outside_the_old_band_are_provenance_not_identity(
+    tmp_path, mocked_server
+):
+    """No hidden numeric slot band: B1 resolving far outside the old +/-10% band
+    still passes the identity gate (policy must be auto); the exact resolved slot
+    count is recorded as provenance."""
+    mocked_server["runtime_by_arm"][BASELINE_ARM_ID] = baseline_runtime_config(
+        cache={"resolved_slots": 3000},  # far below 3774 - 10%
+    )
+    doc = SessionExecution(definition=_definition(tmp_path), session_number=1).execute()
+    assert doc["validity"] == "VALID"
+    assert doc["execution_status"] == "COMPLETE"
+    assert doc["baseline_identity_gate"]["passed"] is True
+    assert "runtime.baseline_identity_drift" not in doc["campaign_invalidation_codes"]
+    runtime = json.loads(
+        (Path(doc["run_directory"]) / BASELINE_ARM_ID / "runtime.json").read_text()
+    )
+    assert runtime["validation"]["resolved"]["cache_resolved_slots"] == 3000
+    assert "not a validity threshold" in runtime["validation"]["cache_slots_rule"]
+
+
+def test_non_auto_cache_policy_is_still_a_b1_identity_failure(tmp_path, mocked_server):
+    """Removing the numeric band does not remove the methodology's own rule: B1
+    must run --moe-cache-auto; a fixed size is a different baseline."""
+    mocked_server["runtime_by_arm"][BASELINE_ARM_ID] = baseline_runtime_config(
+        cache={"policy_requested": "size"},
+    )
+    doc = SessionExecution(definition=_definition(tmp_path), session_number=1).execute()
+    assert doc["stopped_early_reason"] is not None
+    assert "cache.policy_requested" in doc["stopped_early_reason"]
+    assert [s["arm"] for s in mocked_server["started"]] == [BASELINE_ARM_ID]
+
+
+def test_candidate_contract_mismatch_aborts_the_arm_before_any_generation(
+    tmp_path, mocked_server
+):
+    """A resolved-arm mismatch found after /health and before warmups must not
+    generate performance observations (updated P5 review expectation)."""
     mocked_server["runtime_by_arm"][CANDIDATE_ARM_ID] = candidate_runtime_config(
         inferswarm_remote_decode={
             "enabled": True, "execution_mode": "overlap", "transport": "host_staged",
@@ -306,7 +435,183 @@ def test_candidate_contract_mismatch_invalidates_but_records(tmp_path, mocked_se
     doc = SessionExecution(definition=_definition(tmp_path), session_number=1).execute()
     assert doc["validity"] == "INVALID"
     assert "runtime.candidate_contract_mismatch" in doc["campaign_invalidation_codes"]
-    assert doc["execution_status"] == "COMPLETE"  # generations really happened
+    # the session is INCOMPLETE: the candidate's planned generations never ran
+    assert doc["execution_status"] == "INCOMPLETE"
+    assert doc["stopped_early_reason"] is not None
+    assert "placement" in doc["stopped_early_reason"]
+    # NO candidate generation was collected: every planned candidate generation is
+    # preserved as a not-executed failure, warmups included
+    candidate_w1 = [
+        json.loads(line)
+        for line in (
+            Path(doc["run_directory"]) / CANDIDATE_ARM_ID / "W1.jsonl"
+        ).read_text().splitlines()
+    ]
+    assert len(candidate_w1) == 12
+    assert all(r["failed"] and "not executed" in r["error"] for r in candidate_w1)
+    # no measurement window was ever opened for the candidate
+    assert ("reset", CANDIDATE_ARM_ID) not in mocked_server["moe_ops"]
+    # the baseline (first arm in session 1) really did run to completion
+    assert ("reset", BASELINE_ARM_ID) in mocked_server["moe_ops"]
+
+
+def _wrong_remote(**overrides):
+    block = {
+        "enabled": True, "execution_mode": "overlap", "transport": "host_staged",
+        # replaced with the currently frozen placement SHA at test time so a
+        # single-field mutation produces exactly one contract finding
+        "placement_sha256": "<frozen>", "primary": {"uuid": GPU0_UUID},
+        "secondary": {"uuid": GPU1_UUID},
+    }
+    block.update(overrides)
+    return block
+
+
+# Every resolved-arm contract field the review names: a mismatch found after
+# /health and before warmups must abort the candidate arm before its first
+# generation — never benchmark the wrong arm and label it later.
+_CANDIDATE_CONTRACT_MUTATIONS = [
+    (
+        "wrong placement SHA",
+        {"inferswarm_remote_decode": _wrong_remote(placement_sha256="f" * 64)},
+    ),
+    (
+        "wrong remote primary UUID",
+        {"inferswarm_remote_decode": _wrong_remote(primary={"uuid": GPU1_UUID})},
+    ),
+    (
+        "wrong remote secondary UUID",
+        {"inferswarm_remote_decode": _wrong_remote(secondary={"uuid": GPU0_UUID})},
+    ),
+    (
+        "wrong secondary-device UUID",
+        {
+            "inferswarm_secondary_device": {
+                "configured": True,
+                "requested_secondary_spec": GPU1_UUID,
+                "validation_passed": True,
+                "primary": {"uuid": GPU0_UUID, "visible_cuda_ordinal": 0},
+                "secondary": {"uuid": GPU0_UUID, "visible_cuda_ordinal": 1},
+                "peer_access": {
+                    "primary_to_secondary": False,
+                    "secondary_to_primary": False,
+                },
+                "transport_classification": "host_staged",
+            }
+        },
+    ),
+    ("wrong resident slots", {"inferswarm_resident_bank": {"resident_slots": 5000}}),
+    (
+        "wrong resident bank bytes",
+        {
+            "inferswarm_resident_bank": {
+                "banks": [
+                    {"name": "w1", "total_resident_bytes": 1 << 30},
+                    {"name": "w2", "total_resident_bytes": 1 << 30},
+                ]
+            }
+        },
+    ),
+    (
+        "wrong transport",
+        {"inferswarm_remote_decode": _wrong_remote(transport="p2p")},
+    ),
+    (
+        "mode not overlap",
+        {"inferswarm_remote_decode": _wrong_remote(execution_mode="serialized")},
+    ),
+    (
+        "remote decode disabled",
+        {"inferswarm_remote_decode": _wrong_remote(enabled=False)},
+    ),
+    (
+        "graphs unexpectedly enabled",
+        {"runtime": {"cuda_graph_max_bs": 1, "cuda_graph_capture_happened": True}},
+    ),
+    ("wrong backend", {"moe": {"backend_resolved": "fused"}}),
+    ("wrong cpu-layer shape", {"moe": {"cpu_layers_resolved": [4]}}),
+    ("wrong gpu0 cache size", {"cache": {"resolved_slots": 3000}}),
+    ("resolved KV != 17075", {"runtime": {"num_pages": 12345}}),
+]
+
+
+@pytest.mark.parametrize(
+    "label,overrides",
+    _CANDIDATE_CONTRACT_MUTATIONS,
+    ids=[label for label, _ in _CANDIDATE_CONTRACT_MUTATIONS],
+)
+def test_any_prewarmup_candidate_contract_mismatch_stops_measurement(
+    tmp_path, mocked_server, label, overrides
+):
+    """Aborts the candidate arm before the first warmup; no candidate generation
+    is recorded as a successful measurement; the session is INVALID/INCOMPLETE."""
+    import copy
+
+    kwargs = copy.deepcopy(overrides)
+    remote = kwargs.get("inferswarm_remote_decode")
+    if isinstance(remote, dict) and remote.get("placement_sha256") == "<frozen>":
+        remote["placement_sha256"] = _FROZEN["placement_sha"]
+    mocked_server["runtime_by_arm"][CANDIDATE_ARM_ID] = candidate_runtime_config(
+        **kwargs
+    )
+    doc = SessionExecution(definition=_definition(tmp_path), session_number=1).execute()
+    assert doc["validity"] == "INVALID"
+    assert "runtime.candidate_contract_mismatch" in doc["campaign_invalidation_codes"]
+    assert doc["execution_status"] == "INCOMPLETE"
+    assert doc["stopped_early_reason"] is not None
+    # zero candidate performance: every planned candidate generation is preserved
+    # as a not-executed failure (warmups included), and no measurement window was
+    # ever opened for the candidate
+    candidate_w1 = [
+        json.loads(line)
+        for line in (
+            Path(doc["run_directory"]) / CANDIDATE_ARM_ID / "W1.jsonl"
+        ).read_text().splitlines()
+    ]
+    assert len(candidate_w1) == 12
+    assert all(r["failed"] and "not executed" in r["error"] for r in candidate_w1)
+    assert ("reset", CANDIDATE_ARM_ID) not in mocked_server["moe_ops"]
+    assert ("snapshot", CANDIDATE_ARM_ID) not in mocked_server["moe_ops"]
+
+
+def test_an_unreadable_candidate_runtime_report_aborts_before_warmups(
+    tmp_path, mocked_server
+):
+    mocked_server["runtime_by_arm"][CANDIDATE_ARM_ID] = None
+    doc = SessionExecution(definition=_definition(tmp_path), session_number=1).execute()
+    assert doc["validity"] == "INVALID"
+    assert doc["execution_status"] == "INCOMPLETE"
+    assert doc["stopped_early_reason"] is not None
+    candidate_w1 = [
+        json.loads(line)
+        for line in (
+            Path(doc["run_directory"]) / CANDIDATE_ARM_ID / "W1.jsonl"
+        ).read_text().splitlines()
+    ]
+    assert all(r["failed"] for r in candidate_w1)
+    assert ("reset", CANDIDATE_ARM_ID) not in mocked_server["moe_ops"]
+
+
+def test_candidate_contract_abort_in_session_two_preserves_the_whole_session_plan(
+    tmp_path, mocked_server
+):
+    """Session 2 (candidate first): the abort stops the session; the baseline's
+    planned generations are preserved as not-executed evidence too."""
+    write_session_one_gate(tmp_path)
+    mocked_server["runtime_by_arm"][CANDIDATE_ARM_ID] = candidate_runtime_config(
+        inferswarm_remote_decode=_wrong_remote(placement_sha256="f" * 64),
+    )
+    doc = SessionExecution(
+        definition=_definition(tmp_path),
+        session_number=2,
+        thermal_reset_attested="independently cooled reset observed",
+    ).execute()
+    assert doc["validity"] == "INVALID"
+    assert doc["execution_status"] == "INCOMPLETE"
+    # both arms' planned generations are preserved; nothing was measured at all
+    assert doc["completion"]["failed_generations"] == 96
+    assert mocked_server["moe_ops"] == []
+    assert [s["arm"] for s in mocked_server["started"]] == [CANDIDATE_ARM_ID]
 
 
 # --- supplementary KV arm -------------------------------------------------------------------------

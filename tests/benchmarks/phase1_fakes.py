@@ -292,27 +292,119 @@ def write_prerequisites(
     return path
 
 
-def write_session_one_gate(tmp_path: Path, *, out_root: str | None = None) -> Path:
+def default_campaign_identity(
+    tmp_path: Path,
+    *,
+    definition=None,
+    repo_head: str | None = None,
+    runner_version: str | None = None,
+    manifest=None,
+    placement=None,
+) -> dict[str, Any]:
+    """The campaign identity of the default canonical test definition.
+
+    Mirrors the ``_definition`` helpers in the campaign tests (same arms, protocol,
+    and settings) so ``write_session_one_gate`` produces a passing gate by default;
+    a test that needs a DIFFERENT session-1 identity passes its own ``definition``
+    (or ``repo_head``/``runner_version``/``manifest``/``placement``) here.
+    """
+    from inferswarm_phase0.manifest import load_manifest
+    from inferswarm_phase1.campaign import (
+        CampaignDefinition,
+        CampaignSettings,
+        campaign_identity,
+    )
+    from inferswarm_phase1.campaign_arms import (
+        baseline_b1_arm,
+        candidate_v2_arm,
+        load_placement_reference,
+        predeclared_kv_matched_arm,
+    )
+    from inferswarm_phase1.campaign_protocol import build_protocol
+
+    if definition is None:
+        definition = CampaignDefinition(
+            arms=[baseline_b1_arm(), candidate_v2_arm(), predeclared_kv_matched_arm()],
+            protocol=build_protocol(
+                warmups=None, repetitions=None, classes=None, dev_smoke=False
+            ),
+            settings=CampaignSettings(
+                model_path=str(tmp_path / "model"),
+                manifest_path=str(tmp_path / "manifest.json"),
+                model_revision=SHA40,
+                placement_path=str(tmp_path / "placement.json"),
+                inferswarm_commit=INFERSWARM_SHA40,
+                out_root=tmp_path / "runs",
+                prerequisites_path=str(tmp_path / "prerequisites.json"),
+                echo_server_output=False,
+            ),
+            canonical=True,
+        )
+    manifest = manifest or load_manifest(str(tmp_path / "manifest.json"), canonical=True)
+    placement = placement or load_placement_reference(str(tmp_path / "placement.json"))
+    return campaign_identity(
+        definition, manifest, placement,
+        repo_head=repo_head, runner_version=runner_version,
+    )
+
+
+def write_session_one_gate(
+    tmp_path: Path,
+    *,
+    out_root: str | None = None,
+    identity: dict[str, Any] | None = None,
+    execution_status: str = "COMPLETE",
+    validity: str = "VALID",
+    gate_passed: bool = True,
+    artifact_set: bool = True,
+) -> Path:
     """A passing session-1 record so session 2 may start (candidate-first).
 
     Session 2 refuses to start unless a COMPLETE, VALID session-1 whose
-    campaign-build baseline identity gate passed exists under the same out-root.
+    campaign-build baseline identity gate passed exists under the same out-root,
+    its gate comes from the expected session-1 artifact set (plan/provenance/
+    baseline runtime, hash-indexed), and its recorded campaign identity equals
+    the current one exactly. ``identity`` overrides the recorded fingerprint
+    (default: the current default-definition identity); ``artifact_set=False``
+    writes the summary without the expected sibling artifacts.
     """
+    import hashlib
+
     root = Path(out_root) if out_root else tmp_path / "runs"
     session_dir = root / "session-1"
     session_dir.mkdir(parents=True, exist_ok=True)
+    if artifact_set:
+        runtime_dir = session_dir / "baseline_b1"
+        runtime_dir.mkdir(parents=True, exist_ok=True)
+        for relative, payload in (
+            ("plan.json", {"schema": "inferswarm.phase1.session-plan/1"}),
+            ("provenance.json", {"schema": "inferswarm.phase1.session-provenance/1"}),
+            (
+                "baseline_b1/runtime.json",
+                {"schema": "inferswarm.phase1.arm-runtime/1", "arm_id": "baseline_b1"},
+            ),
+        ):
+            (session_dir / relative).write_text(json.dumps(payload), encoding="utf-8")
+    index = {}
+    if artifact_set:
+        for relative in ("plan.json", "provenance.json", "baseline_b1/runtime.json"):
+            index[relative] = hashlib.sha256(
+                (session_dir / relative).read_bytes()
+            ).hexdigest()
     summary = session_dir / "session-summary.json"
     summary.write_text(
         json.dumps(
             {
                 "session_number": 1,
-                "execution_status": "COMPLETE",
-                "validity": "VALID",
+                "execution_status": execution_status,
+                "validity": validity,
                 "baseline_identity_gate": {
                     "role": "campaign-build baseline identity gate (session 1 runs B1 first)",
                     "checked": True,
-                    "passed": True,
+                    "passed": gate_passed,
                 },
+                "campaign_identity": identity or default_campaign_identity(tmp_path),
+                "artifact_sha256": index,
             }
         ),
         encoding="utf-8",
