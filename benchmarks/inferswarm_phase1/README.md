@@ -134,3 +134,99 @@ The tool applies the frozen criterion without a new tolerance: first 64 generate
 exact, step-0 argmax and top-5 ordering exact, and the full step-0 logit vector within
 `rtol=2e-3, atol=2e-3`. Reference self-consistency must pass first. The JSON explicitly
 contains no throughput, TTFT, prefill ratio, aggregate speedup, or Phase-1 verdict field.
+
+## C3 numerical root-cause diagnostic
+
+`c3_root_cause` captures decode step 0 at every MoE `_decode_routed` boundary. Every tensor
+has dtype, shape, exact raw-byte SHA-256, and a raw binary sidecar. The four shapes must be
+run from separately restarted servers. The client uses the unchanged frozen request bodies,
+two warmups, greedy sampling, fixed output length, `ignore_eos`, and the existing
+reset-delimited cache semantics. It records no request or kernel performance field and
+rejects such a field before writing JSON.
+
+Use the exact pinned model snapshot and v2 artifact. This common server fragment applies to
+all four shapes:
+
+```bash
+ft serve \
+  --model /path/to/nvidia/Qwen3.6-35B-A3B-NVFP4/491c2f1ea524c639598bf8fa787a93fed5a6fbce \
+  --served-model-name nvidia/Qwen3.6-35B-A3B-NVFP4 \
+  --gpu GPU-d5c05739-96c1-7e49-89b6-bf54c2121c55 \
+  --moe-backend offload \
+  --moe-cpu-layers 0 \
+  --nvfp4-backend triton \
+  --moe-cache-size 3774 \
+  --kv-reserve-tokens 17075 \
+  --num-tokens 17075 \
+  --memory-ratio 0.85 \
+  --cuda-graph-max-bs 0 \
+  --max-running-requests 1 \
+  --sampling-defaults none \
+  --inferswarm-correctness-diagnostics \
+  --inferswarm-c3-root-cause-mode trace
+```
+
+For R, use that command unchanged. For O, append the v2 placement, secondary UUID, remote
+decode, and overlap selector:
+
+```bash
+--inferswarm-placement /path/to/phase1-qwen36-placement-v2.json \
+--inferswarm-secondary-gpu GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176 \
+--inferswarm-remote-decode \
+--inferswarm-remote-mode overlap
+```
+
+For S, change only the last value to `serialized`. For G, append only the placement and
+replace the root-cause mode value with `DIAGNOSTIC_SPLIT_GPU0`; do not supply a secondary
+GPU, remote-decode flag, or remote mode. The parser rejects those combinations. G executes
+two complementary calls to the production native-NVFP4/Triton expert GEMM on GPU0 and one
+combine, and is explicitly ineligible for F-gate evidence.
+
+After each restarted server is ready, capture its shape. Omitting `--class` captures all
+W1-W4 controls; pass `--class W3 --class W4` only when the requested investigation does not
+need W1/W2 route-geometry controls.
+
+```bash
+PYTHONPATH=python:benchmarks python -m inferswarm_phase1.c3_root_cause capture \
+  --origin http://127.0.0.1:48145 \
+  --manifest /home/zutfen/inferswarm/docs/benchmarks/workloads/phase0-v1/manifest.json \
+  --model-id nvidia/Qwen3.6-35B-A3B-NVFP4 \
+  --shape R \
+  --output /path/to/phase1-v2-evidence/c3-root-cause-reference.json
+```
+
+Repeat with `--shape O`, `S`, and `G` and the corresponding output names, then compare all
+six required pairs mechanically:
+
+```bash
+PYTHONPATH=python:benchmarks python -m inferswarm_phase1.c3_root_cause compare \
+  --reference /path/to/phase1-v2-evidence/c3-root-cause-reference.json \
+  --overlap /path/to/phase1-v2-evidence/c3-root-cause-overlap.json \
+  --serialized /path/to/phase1-v2-evidence/c3-root-cause-serialized.json \
+  --split-gpu0 /path/to/phase1-v2-evidence/c3-root-cause-split-gpu0.json \
+  --output /path/to/phase1-v2-evidence/c3-root-cause-comparison.json
+```
+
+The comparison reports the first exact and first C1-tolerance divergence independently for
+hidden input and MoE output, plus the first router-ID and routing-weight divergence. It also
+checks every R/G layer for identical raw routes, routing weights, selected expert-row hashes,
+production kernel, GPU0 device, and complementary ownership masks.
+
+Use the first relevant class/layer from that report for the serialized fixed-input replay:
+
+```bash
+PYTHONPATH=python:benchmarks python -m inferswarm_phase1.c3_layer_replay \
+  --model /path/to/nvidia/Qwen3.6-35B-A3B-NVFP4/491c2f1ea524c639598bf8fa787a93fed5a6fbce \
+  --primary-gpu GPU-d5c05739-96c1-7e49-89b6-bf54c2121c55 \
+  --secondary-gpu GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176 \
+  --placement /path/to/phase1-qwen36-placement-v2.json \
+  --reference-trace /path/to/phase1-v2-evidence/c3-root-cause-reference.json \
+  --class W3 \
+  --layer FIRST_DIVERGENT_LAYER \
+  --output /path/to/phase1-v2-evidence/c3-root-cause-layer-replay.json
+```
+
+The replay evaluates U/GL/GR/GS and actual RL/RR/RC from the same losslessly restored
+input/routing tensors. It activates transport-stage capture and selected GPU1 resident-row
+revalidation only if GR and RR differ. It characterizes a proven split-reduction result but
+does not change the production combine or implement a numerical fix.

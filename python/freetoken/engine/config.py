@@ -55,6 +55,12 @@ class EngineConfig:
     # Correctness-only capture of exact accepted token IDs and step-0 logits. Disabled by
     # default and forbidden as performance evidence because the first-logit host copy blocks.
     inferswarm_correctness_diagnostics: bool = False
+    # Phase-1 C3 numerical root-cause instrumentation. ``trace`` captures one exact decode
+    # step; ``DIAGNOSTIC_SPLIT_GPU0`` additionally replaces only the routed-expert execution
+    # shape with two complementary production-kernel calls on GPU0. Both require the
+    # correctness recorder and eager batch-one serving; ``off`` preserves ordinary semantics.
+    inferswarm_c3_root_cause_mode: str = "off"
+    inferswarm_c3_root_cause_decode_step: int = 0
     # CPU MoE backend (--moe-backend cpu): number of CPU worker threads computing
     # the decode experts. 0 = auto (physical cores). Ignored by other backends.
     moe_cpu_threads: int = 0

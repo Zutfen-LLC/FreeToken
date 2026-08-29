@@ -237,6 +237,9 @@ class OffloadMoELayer(MoELayer):
         # P3 attaches this only when --inferswarm-remote-decode is explicitly active.
         # None keeps the ordinary and P2 resident-bank-only paths byte-for-byte direct.
         self.inferswarm_remote_decode = None
+        # Phase-1 C3 numerical instrumentation. Both remain None in ordinary serving.
+        self.inferswarm_correctness_diagnostics = None
+        self.inferswarm_split_gpu0_diagnostic = None
 
     def forward(
         self,
@@ -322,13 +325,28 @@ class OffloadMoELayer(MoELayer):
         ids), so no ``ensure_experts``/``copy_missing`` here."""
         cache = self.offload_cache
         assert cache is not None
+        diagnostics = self.inferswarm_correctness_diagnostics
+        if diagnostics is not None:
+            diagnostics.capture_moe_input(
+                self.layer_id, hidden_states, topk_ids, topk_weights
+            )
         timing = cache.layer_timing
         if timing is not None:
             timing.mark(self.layer_id, "complete_start", begin_layer=True)
-        if self.inferswarm_remote_decode is not None:
-            return self.inferswarm_remote_decode.decode(
+        if self.inferswarm_split_gpu0_diagnostic is not None:
+            out = self.inferswarm_split_gpu0_diagnostic.decode(
                 self, cache, hidden_states, topk_weights, topk_ids
             )
+            if diagnostics is not None:
+                diagnostics.capture_moe_output(self.layer_id, out)
+            return out
+        if self.inferswarm_remote_decode is not None:
+            out = self.inferswarm_remote_decode.decode(
+                self, cache, hidden_states, topk_weights, topk_ids
+            )
+            if diagnostics is not None:
+                diagnostics.capture_moe_output(self.layer_id, out)
+            return out
         if cache.is_cpu_layer(self.layer_id):
             executor = cache.cpu_executor
             assert executor is not None, "CPU MoE executor was not initialized"
@@ -337,7 +355,11 @@ class OffloadMoELayer(MoELayer):
             return self._decode_hybrid(cache, hidden_states, topk_weights, topk_ids)
         if timing is not None:
             timing.mark(self.layer_id, "local_start")
+        if diagnostics is not None:
+            diagnostics.capture_selected_expert_weights(self.layer_id, topk_ids, cache)
         cache.ensure_experts(self.layer_id, topk_ids)
+        if diagnostics is not None:
+            diagnostics.capture_gpu0_slot_ids(self.layer_id, topk_ids)
         if timing is not None:
             timing.mark(self.layer_id, "cache_service_end")
             timing.record_cache_metadata(
@@ -360,6 +382,8 @@ class OffloadMoELayer(MoELayer):
             timing.mark(self.layer_id, "local_expert_end")
             timing.mark(self.layer_id, "local_branch_end")
             timing.mark(self.layer_id, "complete_end")
+        if diagnostics is not None:
+            diagnostics.capture_moe_output(self.layer_id, out)
         return out
 
     def _decode_hybrid(

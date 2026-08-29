@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+
+import pytest
 import torch
 from freetoken.engine.correctness_diagnostics import (
     CorrectnessDiagnostics,
@@ -59,3 +63,81 @@ def test_request_bound_is_loud_and_disabled_report_is_empty():
     assert absent["records"] == []
     assert absent["ordinary_sampling_unchanged"] is True
     assert absent["ordinary_sse_unchanged"] is True
+    assert absent["moe_root_cause"]["enabled"] is False
+    assert absent["moe_root_cause"]["performance_fields_collected"] is False
+
+
+def test_root_cause_capture_is_step_bounded_lossless_and_stable():
+    diagnostics = CorrectnessDiagnostics(
+        root_cause_mode="trace",
+        root_cause_decode_step=1,
+        root_cause_expected_layers=2,
+    )
+    hidden = torch.tensor([[1.0, -2.0]], dtype=torch.bfloat16)
+    ids = torch.tensor([[3, 7]], dtype=torch.int32)
+    weights = torch.tensor([[0.25, 0.75]], dtype=torch.float32)
+
+    diagnostics.begin_decode_step(0)
+    diagnostics.capture_moe_input(0, hidden, ids, weights)
+    assert diagnostics.snapshot()["moe_root_cause"]["layers_retained"] == 0
+
+    diagnostics.begin_decode_step(1)
+    for layer_id in range(2):
+        diagnostics.capture_moe_input(layer_id, hidden + layer_id, ids, weights)
+        diagnostics.capture_moe_output(layer_id, hidden + layer_id)
+    snapshot = diagnostics.snapshot()["moe_root_cause"]
+    assert snapshot["exactly_expected_layers"] is True
+    assert snapshot["layer_ids"] == [0, 1]
+    assert snapshot["truncated"] is False
+    assert snapshot["performance_fields_collected"] is False
+
+    record = snapshot["layers"][0]["tensors"]["hidden_input"]
+    raw = base64.b64decode(record["raw_bytes_base64"])
+    assert hashlib.sha256(raw).hexdigest() == record["raw_byte_sha256"]
+    assert record["dtype"] == "bfloat16"
+    assert record["shape"] == [1, 2]
+    assert (
+        diagnostics.snapshot()["moe_root_cause"]["layers"][0]["tensors"][
+            "hidden_input"
+        ]["raw_byte_sha256"]
+        == record["raw_byte_sha256"]
+    )
+
+
+def test_root_cause_capture_fails_loudly_at_storage_bound():
+    diagnostics = CorrectnessDiagnostics(
+        root_cause_mode="trace",
+        root_cause_expected_layers=1,
+        root_cause_max_tensor_bytes=3,
+    )
+    diagnostics.begin_decode_step(0)
+    with pytest.raises(RuntimeError, match="explicit byte bound"):
+        diagnostics.capture_moe_input(
+            0,
+            torch.ones(2, dtype=torch.float32),
+            torch.ones(1, dtype=torch.int32),
+            torch.ones(1, dtype=torch.float32),
+        )
+    snapshot = diagnostics.snapshot()["moe_root_cause"]
+    assert snapshot["truncated"] is True
+    assert snapshot["overflow_records"] == 1
+
+
+def test_root_cause_default_contract_retains_exactly_40_moe_layers():
+    diagnostics = CorrectnessDiagnostics(root_cause_mode="trace")
+    diagnostics.begin_decode_step(0)
+    for layer_id in range(40):
+        hidden = torch.tensor([[layer_id]], dtype=torch.bfloat16)
+        diagnostics.capture_moe_input(
+            layer_id,
+            hidden,
+            torch.tensor([[layer_id % 8]], dtype=torch.int32),
+            torch.ones((1, 1), dtype=torch.float32),
+        )
+        diagnostics.capture_moe_output(layer_id, hidden)
+    root = diagnostics.snapshot()["moe_root_cause"]
+    assert root["expected_moe_layers"] == 40
+    assert root["layer_ids"] == list(range(40))
+    assert root["layers_retained"] == 40
+    assert root["exactly_expected_layers"] is True
+    assert root["tensor_bytes_retained"] <= root["max_tensor_bytes"]

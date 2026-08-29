@@ -355,19 +355,41 @@ class Engine:
         self.inferswarm_placement = None
         self.inferswarm_resident_bank = None
         self.inferswarm_remote_decode = None
+        self.inferswarm_split_gpu0_diagnostic = None
         self.inferswarm_correctness_diagnostics = None
         self.moe_layer_timing = None
         self._moe_measurement_step = 0
         placement_path = getattr(config, "inferswarm_placement", None)
         secondary_spec = getattr(config, "inferswarm_secondary_gpu", None)
         remote_decode = bool(getattr(config, "inferswarm_remote_decode", False))
+        root_cause_mode = getattr(config, "inferswarm_c3_root_cause_mode", "off")
+        split_gpu0 = root_cause_mode == "DIAGNOSTIC_SPLIT_GPU0"
         if getattr(config, "inferswarm_correctness_diagnostics", False):
             from .correctness_diagnostics import CorrectnessDiagnostics
 
-            self.inferswarm_correctness_diagnostics = CorrectnessDiagnostics()
-        if placement_path is not None and secondary_spec is None:
+            self.inferswarm_correctness_diagnostics = CorrectnessDiagnostics(
+                root_cause_mode=root_cause_mode,
+                root_cause_decode_step=getattr(
+                    config, "inferswarm_c3_root_cause_decode_step", 0
+                ),
+            )
+        if root_cause_mode != "off" and self.inferswarm_correctness_diagnostics is None:
+            raise ValueError(
+                "C3 root-cause mode requires --inferswarm-correctness-diagnostics"
+            )
+        if root_cause_mode != "off" and config.cuda_graph_max_bs != 0:
+            raise ValueError("C3 root-cause mode requires --cuda-graph-max-bs 0")
+        if root_cause_mode != "off" and config.max_running_req != 1:
+            raise ValueError("C3 root-cause mode requires --max-running-requests 1")
+        if placement_path is not None and secondary_spec is None and not split_gpu0:
             raise ValueError(
                 "--inferswarm-placement requires --inferswarm-secondary-gpu"
+            )
+        if split_gpu0 and (
+            placement_path is None or secondary_spec is not None or remote_decode
+        ):
+            raise ValueError(
+                "DIAGNOSTIC_SPLIT_GPU0 requires placement and forbids secondary GPU/remote decode"
             )
         if remote_decode and secondary_spec is None:
             raise ValueError(
@@ -663,6 +685,10 @@ class Engine:
         return size, pages, overlap
 
     def _init_offload_moe_cache(self, config: EngineConfig) -> OffloadMoeCache:
+        split_gpu0 = (
+            getattr(config, "inferswarm_c3_root_cause_mode", "off")
+            == "DIAGNOSTIC_SPLIT_GPU0"
+        )
         # A model may fully own cache construction via make_offload_moe_cache.
         # Otherwise load_expert_banks gives the model module a setup hook first, then
         # falls back to per-quant providers, and the engine wires the banks into cache.
@@ -810,7 +836,7 @@ class Engine:
             cache.cpu_layer_ids = cpu_layer_ids
             cache.set_bank_sources(banks.sources, layer_residency=banks.layer_residency)
             cache.set_alphas(banks.gate_up_alpha, banks.down_alpha)
-            if self.inferswarm_placement is not None:
+            if self.inferswarm_placement is not None and not split_gpu0:
                 self._init_inferswarm_resident_bank(config, banks)
         else:
             cache = cache_factory(config, self.device)
@@ -838,14 +864,50 @@ class Engine:
         # _iter_offload_moe_layers() hook when its MoE blocks are bespoke nn.Modules (DSV4).
         layers = attach_offload_moe_cache(self.model, cache)
         assert len(layers) == config.model_config.num_moe_layers
+        if self.inferswarm_correctness_diagnostics is not None:
+            for layer in layers:
+                layer.inferswarm_correctness_diagnostics = (
+                    self.inferswarm_correctness_diagnostics
+                )
         if cache.decode_target in ("cpu", "hybrid"):
             self._init_cpu_moe_executor(config, cache, layers)
         if bool(getattr(config, "inferswarm_remote_decode", False)):
             self._init_inferswarm_remote_decode(config, cache, layers)
+        if split_gpu0:
+            self._init_inferswarm_split_gpu0_diagnostic(cache, layers)
         self._init_moe_layer_timing(config, cache)
         self.ctx.moe_offload_cache = cache
         self.moe_offload_cache = cache
         return cache
+
+    def _init_inferswarm_split_gpu0_diagnostic(self, cache, layers) -> None:
+        placement = self.inferswarm_placement
+        diagnostics = self.inferswarm_correctness_diagnostics
+        assert placement is not None and diagnostics is not None
+        if cache.decode_target != "gpu" or cache.quant_format != "nvfp4":
+            raise ValueError(
+                "DIAGNOSTIC_SPLIT_GPU0 requires the production GPU native-NVFP4 path"
+            )
+        if cache.cpu_layer_ids:
+            raise ValueError("DIAGNOSTIC_SPLIT_GPU0 requires zero CPU MoE layers")
+        from freetoken.moe.inferswarm_remote_decode import (
+            SplitGpu0DiagnosticExecutor,
+            build_remote_slot_lookup,
+        )
+
+        executor = SplitGpu0DiagnosticExecutor(
+            placement=placement,
+            primary_device=self.device,
+            diagnostics=diagnostics,
+            route_lookup=build_remote_slot_lookup(placement, self.device),
+        )
+        for layer in layers:
+            layer.inferswarm_split_gpu0_diagnostic = executor
+        self.inferswarm_split_gpu0_diagnostic = executor
+        logger.info_rank0(
+            "DIAGNOSTIC_SPLIT_GPU0 enabled: complementary frozen-v2 subsets execute "
+            "through two production GPU0 GEMMs; GPU1 and F-gate counters are unused"
+        )
 
     def _init_inferswarm_resident_bank(self, config: EngineConfig, banks) -> None:
         """Build P2 storage from the exact ExpertBanks bundle already loaded for GPU 0.
@@ -1108,6 +1170,16 @@ class Engine:
             if remote_decode is not None
             else absent_remote_decode_report()
         )
+        from freetoken.moe.inferswarm_remote_decode import (
+            absent_split_gpu0_diagnostic_report,
+        )
+
+        split_gpu0 = getattr(self, "inferswarm_split_gpu0_diagnostic", None)
+        payload["inferswarm_split_gpu0_diagnostic"] = (
+            split_gpu0.snapshot()
+            if split_gpu0 is not None
+            else absent_split_gpu0_diagnostic_report()
+        )
         from freetoken.moe.layer_timing import absent_moe_layer_timing_report
 
         timing = getattr(self, "moe_layer_timing", None)
@@ -1124,6 +1196,41 @@ class Engine:
             if correctness is not None
             else absent_correctness_diagnostics_report()
         )
+        config = getattr(self, "config", None)
+        root_mode = getattr(config, "inferswarm_c3_root_cause_mode", "off")
+        placement = getattr(self, "inferswarm_placement", None)
+        assigned = getattr(config, "gpu_assigned", None) or ()
+        rank = int(getattr(getattr(config, "tp_info", None), "rank", 0))
+        payload["inferswarm_c3_root_cause_runtime"] = {
+            "enabled": root_mode != "off",
+            "mode": root_mode,
+            "correctness_only": True,
+            "performance_compatible": False,
+            "performance_fields_collected": False,
+            "primary_device": str(getattr(self, "device", "unknown")),
+            "primary_gpu_uuid": assigned[rank] if rank < len(assigned) else None,
+            "secondary_gpu_uuid": getattr(
+                config, "inferswarm_secondary_gpu_assigned", None
+            ),
+            "model_path": getattr(config, "model_path", None),
+            "gpu0_cache_slots": int(cache.cache_size),
+            "decode_target": getattr(cache, "decode_target", None),
+            "quant_format": getattr(cache, "quant_format", None),
+            "production_decode_kernel": (
+                "fused_experts_decode_nvfp4_marlin"
+                if getattr(cache, "quant_format", None) == "nvfp4"
+                else None
+            ),
+            "placement_sha256": (
+                placement.artifact_sha256 if placement is not None else None
+            ),
+            "placement_policy": placement.policy if placement is not None else None,
+            "placement_model_revision": (
+                placement.model_revision if placement is not None else None
+            ),
+            "gpu1_execution_enabled": remote_decode is not None,
+            "split_gpu0_f_gate_eligible": False if split_gpu0 is not None else None,
+        }
         payload["boundary"] = {
             "operation": operation,
             "idle": True,
@@ -1136,6 +1243,8 @@ class Engine:
             cache.reset_instrumentation()
             if remote_decode is not None:
                 remote_decode.reset()
+            if split_gpu0 is not None:
+                split_gpu0.reset()
             if timing is not None:
                 timing.reset()
             if correctness is not None:
@@ -1309,6 +1418,10 @@ class Engine:
         if batch.is_decode and (
             self.moe_layer_timing is not None
             or self.inferswarm_remote_decode is not None
+            or (
+                self.inferswarm_correctness_diagnostics is not None
+                and self.inferswarm_correctness_diagnostics.moe_capture_enabled
+            )
         ):
             # Engine-level identity: one advance per real decode forward, never inferred
             # from a particular layer id. Capture warmups do not pass this seam.
@@ -1323,6 +1436,11 @@ class Engine:
                 )
             if self.inferswarm_remote_decode is not None:
                 self.inferswarm_remote_decode.begin_decode_step(step)
+            if (
+                self.inferswarm_correctness_diagnostics is not None
+                and self.inferswarm_correctness_diagnostics.moe_capture_enabled
+            ):
+                self.inferswarm_correctness_diagnostics.begin_decode_step(step)
         # Prefill interval, measured where prefill actually happens: the events bracket the
         # model forward for this prefill batch (chunk) and nothing else -- no host-side
         # scheduling, no sampling, no detokenizer or HTTP hop. TTFT is a strictly larger

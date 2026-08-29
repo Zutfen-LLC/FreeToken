@@ -59,6 +59,10 @@ class ServerArgs(SchedulerConfig):
     inferswarm_remote_mode: str = "overlap"
     # Detailed records are bounded by decode steps; cumulative gates continue past it.
     inferswarm_mechanism_max_steps: int = 256
+    # Correctness-only layer tensor capture / GPU0 split diagnostic. This is independent of
+    # the P4 scheduling selector and remains off unless explicitly requested.
+    inferswarm_c3_root_cause_mode: str = "off"
+    inferswarm_c3_root_cause_decode_step: int = 0
 
     @property
     def share_tokenizer(self) -> bool:
@@ -335,6 +339,23 @@ def parse_args(
             "step-0 logits through the idle instrumentation snapshot. Disabled by default; "
             "must not be enabled for performance measurement"
         ),
+    )
+
+    parser.add_argument(
+        "--inferswarm-c3-root-cause-mode",
+        choices=("off", "trace", "DIAGNOSTIC_SPLIT_GPU0"),
+        default=ServerArgs.inferswarm_c3_root_cause_mode,
+        help=(
+            "Correctness-only step/layer tensor trace; DIAGNOSTIC_SPLIT_GPU0 executes "
+            "the frozen complementary route subsets on GPU0 and never dispatches GPU1"
+        ),
+    )
+
+    parser.add_argument(
+        "--inferswarm-c3-root-cause-decode-step",
+        type=_nonnegative_int,
+        default=ServerArgs.inferswarm_c3_root_cause_decode_step,
+        help="Single decode step retained by the bounded C3 root-cause trace",
     )
 
     parser.add_argument(
@@ -777,9 +798,11 @@ def parse_args(
         parser.error(
             "--inferswarm-secondary-gpu is a two-device Phase-1 POC option and currently requires --tensor-parallel-size 1; it is not a TP rank"
         )
+    split_gpu0 = kwargs["inferswarm_c3_root_cause_mode"] == "DIAGNOSTIC_SPLIT_GPU0"
     if (
         kwargs["inferswarm_placement"] is not None
         and kwargs["inferswarm_secondary_gpu"] is None
+        and not split_gpu0
     ):
         parser.error("--inferswarm-placement requires --inferswarm-secondary-gpu")
     if (
@@ -789,6 +812,26 @@ def parse_args(
         parser.error("--inferswarm-remote-decode requires --inferswarm-secondary-gpu")
     if kwargs["inferswarm_remote_decode"] and kwargs["inferswarm_placement"] is None:
         parser.error("--inferswarm-remote-decode requires --inferswarm-placement")
+    if kwargs["inferswarm_c3_root_cause_mode"] != "off":
+        if not kwargs["inferswarm_correctness_diagnostics"]:
+            parser.error(
+                "--inferswarm-c3-root-cause-mode requires --inferswarm-correctness-diagnostics"
+            )
+        if kwargs["cuda_graph_max_bs"] != 0:
+            parser.error(
+                "--inferswarm-c3-root-cause-mode requires --cuda-graph-max-bs 0"
+            )
+        if kwargs["max_running_req"] != 1:
+            parser.error(
+                "--inferswarm-c3-root-cause-mode requires --max-running-requests 1"
+            )
+    if split_gpu0:
+        if kwargs["inferswarm_placement"] is None:
+            parser.error("DIAGNOSTIC_SPLIT_GPU0 requires --inferswarm-placement")
+        if kwargs["inferswarm_secondary_gpu"] is not None:
+            parser.error("DIAGNOSTIC_SPLIT_GPU0 forbids --inferswarm-secondary-gpu")
+        if kwargs["inferswarm_remote_decode"]:
+            parser.error("DIAGNOSTIC_SPLIT_GPU0 forbids --inferswarm-remote-decode")
 
     # resolve some arguments
     run_shell |= kwargs.pop("shell_mode")

@@ -12,6 +12,7 @@ import torch
 from .inferswarm_resident_bank import SecondaryResidentExpertBank
 
 REMOTE_DECODE_SCHEMA = "freetoken.inferswarm-remote-decode/2"
+SPLIT_GPU0_DIAGNOSTIC_SCHEMA = "freetoken.inferswarm-c3-split-gpu0/1"
 TRANSPORT_MODE = "host_staged"
 REMOTE_MODES = ("overlap", "serialized")
 F1_THRESHOLD = 0.25
@@ -179,7 +180,9 @@ class PendingRemoteOperation:
     slot_index: int
     generation: int
     tokens: int
+    layer_id: int
     completion_event: Any
+    diagnostics: Any = None
     completion_recorded: bool = False
     finished: bool = False
     released: bool = False
@@ -420,8 +423,15 @@ class HostStagedRemoteTransport:
             self.secondary_ordinal,
         )
         act_b, weight_b, id_b, partial_b = self._payload_bytes(tokens)
+        layer_id = int(getattr(layer, "layer_id", -1))
+        diagnostics = getattr(layer, "inferswarm_correctness_diagnostics", None)
         pending = PendingRemoteOperation(
-            index, slot.generation, tokens, slot.completion_event
+            index,
+            slot.generation,
+            tokens,
+            layer_id,
+            slot.completion_event,
+            diagnostics,
         )
         pending.transfer_bytes = {
             "gpu0_to_host": {"activation": 0, "routing_weights": 0, "routing_ids": 0},
@@ -438,6 +448,16 @@ class HostStagedRemoteTransport:
         try:
             cuda.set_device(primary)
             pstream = cuda.current_stream(self.primary_device)
+            if diagnostics is not None:
+                diagnostics.capture_transport_tensor(
+                    layer_id, "gpu0_source_hidden_activation", hidden_states
+                )
+                diagnostics.capture_transport_tensor(
+                    layer_id, "gpu0_source_routing_weights", routing_weights
+                )
+                diagnostics.capture_transport_tensor(
+                    layer_id, "expected_remote_slot_ids", remote_slot_ids
+                )
             if self.timing_enabled:
                 slot.timing_events["stage_start"].record(pstream)
             self._active(slot.host_activation, tokens).copy_(
@@ -458,6 +478,22 @@ class HostStagedRemoteTransport:
             )
             tic = time.perf_counter_ns()
             slot.stage_ready_event.synchronize()
+            if diagnostics is not None:
+                diagnostics.capture_transport_tensor(
+                    layer_id,
+                    "pinned_host_staged_activation",
+                    self._active(slot.host_activation, tokens),
+                )
+                diagnostics.capture_transport_tensor(
+                    layer_id,
+                    "pinned_host_routing_weights",
+                    self._active(slot.host_weights, tokens),
+                )
+                diagnostics.capture_transport_tensor(
+                    layer_id,
+                    "pinned_host_remote_slot_ids",
+                    self._active(slot.host_slots, tokens),
+                )
             pending.timing_values["gpu0_to_host_staging_host_wait"] = self._timing(
                 (time.perf_counter_ns() - tic) / 1e6, "host_monotonic"
             )
@@ -485,6 +521,16 @@ class HostStagedRemoteTransport:
                     self._active(slot.host_weights, tokens), non_blocking=True
                 )
                 slots.copy_(self._active(slot.host_slots, tokens), non_blocking=True)
+                if diagnostics is not None:
+                    diagnostics.capture_transport_tensor(
+                        layer_id, "gpu1_activation_after_h2d", activation
+                    )
+                    diagnostics.capture_transport_tensor(
+                        layer_id, "gpu1_routing_weights", weights
+                    )
+                    diagnostics.capture_transport_tensor(
+                        layer_id, "gpu1_remote_slot_ids", slots
+                    )
                 secondary_enqueued = True
                 self.transfer_bytes.host_to_gpu1_activation += act_b
                 self.transfer_bytes.host_to_gpu1_routing_weights += weight_b
@@ -517,6 +563,10 @@ class HostStagedRemoteTransport:
                     )
                 if self.timing_enabled:
                     events["gpu1_exec_end"].record(self.stream)
+                if diagnostics is not None:
+                    diagnostics.capture_transport_tensor(
+                        layer_id, "gpu1_remote_partial_before_d2h", partial
+                    )
                 self._active(slot.host_partial, tokens).copy_(
                     partial, non_blocking=True
                 )
@@ -565,6 +615,13 @@ class HostStagedRemoteTransport:
             cuda.set_device(secondary)
             tic = time.perf_counter_ns()
             pending.completion_event.synchronize()
+            diagnostics = pending.diagnostics
+            if diagnostics is not None:
+                diagnostics.capture_transport_tensor(
+                    pending.layer_id,
+                    "pinned_host_returned_partial",
+                    self._active(slot.host_partial, pending.tokens),
+                )
             pending.timing_values["host_remote_join_wait"] = self._timing(
                 (time.perf_counter_ns() - tic) / 1e6, "host_monotonic"
             )
@@ -591,6 +648,10 @@ class HostStagedRemoteTransport:
             out.copy_(
                 self._active(slot.host_partial, pending.tokens), non_blocking=True
             )
+            if diagnostics is not None:
+                diagnostics.capture_transport_tensor(
+                    pending.layer_id, "gpu0_returned_remote_partial", out
+                )
             primary_return_enqueued = True
             self.transfer_bytes.host_to_gpu0_returned_partial += partial_b
             pending.transfer_bytes["host_to_gpu0"]["returned_partial"] = partial_b
@@ -778,6 +839,163 @@ def evaluate_mechanism_gates(
     }
 
 
+class SplitGpu0DiagnosticExecutor:
+    """Correctness-only complementary route split using two production GPU0 GEMMs.
+
+    This is deliberately not a distributed executor. It consumes the frozen placement only
+    as a classifier, services every selected raw expert through the ordinary GPU0 cache,
+    makes exactly two calls to ``OffloadMoELayer._expert_gemm``, and combines once. It owns
+    no transport, secondary device, or F-gate counters.
+    """
+
+    mode = "DIAGNOSTIC_SPLIT_GPU0"
+
+    def __init__(
+        self,
+        *,
+        placement,
+        primary_device: torch.device,
+        diagnostics,
+        route_lookup: torch.Tensor | None = None,
+    ) -> None:
+        self.placement = placement
+        self.primary_device = primary_device
+        self.diagnostics = diagnostics
+        self.route_lookup = (
+            route_lookup
+            if route_lookup is not None
+            else build_remote_slot_lookup(placement, primary_device)
+        )
+        expected = (placement.num_layers, placement.num_experts)
+        if (
+            tuple(self.route_lookup.shape) != expected
+            or self.route_lookup.dtype != torch.int32
+        ):
+            raise ValueError(
+                "DIAGNOSTIC_SPLIT_GPU0 route lookup has invalid geometry or dtype"
+            )
+        if self.route_lookup.device != primary_device:
+            raise ValueError("DIAGNOSTIC_SPLIT_GPU0 route lookup is not on GPU0")
+        self.layer_calls = 0
+        self.production_gemm_calls = 0
+        self.combine_operations = 0
+        self.gpu1_dispatches = 0
+
+    def begin_decode_step(self, step: int) -> None:
+        del step
+
+    def decode(
+        self, layer, cache, hidden_states, topk_weights, topk_ids
+    ) -> torch.Tensor:
+        layer_id = int(layer.layer_id)
+        raw_ids = topk_ids.clone()
+        num_experts = int(self.placement.num_experts)
+        invalid = (raw_ids < 0) | (raw_ids >= num_experts)
+        if bool(invalid.any().item()):
+            values = torch.unique(raw_ids[invalid]).detach().cpu().tolist()
+            raise RuntimeError(
+                "invalid DIAGNOSTIC_SPLIT_GPU0 raw expert routing: "
+                f"expert IDs {values} are outside [0, {num_experts})"
+            )
+        remote_slot_ids = self.route_lookup[layer_id][raw_ids.long()]
+        remote_mask = remote_slot_ids >= 0
+        local_mask = ~remote_mask
+        self.diagnostics.capture_ownership(
+            layer_id,
+            local_mask=local_mask,
+            remote_mask=remote_mask,
+            remote_slot_ids=remote_slot_ids,
+        )
+        self.diagnostics.capture_selected_expert_weights(layer_id, raw_ids, cache)
+
+        cache.record_decode_routing(layer_id, raw_ids)
+        gpu0_slot_ids = raw_ids.clone()
+        cache.ensure_experts(layer_id, gpu0_slot_ids, record_routing=False)
+        cache.copy_missing()
+        self.diagnostics.capture_gpu0_slot_ids(layer_id, gpu0_slot_ids)
+        views = cache.bank_views()
+        alphas = cache.alphas_for_slots(layer_id)
+        zero = topk_weights.new_zeros(())
+        local_weights = torch.where(local_mask, topk_weights, zero).contiguous()
+        remote_weights = torch.where(remote_mask, topk_weights, zero).contiguous()
+        local_partial = layer._expert_gemm(
+            cache,
+            hidden_states,
+            local_weights,
+            gpu0_slot_ids,
+            views=views,
+            n=None,
+            alphas=alphas,
+            is_prefill=False,
+        )
+        remote_partial = layer._expert_gemm(
+            cache,
+            hidden_states,
+            remote_weights,
+            gpu0_slot_ids,
+            views=views,
+            n=None,
+            alphas=alphas,
+            is_prefill=False,
+        )
+        combined = local_partial + remote_partial
+        self.diagnostics.capture_candidate_partials(
+            layer_id,
+            local_partial=local_partial,
+            remote_partial=remote_partial,
+            combined_partial=combined,
+        )
+        self.layer_calls += 1
+        self.production_gemm_calls += 2
+        self.combine_operations += 1
+        return combined
+
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "schema": SPLIT_GPU0_DIAGNOSTIC_SCHEMA,
+            "enabled": True,
+            "diagnostic_label": self.mode,
+            "correctness_only": True,
+            "performance_compatible": False,
+            "performance_fields_collected": False,
+            "placement_sha256": self.placement.artifact_sha256,
+            "uses_gpu1": False,
+            "gpu1_dispatches": self.gpu1_dispatches,
+            "all_selected_experts_serviced_by_gpu0_cache": True,
+            "production_gemm_calls": self.production_gemm_calls,
+            "combine_operations": self.combine_operations,
+            "layer_calls": self.layer_calls,
+            "f_gate_evidence_eligible": False,
+            "f_gate_counters_incremented": False,
+        }
+
+    def reset(self) -> None:
+        self.layer_calls = 0
+        self.production_gemm_calls = 0
+        self.combine_operations = 0
+        self.gpu1_dispatches = 0
+
+
+def absent_split_gpu0_diagnostic_report() -> dict[str, Any]:
+    return {
+        "schema": SPLIT_GPU0_DIAGNOSTIC_SCHEMA,
+        "enabled": False,
+        "diagnostic_label": None,
+        "correctness_only": True,
+        "performance_compatible": False,
+        "performance_fields_collected": False,
+        "placement_sha256": None,
+        "uses_gpu1": False,
+        "gpu1_dispatches": 0,
+        "all_selected_experts_serviced_by_gpu0_cache": None,
+        "production_gemm_calls": 0,
+        "combine_operations": 0,
+        "layer_calls": 0,
+        "f_gate_evidence_eligible": False,
+        "f_gate_counters_incremented": False,
+    }
+
+
 class InferSwarmRemoteDecodeExecutor:
     """Authoritative partition, submit/local/join scheduling, and one combine."""
 
@@ -864,6 +1082,9 @@ class InferSwarmRemoteDecodeExecutor:
         ).amin()
         local_slots = torch.where(local_mask, raw_ids, placeholder).contiguous()
         cache.ensure_experts(layer_id, local_slots, record_routing=False)
+        diagnostics = getattr(layer, "inferswarm_correctness_diagnostics", None)
+        if diagnostics is not None:
+            diagnostics.capture_gpu0_slot_ids(layer_id, local_slots)
         self._mark(timing, layer_id, "cache_service_end")
         if timing is not None:
             timing.record_cache_metadata(layer_id, cache, total_routes=total_count)
@@ -1029,11 +1250,19 @@ class InferSwarmRemoteDecodeExecutor:
         self, layer, cache, hidden_states, topk_weights, topk_ids
     ) -> torch.Tensor:
         layer_id, timing = int(layer.layer_id), self._timing(cache)
+        diagnostics = getattr(layer, "inferswarm_correctness_diagnostics", None)
         raw_ids = topk_ids.clone()
         remote_slots, remote_mask, remote_count, unique_remote, control_ms = (
             self._classify(layer_id, raw_ids)
         )
         total_count, local_count = raw_ids.numel(), raw_ids.numel() - remote_count
+        if diagnostics is not None:
+            diagnostics.capture_ownership(
+                layer_id,
+                local_mask=~remote_mask,
+                remote_mask=remote_mask,
+                remote_slot_ids=remote_slots,
+            )
         counts = self.counters.layers[layer_id]
         counts.total_router_selections += total_count
         counts.selected_for_gpu1 += remote_count
@@ -1061,6 +1290,8 @@ class InferSwarmRemoteDecodeExecutor:
             if timing is not None:
                 timing.record_cache_metadata(layer_id, cache, total_routes=total_count)
             cache.copy_missing()
+            if diagnostics is not None:
+                diagnostics.capture_gpu0_slot_ids(layer_id, topk_ids)
             self._mark(timing, layer_id, "weight_fetch_end")
             out = layer._expert_gemm(
                 cache,
@@ -1076,6 +1307,13 @@ class InferSwarmRemoteDecodeExecutor:
             self._mark(timing, layer_id, "local_branch_end")
             self._mark(timing, layer_id, "complete_end")
             counts.executed_on_gpu0 += local_count
+            if diagnostics is not None:
+                diagnostics.capture_candidate_partials(
+                    layer_id,
+                    local_partial=out,
+                    remote_partial=torch.zeros_like(out),
+                    combined_partial=out,
+                )
         else:
             cache.record_decode_routing(layer_id, raw_ids)
             remote_weights = torch.where(
@@ -1152,6 +1390,13 @@ class InferSwarmRemoteDecodeExecutor:
                 failure_stage = "combine"
                 self._mark(timing, layer_id, "combine_start")
                 out = local_partial + remote_partial
+                if diagnostics is not None:
+                    diagnostics.capture_candidate_partials(
+                        layer_id,
+                        local_partial=local_partial,
+                        remote_partial=remote_partial,
+                        combined_partial=out,
+                    )
                 self._mark(timing, layer_id, "combine_end")
                 self.transport.release(pending)
                 self._mark(timing, layer_id, "complete_end")

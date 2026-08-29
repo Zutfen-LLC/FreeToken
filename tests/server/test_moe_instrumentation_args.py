@@ -26,6 +26,8 @@ def test_moe_instrumentation_cli_is_opt_in():
     assert args.moe_layer_timing_max_steps == 0
     assert args.moe_layer_timing_role == "unspecified"
     assert args.inferswarm_correctness_diagnostics is False
+    assert args.inferswarm_c3_root_cause_mode == "off"
+    assert args.inferswarm_c3_root_cause_decode_step == 0
 
 
 def test_moe_instrumentation_cli_enables_stats_and_bounded_trace():
@@ -70,3 +72,48 @@ def test_c3_correctness_diagnostics_are_explicit_and_graph_compatible():
     )
     assert args.inferswarm_correctness_diagnostics is True
     assert args.cuda_graph_max_bs == 1
+
+
+def test_c3_root_trace_requires_correctness_diagnostics():
+    with pytest.raises(SystemExit):
+        _parse(
+            "--inferswarm-c3-root-cause-mode",
+            "trace",
+            "--cuda-graph-max-bs",
+            "0",
+            "--max-running-requests",
+            "1",
+        )
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ("--cuda-graph-max-bs", "1", "--max-running-requests", "1"),
+        ("--cuda-graph-max-bs", "0", "--max-running-requests", "2"),
+    ],
+)
+def test_c3_root_trace_requires_eager_batch_one(extra):
+    with pytest.raises(SystemExit):
+        _parse(
+            "--inferswarm-correctness-diagnostics",
+            "--inferswarm-c3-root-cause-mode",
+            "trace",
+            *extra,
+        )
+
+
+def test_c3_root_trace_is_explicit_bounded_and_correctness_only():
+    args = _parse(
+        "--inferswarm-correctness-diagnostics",
+        "--inferswarm-c3-root-cause-mode",
+        "trace",
+        "--inferswarm-c3-root-cause-decode-step",
+        "3",
+        "--cuda-graph-max-bs",
+        "0",
+        "--max-running-requests",
+        "1",
+    )
+    assert args.inferswarm_c3_root_cause_mode == "trace"
+    assert args.inferswarm_c3_root_cause_decode_step == 3

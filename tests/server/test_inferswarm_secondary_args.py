@@ -44,6 +44,41 @@ def test_placement_without_secondary_is_rejected_explicitly():
         _parse("--inferswarm-placement", "/tmp/placement.json")
 
 
+def test_split_gpu0_diagnostic_permits_placement_without_secondary():
+    args = _parse(
+        "--inferswarm-placement",
+        "/tmp/placement.json",
+        "--inferswarm-correctness-diagnostics",
+        "--inferswarm-c3-root-cause-mode",
+        "DIAGNOSTIC_SPLIT_GPU0",
+        "--cuda-graph-max-bs",
+        "0",
+        "--max-running-requests",
+        "1",
+    )
+    assert args.inferswarm_secondary_gpu is None
+    assert args.inferswarm_remote_decode is False
+    assert args.inferswarm_c3_root_cause_mode == "DIAGNOSTIC_SPLIT_GPU0"
+
+
+def test_split_gpu0_diagnostic_forbids_secondary_and_remote_dispatch():
+    common = (
+        "--inferswarm-placement",
+        "/tmp/placement.json",
+        "--inferswarm-correctness-diagnostics",
+        "--inferswarm-c3-root-cause-mode",
+        "DIAGNOSTIC_SPLIT_GPU0",
+        "--cuda-graph-max-bs",
+        "0",
+        "--max-running-requests",
+        "1",
+    )
+    with pytest.raises(SystemExit):
+        _parse(*common, "--inferswarm-secondary-gpu", SECONDARY_UUID)
+    with pytest.raises(SystemExit):
+        _parse(*common, "--inferswarm-remote-decode")
+
+
 def test_secondary_without_placement_preserves_probe_only_configuration():
     args = _parse("--inferswarm-secondary-gpu", SECONDARY_UUID)
     assert args.inferswarm_secondary_gpu == SECONDARY_UUID
