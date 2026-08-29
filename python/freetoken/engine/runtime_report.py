@@ -288,6 +288,7 @@ def build_runtime_report(engine) -> Dict[str, Any]:
         from freetoken.moe.inferswarm_remote_decode import (
             absent_remote_decode_configuration_report,
         )
+        from freetoken.moe.layer_timing import MOE_LAYER_TIMING_SCHEMA
 
         secondary = getattr(engine, "inferswarm_secondary_device", None)
         resident = getattr(engine, "inferswarm_resident_bank", None)
@@ -327,7 +328,7 @@ def build_runtime_report(engine) -> Dict[str, Any]:
                 layer_timing.configuration_report()
                 if layer_timing is not None
                 else {
-                    "schema": "freetoken.moe-layer-timing/1",
+                    "schema": MOE_LAYER_TIMING_SCHEMA,
                     "enabled": False,
                     "capacity_steps": 0,
                 }

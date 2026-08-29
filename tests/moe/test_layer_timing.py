@@ -73,7 +73,9 @@ def test_common_baseline_schema_has_complete_wall_components_and_remote_na():
         record["durations"]["gpu0_branch"]["local_expert_execution"]["value_ms"] == 4.0
     )
     assert (
-        record["durations"]["gpu1_branch"]["remote_expert_execution"]["status"]
+        record["durations"]["gpu1_branch"]["gpu1_route_contribution_execution"][
+            "status"
+        ]
         == "not_applicable"
     )
     assert (
@@ -91,6 +93,16 @@ def test_common_baseline_schema_has_complete_wall_components_and_remote_na():
 def test_candidate_uses_same_schema_and_does_not_sum_concurrent_branches():
     timing = _timing(role="candidate", overlap=True)
     _fill_baseline_record(timing)
+    base = int(timing.timestamps[0, 0, MARKER_ID["complete_start"]])
+    for name, value in {
+        "returned_route_contributions_h2d_start": base + 9_100_000,
+        "returned_route_contributions_h2d_end": base + 9_300_000,
+        "route_reconstruction_start": base + 9_301_000,
+        "route_reconstruction_end": base + 9_500_000,
+        "final_sum_reduce_start": base + 9_501_000,
+        "final_sum_reduce_end": base + 9_800_000,
+    }.items():
+        timing.timestamps[0, 0, MARKER_ID[name]] = value
     timing.annotate(
         0,
         0,
@@ -132,12 +144,12 @@ def test_candidate_uses_same_schema_and_does_not_sum_concurrent_branches():
                     "value_ms": 2.0,
                     "source": "cuda_event_gpu1",
                 },
-                "remote_expert_execution": {
+                "gpu1_route_contribution_execution": {
                     "status": "valid",
                     "value_ms": 5.0,
                     "source": "cuda_event_gpu1",
                 },
-                "gpu1_to_host_partial_d2h": {
+                "gpu1_to_host_route_contributions_d2h": {
                     "status": "valid",
                     "value_ms": 2.0,
                     "source": "cuda_event_gpu1",
@@ -159,6 +171,10 @@ def test_candidate_uses_same_schema_and_does_not_sum_concurrent_branches():
     assert record["durations"]["complete_layer"]["value_ms"] == 10.0
     assert record["durations"]["gpu0_branch"]["complete_local_branch"]["value_ms"] > 0
     assert record["durations"]["gpu1_branch"]["complete_gpu1_branch"]["value_ms"] == 9.0
+    join = record["durations"]["join_reconstruct_reduce"]
+    assert join["host_to_gpu0_returned_route_contributions"]["value_ms"] == 0.2
+    assert join["route_reconstruction"]["value_ms"] == pytest.approx(0.199)
+    assert join["final_moe_sum_reduce"]["value_ms"] == pytest.approx(0.299)
     assert "sum" not in record["durations"]
 
 

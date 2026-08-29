@@ -151,6 +151,63 @@ def _decode_gemm_marlin(
     )
 
 
+def _fused_experts_decode_nvfp4_route_contributions(
+    gemm_fn,
+    hidden_states: torch.Tensor,
+    gate_up_packed: torch.Tensor,
+    gate_up_scale: torch.Tensor,
+    gate_up_global: torch.Tensor,
+    down_packed: torch.Tensor,
+    down_scale: torch.Tensor,
+    down_global: torch.Tensor,
+    topk_weights: torch.Tensor,
+    topk_ids: torch.Tensor,
+    activation: str,
+    apply_router_weight_on_input: bool,
+    act_alpha: float = 1.702,
+    act_limit: float = 7.0,
+    route_contributions_out: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Shared decode body through the per-route down projection.
+
+    ``gemm_fn`` is either
+    the marlin-style int32 GEMV (:func:`_decode_gemm_marlin`) or the original LUT-gather
+    GEMV (:func:`_decode_gemm`), both with the same calling convention.  The returned
+    ``[M, top_k, H]`` tensor is the existing ``ic3`` reduction input; callers that
+    distribute route computation can supply persistent output storage without changing
+    the GEMM, activation, route order, or routed-weight application."""
+    M, H = hidden_states.shape
+    top_k = topk_ids.shape[1]
+    two_i = gate_up_packed.shape[1]
+    inter = two_i // 2
+    dev, dt = hidden_states.device, hidden_states.dtype
+
+    ic1 = torch.empty((M, top_k, two_i), device=dev, dtype=dt)
+    gemm_fn(
+        hidden_states, gate_up_packed, gate_up_scale, gate_up_global,
+        ic1, topk_weights, topk_ids, apply_router_weight_on_input, False,
+    )
+    ic2 = torch.empty((M * top_k, inter), device=dev, dtype=dt)
+    _run_act(activation, ic1.view(-1, two_i), ic2, act_alpha, act_limit)
+    if route_contributions_out is None:
+        ic3 = torch.empty((M, top_k, H), device=dev, dtype=dt)
+    else:
+        ic3 = route_contributions_out
+        if tuple(ic3.shape) != (M, top_k, H):
+            raise ValueError(
+                "NVFP4 route-contribution output shape must be [M, top_k, H]"
+            )
+        if ic3.device != dev or ic3.dtype != dt or not ic3.is_contiguous():
+            raise ValueError(
+                "NVFP4 route-contribution output must be contiguous and match the input device/dtype"
+            )
+    gemm_fn(
+        ic2, down_packed, down_scale, down_global,
+        ic3, topk_weights, topk_ids, not apply_router_weight_on_input, True,
+    )
+    return ic3
+
+
 def _fused_experts_decode_nvfp4(
     gemm_fn,
     hidden_states: torch.Tensor,
@@ -167,30 +224,63 @@ def _fused_experts_decode_nvfp4(
     act_alpha: float = 1.702,
     act_limit: float = 7.0,
 ) -> torch.Tensor:
-    """Shared decode body (gemm1 -> act -> gemm2 -> sum-reduce); ``gemm_fn`` is either
-    the marlin-style int32 GEMV (:func:`_decode_gemm_marlin`) or the original LUT-gather
-    GEMV (:func:`_decode_gemm`), both with the same calling convention."""
-    M, H = hidden_states.shape
-    top_k = topk_ids.shape[1]
-    two_i = gate_up_packed.shape[1]
-    inter = two_i // 2
-    dev, dt = hidden_states.device, hidden_states.dtype
-
-    ic1 = torch.empty((M, top_k, two_i), device=dev, dtype=dt)
-    gemm_fn(
-        hidden_states, gate_up_packed, gate_up_scale, gate_up_global,
-        ic1, topk_weights, topk_ids, apply_router_weight_on_input, False,
-    )
-    ic2 = torch.empty((M * top_k, inter), device=dev, dtype=dt)
-    _run_act(activation, ic1.view(-1, two_i), ic2, act_alpha, act_limit)
-    ic3 = torch.empty((M, top_k, H), device=dev, dtype=dt)
-    gemm_fn(
-        ic2, down_packed, down_scale, down_global,
-        ic3, topk_weights, topk_ids, not apply_router_weight_on_input, True,
+    """Ordinary decode: preserve the production route tensor and reduce it once."""
+    ic3 = _fused_experts_decode_nvfp4_route_contributions(
+        gemm_fn,
+        hidden_states,
+        gate_up_packed,
+        gate_up_scale,
+        gate_up_global,
+        down_packed,
+        down_scale,
+        down_global,
+        topk_weights,
+        topk_ids,
+        activation,
+        apply_router_weight_on_input,
+        act_alpha,
+        act_limit,
     )
     out = torch.empty_like(hidden_states)
     moe_sum_reduce_triton(ic3, out)
     return out
+
+
+def fused_experts_decode_nvfp4_marlin_route_contributions(
+    hidden_states: torch.Tensor,
+    gate_up_packed: torch.Tensor,
+    gate_up_scale: torch.Tensor,
+    gate_up_global: torch.Tensor,
+    down_packed: torch.Tensor,
+    down_scale: torch.Tensor,
+    down_global: torch.Tensor,
+    topk_weights: torch.Tensor,
+    topk_ids: torch.Tensor,
+    activation: str = "silu",
+    apply_router_weight_on_input: bool = False,
+    act_alpha: float = 1.702,
+    act_limit: float = 7.0,
+    *,
+    out: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Return the production Marlin decode's ordered per-route contributions."""
+    return _fused_experts_decode_nvfp4_route_contributions(
+        _decode_gemm_marlin,
+        hidden_states,
+        gate_up_packed,
+        gate_up_scale,
+        gate_up_global,
+        down_packed,
+        down_scale,
+        down_global,
+        topk_weights,
+        topk_ids,
+        activation,
+        apply_router_weight_on_input,
+        act_alpha,
+        act_limit,
+        route_contributions_out=out,
+    )
 
 
 def fused_experts_decode_nvfp4_marlin(
@@ -346,6 +436,7 @@ def fused_experts_nvfp4(
 
 __all__ = [
     "fused_experts_decode_nvfp4_marlin",
+    "fused_experts_decode_nvfp4_marlin_route_contributions",
     "fused_experts_decode_nvfp4_serial",
     "fused_experts_nvfp4",
 ]

@@ -476,6 +476,126 @@ class OffloadMoELayer(MoELayer):
     # order) and ``topk_ids`` already index their rows.
     # ------------------------------------------------------------------
 
+    def _expert_route_contributions(
+        self,
+        cache: OffloadMoeCache,
+        hidden_states: torch.Tensor,
+        topk_weights: torch.Tensor,
+        topk_ids: torch.Tensor,
+        *,
+        views: tuple[torch.Tensor, ...],
+        alphas: tuple[torch.Tensor, torch.Tensor] | None,
+        out: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Return native-NVFP4 decode contributions before the MoE sum reduction.
+
+        InferSwarm is startup-validated to this one production format/backend.  Keep
+        this seam deliberately narrower than ``_expert_gemm`` so an invalid runtime
+        cannot silently select another quant implementation with different semantics.
+        """
+        if cache.quant_format != "nvfp4":
+            raise RuntimeError(
+                "InferSwarm route contributions require native NVFP4/Triton decode"
+            )
+        expected_schema = (
+            "gate_up_packed",
+            "gate_up_scale",
+            "gate_up_global",
+            "down_packed",
+            "down_scale",
+            "down_global",
+        )
+        if tuple(cache.bank_schema) != expected_schema or len(views) != len(
+            expected_schema
+        ):
+            raise RuntimeError(
+                "InferSwarm route contributions require the native NVFP4 six-bank layout"
+            )
+        if (
+            hidden_states.ndim != 2
+            or not hidden_states.is_contiguous()
+            or topk_weights.ndim != 2
+            or topk_ids.ndim != 2
+            or topk_weights.shape != topk_ids.shape
+            or topk_weights.shape[0] != hidden_states.shape[0]
+            or topk_weights.dtype != torch.float32
+            or topk_ids.dtype != torch.int32
+            or topk_weights.device != hidden_states.device
+            or topk_ids.device != hidden_states.device
+            or not topk_weights.is_contiguous()
+            or not topk_ids.is_contiguous()
+        ):
+            raise RuntimeError(
+                "InferSwarm route contributions require contiguous native NVFP4 decode inputs"
+            )
+
+        gate_up_packed, gate_up_scale, gate_up_global, down_packed, down_scale, down_global = views
+        hidden_size = hidden_states.shape[1]
+        if gate_up_packed.ndim != 3 or down_packed.ndim != 3:
+            raise RuntimeError(
+                "InferSwarm route contributions require rank-3 native NVFP4 packed banks"
+            )
+        slots, two_intermediate, packed_hidden = gate_up_packed.shape
+        intermediate = two_intermediate // 2
+        expected_shapes = (
+            (slots, two_intermediate, hidden_size // 2),
+            (slots, two_intermediate, hidden_size // 16),
+            (slots, two_intermediate),
+            (slots, hidden_size, intermediate // 2),
+            (slots, hidden_size, intermediate // 16),
+            (slots, hidden_size),
+        )
+        expected_dtypes = (
+            torch.uint8,
+            torch.float8_e4m3fn,
+            torch.float16,
+            torch.uint8,
+            torch.float8_e4m3fn,
+            torch.float16,
+        )
+        if (
+            packed_hidden != hidden_size // 2
+            or two_intermediate % 2
+            or hidden_size % 16
+            or intermediate % 16
+            or any(
+                tuple(view.shape) != shape
+                or view.dtype != dtype
+                or view.device != hidden_states.device
+                or not view.is_contiguous()
+                for view, shape, dtype in zip(
+                    views, expected_shapes, expected_dtypes, strict=True
+                )
+            )
+        ):
+            raise RuntimeError(
+                "InferSwarm route contributions received invalid native NVFP4 bank geometry/device/layout"
+            )
+
+        # Native ModelOpt banks carry per-row global scales in the six views.  Unlike
+        # nvfp4_marlin/nvfp4_b12x, this production path neither requires nor consumes
+        # separately folded alpha tensors; ``None`` is the canonical value.
+        del alphas
+
+        act_alpha = getattr(self, "hidden_act_alpha", 1.702)
+        act_limit = getattr(self, "swiglu_limit", None)
+        act_limit = float("inf") if act_limit is None else act_limit
+        from freetoken.moe.fused_nvfp4 import (
+            fused_experts_decode_nvfp4_marlin_route_contributions,
+        )
+
+        return fused_experts_decode_nvfp4_marlin_route_contributions(
+            hidden_states,
+            *views,
+            topk_weights,
+            topk_ids,
+            self.activation,
+            self.apply_router_weight_on_input,
+            act_alpha,
+            act_limit,
+            out=out,
+        )
+
     def _expert_gemm(
         self,
         cache: OffloadMoeCache,

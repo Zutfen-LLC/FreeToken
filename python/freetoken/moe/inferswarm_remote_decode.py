@@ -9,9 +9,11 @@ from typing import Any, Protocol
 
 import torch
 
+from freetoken.kernel import moe_sum_reduce_triton
+
 from .inferswarm_resident_bank import SecondaryResidentExpertBank
 
-REMOTE_DECODE_SCHEMA = "freetoken.inferswarm-remote-decode/2"
+REMOTE_DECODE_SCHEMA = "freetoken.inferswarm-remote-decode/3"
 TRANSPORT_MODE = "host_staged"
 REMOTE_MODES = ("overlap", "serialized")
 F1_THRESHOLD = 0.25
@@ -110,6 +112,8 @@ class LayerCounters:
     explicit_failure: int = 0
     fallback_elsewhere: int = 0
     combine_operations: int = 0
+    route_reconstruction_operations: int = 0
+    final_sum_reductions: int = 0
 
     def as_dict(self, layer_id: int) -> dict[str, int]:
         return {"layer_id": layer_id, **self.__dict__}
@@ -149,8 +153,8 @@ class TransferByteCounters:
     host_to_gpu1_routing_weights: int = 0
     host_to_gpu1_routing_ids: int = 0
     host_to_gpu1_expert_weights: int = 0
-    gpu1_to_host_returned_partial: int = 0
-    host_to_gpu0_returned_partial: int = 0
+    gpu1_to_host_returned_route_contributions: int = 0
+    host_to_gpu0_returned_route_contributions: int = 0
 
     def reset(self) -> None:
         for name in self.__dataclass_fields__:
@@ -169,8 +173,12 @@ class TransferByteCounters:
                 "routing_ids": self.host_to_gpu1_routing_ids,
                 "expert_weights": self.host_to_gpu1_expert_weights,
             },
-            "gpu1_to_host": {"returned_partial": self.gpu1_to_host_returned_partial},
-            "host_to_gpu0": {"returned_partial": self.host_to_gpu0_returned_partial},
+            "gpu1_to_host": {
+                "returned_route_contributions": self.gpu1_to_host_returned_route_contributions
+            },
+            "host_to_gpu0": {
+                "returned_route_contributions": self.host_to_gpu0_returned_route_contributions
+            },
         }
 
 
@@ -192,11 +200,12 @@ class _BufferSlot:
     host_activation: torch.Tensor
     host_slots: torch.Tensor
     host_weights: torch.Tensor
-    host_partial: torch.Tensor
+    host_route_contributions: torch.Tensor
     gpu1_activation: torch.Tensor
     gpu1_slots: torch.Tensor
     gpu1_weights: torch.Tensor
-    gpu0_partial: torch.Tensor
+    gpu1_route_contributions: torch.Tensor
+    gpu0_route_contributions: torch.Tensor
     stage_ready_event: Any
     completion_event: Any
     return_consumed_event: Any
@@ -275,8 +284,10 @@ class HostStagedRemoteTransport:
                 host_weights = torch_module.empty(
                     (max_tokens, top_k), dtype=torch_module.float32, pin_memory=True
                 )
-                host_partial = torch_module.empty(
-                    (max_tokens, hidden_size), dtype=hidden_dtype, pin_memory=True
+                host_route_contributions = torch_module.empty(
+                    (max_tokens, top_k, hidden_size),
+                    dtype=hidden_dtype,
+                    pin_memory=True,
                 )
                 gpu1_activation = torch_module.empty(
                     (max_tokens, hidden_size),
@@ -293,9 +304,16 @@ class HostStagedRemoteTransport:
                     dtype=torch_module.float32,
                     device=secondary_device,
                 )
+                gpu1_route_contributions = torch_module.empty(
+                    (max_tokens, top_k, hidden_size),
+                    dtype=hidden_dtype,
+                    device=secondary_device,
+                )
                 cuda.set_device(primary)
-                gpu0_partial = torch_module.empty(
-                    (max_tokens, hidden_size), dtype=hidden_dtype, device=primary_device
+                gpu0_route_contributions = torch_module.empty(
+                    (max_tokens, top_k, hidden_size),
+                    dtype=hidden_dtype,
+                    device=primary_device,
                 )
                 cuda.set_device(secondary)
                 timing_events = (
@@ -306,8 +324,8 @@ class HostStagedRemoteTransport:
                             "stage_end",
                             "gpu1_branch_start",
                             "gpu1_h2d_end",
-                            "gpu1_exec_end",
-                            "gpu1_d2h_end",
+                            "gpu1_route_contributions_end",
+                            "gpu1_route_contributions_d2h_end",
                         )
                     }
                     if self.timing_enabled
@@ -318,13 +336,15 @@ class HostStagedRemoteTransport:
                         host_activation,
                         host_slots,
                         host_weights,
-                        host_partial,
+                        host_route_contributions,
                         gpu1_activation,
                         gpu1_slots,
                         gpu1_weights,
-                        gpu0_partial,
+                        gpu1_route_contributions,
+                        gpu0_route_contributions,
                         timing_events.get("stage_end") or cuda.Event(),
-                        timing_events.get("gpu1_d2h_end") or cuda.Event(),
+                        timing_events.get("gpu1_route_contributions_d2h_end")
+                        or cuda.Event(),
                         cuda.Event(),
                         timing_events,
                     )
@@ -354,11 +374,12 @@ class HostStagedRemoteTransport:
 
     def _payload_bytes(self, tokens: int) -> tuple[int, int, int, int]:
         activation = tokens * self.hidden_size * self.hidden_dtype.itemsize
+        route_contributions = activation * self.top_k
         return (
             activation,
             tokens * self.top_k * torch.float32.itemsize,
             tokens * self.top_k * torch.int32.itemsize,
-            activation,
+            route_contributions,
         )
 
     def _validate_payload(self, hidden, weights, slots) -> int:
@@ -419,7 +440,7 @@ class HostStagedRemoteTransport:
             self.primary_ordinal,
             self.secondary_ordinal,
         )
-        act_b, weight_b, id_b, partial_b = self._payload_bytes(tokens)
+        act_b, weight_b, id_b, route_b = self._payload_bytes(tokens)
         pending = PendingRemoteOperation(
             index, slot.generation, tokens, slot.completion_event
         )
@@ -431,8 +452,8 @@ class HostStagedRemoteTransport:
                 "routing_ids": 0,
                 "expert_weights": 0,
             },
-            "gpu1_to_host": {"returned_partial": 0},
-            "host_to_gpu0": {"returned_partial": 0},
+            "gpu1_to_host": {"returned_route_contributions": 0},
+            "host_to_gpu0": {"returned_route_contributions": 0},
         }
         secondary_enqueued = False
         try:
@@ -494,34 +515,42 @@ class HostStagedRemoteTransport:
                 )
                 if self.timing_enabled:
                     events["gpu1_h2d_end"].record(self.stream)
-                partial = layer._expert_gemm(
+                route_contributions = layer._expert_route_contributions(
                     cache,
                     activation,
                     weights,
                     slots,
                     views=self.resident_bank.bank_views(),
-                    n=None,
                     alphas=self.resident_bank.alpha_views(),
-                    is_prefill=False,
+                    out=self._active(slot.gpu1_route_contributions, tokens),
                 )
-                if tuple(partial.shape) != (tokens, self.hidden_size):
-                    raise RuntimeError(
-                        "P4 remote result shape disagrees with configured geometry"
-                    )
-                if (
-                    partial.dtype != self.hidden_dtype
-                    or partial.device != self.secondary_device
+                if tuple(route_contributions.shape) != (
+                    tokens,
+                    self.top_k,
+                    self.hidden_size,
                 ):
                     raise RuntimeError(
-                        "P4 remote result dtype/device disagrees with secondary"
+                        "P4 remote route contributions disagree with configured geometry"
+                    )
+                if (
+                    route_contributions.dtype != self.hidden_dtype
+                    or route_contributions.device != self.secondary_device
+                    or not route_contributions.is_contiguous()
+                ):
+                    raise RuntimeError(
+                        "P4 remote route contributions must be contiguous and match the secondary dtype/device"
                     )
                 if self.timing_enabled:
-                    events["gpu1_exec_end"].record(self.stream)
-                self._active(slot.host_partial, tokens).copy_(
-                    partial, non_blocking=True
+                    events["gpu1_route_contributions_end"].record(self.stream)
+                self._active(slot.host_route_contributions, tokens).copy_(
+                    route_contributions, non_blocking=True
                 )
-                self.transfer_bytes.gpu1_to_host_returned_partial += partial_b
-                pending.transfer_bytes["gpu1_to_host"]["returned_partial"] = partial_b
+                self.transfer_bytes.gpu1_to_host_returned_route_contributions += (
+                    route_b
+                )
+                pending.transfer_bytes["gpu1_to_host"][
+                    "returned_route_contributions"
+                ] = route_b
                 slot.completion_event.record(self.stream)
                 pending.completion_recorded = True
             pending.timing_values["host_remote_submit_control"] = self._timing(
@@ -559,7 +588,7 @@ class HostStagedRemoteTransport:
             self.primary_ordinal,
             self.secondary_ordinal,
         )
-        partial_b = self._payload_bytes(pending.tokens)[3]
+        route_b = self._payload_bytes(pending.tokens)[3]
         primary_return_enqueued = False
         try:
             cuda.set_device(secondary)
@@ -574,37 +603,47 @@ class HostStagedRemoteTransport:
                     host_to_gpu1_payload_h2d=self._elapsed(
                         e["gpu1_branch_start"], e["gpu1_h2d_end"], "cuda_event_gpu1"
                     ),
-                    remote_expert_execution=self._elapsed(
-                        e["gpu1_h2d_end"], e["gpu1_exec_end"], "cuda_event_gpu1"
+                    gpu1_route_contribution_execution=self._elapsed(
+                        e["gpu1_h2d_end"],
+                        e["gpu1_route_contributions_end"],
+                        "cuda_event_gpu1",
                     ),
-                    gpu1_to_host_partial_d2h=self._elapsed(
-                        e["gpu1_exec_end"], e["gpu1_d2h_end"], "cuda_event_gpu1"
+                    gpu1_to_host_route_contributions_d2h=self._elapsed(
+                        e["gpu1_route_contributions_end"],
+                        e["gpu1_route_contributions_d2h_end"],
+                        "cuda_event_gpu1",
                     ),
                     complete_gpu1_branch=self._elapsed(
-                        e["gpu1_branch_start"], e["gpu1_d2h_end"], "cuda_event_gpu1"
+                        e["gpu1_branch_start"],
+                        e["gpu1_route_contributions_d2h_end"],
+                        "cuda_event_gpu1",
                     ),
                 )
             cuda.set_device(primary)
             if before_return_copy:
                 before_return_copy()
-            out = self._active(slot.gpu0_partial, pending.tokens)
+            out = self._active(slot.gpu0_route_contributions, pending.tokens)
             out.copy_(
-                self._active(slot.host_partial, pending.tokens), non_blocking=True
+                self._active(slot.host_route_contributions, pending.tokens),
+                non_blocking=True,
             )
             primary_return_enqueued = True
-            self.transfer_bytes.host_to_gpu0_returned_partial += partial_b
-            pending.transfer_bytes["host_to_gpu0"]["returned_partial"] = partial_b
+            self.transfer_bytes.host_to_gpu0_returned_route_contributions += route_b
+            pending.transfer_bytes["host_to_gpu0"][
+                "returned_route_contributions"
+            ] = route_b
             if after_return_copy:
                 after_return_copy()
             # The host source is consumed when the asynchronous H2D copy completes, but
-            # gpu0_partial is still read by the caller's combine. ``release`` records the
-            # reusable event only after that final consumer has been enqueued.
+            # gpu0_route_contributions is still read by reconstruction/reduction.
+            # ``release`` records the reusable event only after that final consumer has
+            # been enqueued.
             pending.finished = True
             return out
         except Exception:
             try:
                 if primary_return_enqueued:
-                    # Failure cleanup may block. Once the returned-partial H2D has been
+                    # Failure cleanup may block. Once the returned-route H2D has been
                     # enqueued, prove GPU0 no longer consumes the slot buffers before making
                     # the generation reusable. The successful path remains asynchronous.
                     cuda.set_device(primary)
@@ -623,7 +662,7 @@ class HostStagedRemoteTransport:
         slot, cuda = self._slots[pending.slot_index], self._torch.cuda
         try:
             if pending.finished:
-                # A returned partial may still have an H2D copy or consumer queued on
+                # Returned route contributions may still have an H2D copy or consumer queued on
                 # GPU0. Failure cleanup is allowed to block so no buffer escapes live.
                 cuda.set_device(self.primary_ordinal)
                 cuda.current_stream(self.primary_device).synchronize()
@@ -674,7 +713,8 @@ class HostStagedRemoteTransport:
             * self.hidden_dtype.itemsize,
             "routing_ids": self.max_tokens * self.top_k * torch.int32.itemsize,
             "routing_weights": self.max_tokens * self.top_k * torch.float32.itemsize,
-            "returned_partial": self.max_tokens
+            "returned_route_contributions": self.max_tokens
+            * self.top_k
             * self.hidden_size
             * self.hidden_dtype.itemsize,
         }
@@ -689,10 +729,18 @@ class HostStagedRemoteTransport:
             "payload_capacity_bytes_per_slot": payload,
             "pinned_host_staging_bytes": sum(payload.values()) * len(self._slots),
             "gpu1_persistent_payload_bytes": sum(
-                payload[k] for k in ("activation", "routing_ids", "routing_weights")
+                payload[k]
+                for k in (
+                    "activation",
+                    "routing_ids",
+                    "routing_weights",
+                    "returned_route_contributions",
+                )
             )
             * len(self._slots),
-            "gpu0_persistent_return_bytes": payload["returned_partial"]
+            "gpu0_persistent_return_bytes": payload[
+                "returned_route_contributions"
+            ]
             * len(self._slots),
             "steady_state_transfer_bytes": self.transfer_bytes.as_dict(),
             "gpu1_allocator": {
@@ -872,19 +920,71 @@ class InferSwarmRemoteDecodeExecutor:
         local_weights = torch.where(
             local_mask, topk_weights, topk_weights.new_zeros(())
         ).contiguous()
-        local_partial = layer._expert_gemm(
+        local_routes = layer._expert_route_contributions(
             cache,
             hidden_states,
             local_weights,
             local_slots,
             views=cache.bank_views(),
-            n=None,
             alphas=cache.alphas_for_slots(layer_id),
-            is_prefill=False,
         )
         self._mark(timing, layer_id, "local_expert_end")
         self._mark(timing, layer_id, "local_branch_end")
-        return local_partial
+        return local_routes
+
+    @staticmethod
+    def _reconstruct_route_contributions(
+        *,
+        hidden_states: torch.Tensor,
+        remote_mask: torch.Tensor,
+        local_routes: torch.Tensor | None,
+        remote_routes: torch.Tensor,
+        local_count: int,
+        remote_count: int,
+    ) -> torch.Tensor:
+        """Select exactly one owner at every original ``[M, K]`` route position."""
+        if remote_mask.ndim != 2:
+            raise RuntimeError("P4 ownership mask must preserve [M, top_k] geometry")
+        expected_mask = (hidden_states.shape[0], remote_mask.shape[1])
+        expected_routes = (*expected_mask, hidden_states.shape[1])
+        if (
+            tuple(remote_mask.shape) != expected_mask
+            or remote_mask.dtype != torch.bool
+            or remote_mask.device != hidden_states.device
+        ):
+            raise RuntimeError("P4 ownership mask disagrees with routed geometry")
+        if local_count + remote_count != remote_mask.numel() or remote_count < 1:
+            raise RuntimeError("P4 ownership counts are incomplete or overlapping")
+        if (
+            tuple(remote_routes.shape) != expected_routes
+            or remote_routes.dtype != hidden_states.dtype
+            or remote_routes.device != hidden_states.device
+        ):
+            raise RuntimeError(
+                "P4 returned route contributions disagree with routed geometry"
+            )
+        if local_count == 0:
+            if local_routes is not None or remote_count != remote_mask.numel():
+                raise RuntimeError("P4 remote-only ownership is not complete")
+            combined_routes = remote_routes
+        else:
+            if local_routes is None or tuple(local_routes.shape) != expected_routes:
+                raise RuntimeError(
+                    "P4 local route contributions disagree with routed geometry"
+                )
+            if (
+                local_routes.dtype != hidden_states.dtype
+                or local_routes.device != hidden_states.device
+            ):
+                raise RuntimeError(
+                    "P4 local route contributions disagree with the primary dtype/device"
+                )
+            # The local owner is the exact complement of ``remote_mask``.  Selection,
+            # rather than addition, preserves each contribution's original route slot.
+            combined_routes = torch.where(
+                remote_mask.unsqueeze(-1), remote_routes, local_routes
+            )
+        return combined_routes.contiguous()
 
     def _classify(self, layer_id: int, raw_ids: torch.Tensor):
         """Return routing facts through one bounded host read in the valid hot path."""
@@ -930,8 +1030,8 @@ class InferSwarmRemoteDecodeExecutor:
                 "routing_ids": 0,
                 "expert_weights": 0,
             },
-            "gpu1_to_host": {"returned_partial": 0},
-            "host_to_gpu0": {"returned_partial": 0},
+            "gpu1_to_host": {"returned_route_contributions": 0},
+            "host_to_gpu0": {"returned_route_contributions": 0},
         }
 
     @staticmethod
@@ -939,6 +1039,7 @@ class InferSwarmRemoteDecodeExecutor:
         activation = hidden_states.numel() * hidden_states.element_size()
         weights = topk_weights.numel() * topk_weights.element_size()
         ids = topk_weights.numel() * torch.int32.itemsize
+        route_contributions = activation * topk_weights.shape[1]
         return {
             "gpu0_to_host": {
                 "activation": activation,
@@ -951,8 +1052,12 @@ class InferSwarmRemoteDecodeExecutor:
                 "routing_ids": ids,
                 "expert_weights": 0,
             },
-            "gpu1_to_host": {"returned_partial": activation},
-            "host_to_gpu0": {"returned_partial": activation},
+            "gpu1_to_host": {
+                "returned_route_contributions": route_contributions
+            },
+            "host_to_gpu0": {
+                "returned_route_contributions": route_contributions
+            },
         }
 
     def _annotate_timing(
@@ -1103,13 +1208,17 @@ class InferSwarmRemoteDecodeExecutor:
                 durations.update(pending.timing_values)
                 if self.mode == "serialized":
                     failure_stage = "remote_join_or_return"
-                    remote_partial = self.transport.finish(
+                    remote_routes = self.transport.finish(
                         pending,
                         before_return_copy=lambda: self._mark(
-                            timing, layer_id, "returned_partial_h2d_start"
+                            timing,
+                            layer_id,
+                            "returned_route_contributions_h2d_start",
                         ),
                         after_return_copy=lambda: self._mark(
-                            timing, layer_id, "returned_partial_h2d_end"
+                            timing,
+                            layer_id,
+                            "returned_route_contributions_h2d_end",
                         ),
                     )
                     durations.update(pending.timing_values)
@@ -1119,7 +1228,7 @@ class InferSwarmRemoteDecodeExecutor:
 
                 failure_stage = "gpu0_local_service"
                 if local_count:
-                    local_partial = self._run_local(
+                    local_routes = self._run_local(
                         layer=layer,
                         cache=cache,
                         hidden_states=hidden_states,
@@ -1131,17 +1240,21 @@ class InferSwarmRemoteDecodeExecutor:
                     )
                     counts.executed_on_gpu0 += local_count
                 else:
-                    local_partial = torch.zeros_like(hidden_states)
+                    local_routes = None
 
                 if self.mode == "overlap":
                     failure_stage = "remote_join_or_return"
-                    remote_partial = self.transport.finish(
+                    remote_routes = self.transport.finish(
                         pending,
                         before_return_copy=lambda: self._mark(
-                            timing, layer_id, "returned_partial_h2d_start"
+                            timing,
+                            layer_id,
+                            "returned_route_contributions_h2d_start",
                         ),
                         after_return_copy=lambda: self._mark(
-                            timing, layer_id, "returned_partial_h2d_end"
+                            timing,
+                            layer_id,
+                            "returned_route_contributions_h2d_end",
                         ),
                     )
                     durations.update(pending.timing_values)
@@ -1149,13 +1262,28 @@ class InferSwarmRemoteDecodeExecutor:
                     counts.executed_on_gpu1 += remote_count
                     remote_succeeded = True
 
-                failure_stage = "combine"
-                self._mark(timing, layer_id, "combine_start")
-                out = local_partial + remote_partial
-                self._mark(timing, layer_id, "combine_end")
+                failure_stage = "route_reconstruction"
+                self._mark(timing, layer_id, "route_reconstruction_start")
+                combined_routes = self._reconstruct_route_contributions(
+                    hidden_states=hidden_states,
+                    remote_mask=remote_mask,
+                    local_routes=local_routes,
+                    remote_routes=remote_routes,
+                    local_count=local_count,
+                    remote_count=remote_count,
+                )
+                self._mark(timing, layer_id, "route_reconstruction_end")
+
+                failure_stage = "final_sum_reduce"
+                self._mark(timing, layer_id, "final_sum_reduce_start")
+                out = torch.empty_like(hidden_states)
+                moe_sum_reduce_triton(combined_routes, out)
+                self._mark(timing, layer_id, "final_sum_reduce_end")
                 self.transport.release(pending)
                 self._mark(timing, layer_id, "complete_end")
                 counts.combine_operations += 1
+                counts.route_reconstruction_operations += 1
+                counts.final_sum_reductions += 1
             except Exception:
                 if pending is not None and not pending.released:
                     try:
