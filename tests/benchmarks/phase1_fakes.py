@@ -261,20 +261,63 @@ def write_placement_artifact(tmp_path: Path, *, manifest_sha: str | None = None)
     return path
 
 
-def write_prerequisites(tmp_path: Path) -> Path:
+# The fake clean FreeToken HEAD (prov.git_commit is patched to report this).
+FAKE_FREETOKEN_HEAD = "a" * 40
+
+
+def write_prerequisites(
+    tmp_path: Path,
+    *,
+    commit: str | None = None,
+    shas: dict[str, str] | None = None,
+    paths: dict[str, str] | None = None,
+) -> Path:
+    """A prerequisites manifest bound to the fake current HEAD by default.
+
+    ``commit``/``shas`` break exactly one declared identity; ``paths`` attaches
+    optional ``*_artifact_path`` keys so byte-rehash verification is exercisable.
+    """
     path = tmp_path / "prerequisites.json"
-    path.write_text(
+    doc = {
+        "correctness_reference_v2_artifact_sha256": "a" * 64,
+        "candidate_c3_artifact_sha256": "b" * 64,
+        "p2_p3_p4_requalification_artifact_sha256": "c" * 64,
+        "freetoken_runtime_commit": commit if commit is not None else FAKE_FREETOKEN_HEAD,
+    }
+    if shas:
+        doc.update(shas)
+    if paths:
+        doc.update(paths)
+    path.write_text(json.dumps(doc), encoding="utf-8")
+    return path
+
+
+def write_session_one_gate(tmp_path: Path, *, out_root: str | None = None) -> Path:
+    """A passing session-1 record so session 2 may start (candidate-first).
+
+    Session 2 refuses to start unless a COMPLETE, VALID session-1 whose
+    campaign-build baseline identity gate passed exists under the same out-root.
+    """
+    root = Path(out_root) if out_root else tmp_path / "runs"
+    session_dir = root / "session-1"
+    session_dir.mkdir(parents=True, exist_ok=True)
+    summary = session_dir / "session-summary.json"
+    summary.write_text(
         json.dumps(
             {
-                "correctness_reference_v2_artifact_sha256": "a" * 64,
-                "candidate_c3_artifact_sha256": "b" * 64,
-                "p2_p3_p4_requalification_artifact_sha256": "c" * 64,
-                "freetoken_runtime_commit": SHA40,
+                "session_number": 1,
+                "execution_status": "COMPLETE",
+                "validity": "VALID",
+                "baseline_identity_gate": {
+                    "role": "campaign-build baseline identity gate (session 1 runs B1 first)",
+                    "checked": True,
+                    "passed": True,
+                },
             }
         ),
         encoding="utf-8",
     )
-    return path
+    return summary
 
 
 def freeze_frozen_identities(monkeypatch, tmp_path: Path) -> dict[str, str]:

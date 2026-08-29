@@ -90,6 +90,9 @@ REMOTE_FORBIDDEN_FALLBACK = "remote.forbidden_fallback"
 REMOTE_OWNERSHIP_ARITHMETIC = "remote.ownership_arithmetic_broken"
 REMOTE_TRANSPORT_UNEXPECTED = "remote.transport_unexpected"
 
+# Conditional supplementary arm (predeclared KV rule)
+SUPPLEMENTARY_REQUIRED_BLOCK_MISSING = "supplementary.required_block_missing"
+
 # Thermal / session boundary
 SESSION_BOUNDARY_UNPROVEN = "thermal.session_boundary_unproven"
 
@@ -119,10 +122,17 @@ class SessionValidity(_Phase0Validity):
 class BaselineIdentityError(RuntimeError):
     """B1 no longer resolves to the frozen Phase-0 baseline identity.
 
-    Raised to STOP the session before candidate performance: the amendment forbids
-    reopening baseline selection from candidate data, silently substituting another
-    arm, or dividing candidate numbers by a differently-resolved baseline. The
-    Phase-0 baseline must be refreshed first.
+    Session-aware by design (campaign-order amendment): in Session 1 (B1 first)
+    this STOPs the session before any candidate generation — the campaign-build
+    baseline identity gate must pass before the first candidate measurement
+    anywhere in the campaign. In Session 2 (candidate first, by design) the
+    drift is discovered when the counterbalanced B1 arm runs: the session is
+    INVALID, the already-collected candidate measurements are retained as
+    invalid evidence and are not eligible for the Phase-1 analysis, the Phase-0
+    baseline must be refreshed, and the complete affected campaign is rerun —
+    no candidate data is reused or spliced. Either way the amendment forbids
+    reopening baseline selection from candidate data or silently substituting
+    another arm.
     """
 
 
@@ -438,6 +448,13 @@ def validate_candidate_runtime(
     require(
         _lookup(runtime_config, "cache.resolved_slots") == 3774,
         f"candidate GPU0 cache slots = {_lookup(runtime_config, 'cache.resolved_slots')!r}, expected 3774",
+    )
+    resolved_kv = kv_capacity_tokens(runtime_config)
+    require(
+        resolved_kv == 17075,
+        f"candidate resolved KV capacity = {resolved_kv!r} tokens, expected 17075 "
+        "(the canonical candidate pins --num-tokens 17075; this pin is what makes "
+        "the predeclared supplementary arm's capacity fully known)",
     )
 
     if findings:

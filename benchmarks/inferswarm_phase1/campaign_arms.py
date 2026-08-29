@@ -8,8 +8,13 @@ to start a canonical session when any undeclared difference survives.
 
 Arm A ``baseline_b1`` is the already-frozen Phase-0 ``CANONICAL_PERFORMANCE_BASELINE``
 identity (B1) observed on the current campaign build. It is not a new baseline
-selection; if it no longer resolves to the recorded legitimate configuration the
-campaign stops before candidate performance (see ``campaign_validity``).
+selection. Session 1's B1 runtime resolution is the campaign-build baseline
+identity gate: it must pass before the first candidate measurement anywhere in
+the campaign. Session 2 revalidates the same identity when its counterbalanced
+B1 arm runs; if it then drifts, session 2 is INVALID, its candidate
+measurements are retained as invalid evidence and are not eligible for the
+Phase-1 analysis, the baseline must be refreshed, and the complete affected
+campaign is rerun (see ``campaign_validity``).
 """
 
 from __future__ import annotations
@@ -33,6 +38,20 @@ CANONICAL_PLACEMENT_NAME = "coverage_constrained_complement_5442"
 
 EXPECTED_GPU1_SLOTS = 5442
 EXPECTED_GPU1_EXPERT_BYTES = 9_662_902_272
+
+# The candidate explicitly pins --num-tokens, and its runtime contract requires
+# the RESOLVED KV capacity to equal this value. That makes the conditional
+# supplementary arm fully specified before any performance exists: it is B1 plus
+# exactly this --num-tokens.
+CANDIDATE_PINNED_KV_TOKENS = 17075
+
+# The fixed, predeclared trigger for the conditional supplementary arm. It is
+# evaluated once both primary runtime reports exist; no performance number
+# controls the branch.
+KV_RULE_CONDITION = "candidate_resolved_kv_capacity != baseline_resolved_kv_capacity"
+REQUIRED_BY_KV_RULE = "REQUIRED_BY_KV_RULE"
+NOT_REQUIRED_BY_KV_RULE = "NOT_REQUIRED_BY_KV_RULE"
+KV_RULE_UNRESOLVED = "UNRESOLVED"
 
 # Phase-0's recorded B1 auto resolution. The resolved state is authoritative; these are
 # the frozen expectations a material deviation from is a preflight failure, never
@@ -91,6 +110,10 @@ class CampaignArm:
     # The supplementary KV-matched arm exists to separate additional KV capacity from
     # remote-expert effects; it never replaces a primary arm anywhere.
     supplementary_reason: str | None = None
+    # When set, the arm is a CONDITIONAL arm: it executes only when the named
+    # condition (evaluated from the primary arms' resolved runtime reports, before
+    # any of its own measurements) is true. Primary arms are never conditional.
+    execution_condition: str | None = None
 
     def flags(self, placement_path: str | None = None) -> list[str]:
         """The arm's flags; ``<placement-path>`` stays as its placeholder until the
@@ -112,6 +135,7 @@ class CampaignArm:
             "config_flags": list(self.config_flags),
             "notes": self.notes,
             "supplementary_reason": self.supplementary_reason,
+            "execution_condition": self.execution_condition,
         }
 
 
@@ -192,12 +216,19 @@ def candidate_v2_arm() -> CampaignArm:
     )
 
 
-def kv_matched_arm(kv_tokens: int) -> CampaignArm:
-    """Supplementary arm: B1 with the candidate's resolved KV capacity.
+def kv_matched_arm(
+    kv_tokens: int, *, conditional: bool = True
+) -> CampaignArm:
+    """The supplementary KV-matched arm: B1 at a pinned ``--num-tokens``.
 
-    Same as B1 except ``--num-tokens``. It exists to separate additional KV capacity
-    from remote-expert effects when the two primary arms resolve different KV
-    capacities, and can never replace B1 in the primary comparison.
+    Same as B1 except ``--num-tokens``. It exists to separate additional KV
+    capacity from remote-expert effects when the two primary arms resolve
+    different KV capacities, and can never replace B1 in the primary comparison.
+
+    ``conditional=True`` (canonical) predeclares the arm under the fixed KV rule
+    with the capacity the canonical candidate pins (17,075 tokens); it executes
+    only when the rule fires. ``conditional=False`` is the dev-smoke/testing
+    override that forces the arm unconditionally.
     """
     if int(kv_tokens) <= 0:
         raise ArmDefinitionError(
@@ -208,7 +239,12 @@ def kv_matched_arm(kv_tokens: int) -> CampaignArm:
     return CampaignArm(
         id=KV_MATCHED_ARM_ID,
         role="supplementary",
-        description="supplementary B1 observed at the candidate's resolved KV capacity",
+        description=(
+            "conditional supplementary B1 predeclared at the candidate's pinned "
+            "--num-tokens 17075"
+            if conditional
+            else "supplementary B1 at a pinned --num-tokens (dev-smoke override)"
+        ),
         gpu0=GPU0_UUID,
         config_flags=(
             "--gpu", GPU0_UUID,
@@ -223,14 +259,30 @@ def kv_matched_arm(kv_tokens: int) -> CampaignArm:
             "--sampling-defaults", "none",
             "--moe-layer-timing-role", "baseline",
         ),
-        notes="identical to baseline_b1 except --num-tokens; never a primary arm",
-        supplementary_reason=(
-            f"anti-starvation contract: candidate and baseline resolved different KV "
-            f"capacities; this arm pins the baseline to the candidate's "
-            f"--num-tokens {int(kv_tokens)} to separate KV capacity from remote-expert "
-            "effects"
+        notes=(
+            "identical to baseline_b1 except --num-tokens; never a primary arm"
         ),
+        supplementary_reason=(
+            f"anti-starvation contract (criteria section 3 rule 2): required exactly "
+            f"when {KV_RULE_CONDITION}; predeclared before execution with the "
+            f"capacity pinned to the candidate's --num-tokens {int(kv_tokens)}"
+            if conditional
+            else "dev-smoke override: forced unconditionally, recorded as a deviation"
+        ),
+        execution_condition=KV_RULE_CONDITION if conditional else None,
     )
+
+
+def predeclared_kv_matched_arm() -> CampaignArm:
+    """The conditional supplementary arm every canonical campaign predeclares.
+
+    The trigger and the pinned capacity are fixed before execution: the
+    canonical candidate requests ``--num-tokens 17075`` and its runtime contract
+    requires the resolved KV capacity to equal 17,075 tokens, so this arm is
+    fully specified in the plan — the operator never guesses or passes
+    ``--num-tokens`` manually.
+    """
+    return kv_matched_arm(CANDIDATE_PINNED_KV_TOKENS, conditional=True)
 
 
 def primary_arms() -> tuple[CampaignArm, CampaignArm]:
@@ -407,6 +459,17 @@ def validate_arm_definitions(arms: Sequence[CampaignArm]) -> list[str]:
             reasons.append(
                 f"{KV_MATCHED_ARM_ID} is a supplementary arm and can never be primary"
             )
+        if kv.execution_condition == KV_RULE_CONDITION:
+            tokens = kv.flags()
+            if (
+                "--num-tokens" not in tokens
+                or tokens[tokens.index("--num-tokens") + 1] != str(CANDIDATE_PINNED_KV_TOKENS)
+            ):
+                reasons.append(
+                    f"{KV_MATCHED_ARM_ID}: the predeclared conditional arm pins "
+                    f"--num-tokens {CANDIDATE_PINNED_KV_TOKENS} (the candidate's "
+                    "pinned KV capacity); got a different value"
+                )
     for arm in arms:
         if arm.gpu0 != GPU0_UUID:
             reasons.append(
@@ -522,7 +585,12 @@ def kv_capacity_tokens(runtime_config: Mapping[str, Any]) -> int | None:
 def supplementary_requirement(
     baseline_kv_tokens: int | None, candidate_kv_tokens: int | None
 ) -> dict[str, Any]:
-    """The mechanical anti-starvation determination from recorded KV capacities."""
+    """The mechanical anti-starvation determination from recorded KV capacities.
+
+    The condition itself is fixed before execution (the predeclared KV rule);
+    this function only evaluates it against the two primary arms' recorded
+    resolved capacities. No performance number enters the determination.
+    """
     undecidable = baseline_kv_tokens is None or candidate_kv_tokens is None
     required = (
         None if undecidable else baseline_kv_tokens != candidate_kv_tokens
@@ -533,13 +601,18 @@ def supplementary_requirement(
         "baseline_kv_tokens": baseline_kv_tokens,
         "candidate_kv_tokens": candidate_kv_tokens,
         "arm_id": KV_MATCHED_ARM_ID,
+        "condition": KV_RULE_CONDITION,
+        "pinned_kv_capacity_tokens": CANDIDATE_PINNED_KV_TOKENS,
         "rule": (
-            "the supplementary KV-matched baseline is required exactly when the two "
-            "primary arms resolve different KV capacities; it never replaces "
-            f"{BASELINE_ARM_ID} in the primary comparison"
+            "the conditional supplementary KV-matched baseline is predeclared in "
+            "every canonical plan; it is required exactly when "
+            f"{KV_RULE_CONDITION}, evaluated from the primary arms' resolved "
+            "runtime reports after both exist; it never replaces "
+            f"{BASELINE_ARM_ID} in the primary comparison and never enters the "
+            "primary cross-arm comparison"
         ),
         "unavailable_reason": (
-            "both primary arms must resolve first; the requirement is derived from "
-            "their recorded KV capacities" if undecidable else None
+            "both primary arms must resolve first; the condition is evaluated "
+            "from their recorded KV capacities" if undecidable else None
         ),
     }

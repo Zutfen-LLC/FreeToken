@@ -6,17 +6,28 @@ campaign shape:
 
 * the whole session plan exists before the first server starts;
 * provenance preflight fails closed (dirty tree, wrong model/manifest/placement SHA,
-  wrong GPUs, missing correctness prerequisites, missing runner version);
+  wrong GPUs, correctness prerequisites not bound to the exact current clean
+  FreeToken HEAD, missing runner version);
 * one fresh server per arm per session, started/stopped by the runner, with startup
   timestamps and an idle-memory check between arms;
-* runtime-resolution validation after ``/health`` ready and before warmups — the
-  baseline identity drift check STOPs the session before candidate performance;
+* runtime-resolution validation after ``/health`` ready and before warmups —
+  Session 1's baseline resolution is the campaign-build baseline identity gate
+  (a drift STOPs the session before any candidate generation); Session 2 runs the
+  candidate first by design and revalidates B1 when its counterbalanced B1 arm
+  runs — a drift there invalidates the whole session, its candidate measurements
+  are retained as invalid evidence and are not eligible for the Phase-1 analysis,
+  and the complete affected campaign must be rerun;
+* the conditional supplementary KV-matched baseline is predeclared in every
+  canonical plan with its trigger and pinned capacity fixed before execution;
+  after both primary runtime reports exist it executes only when the two primary
+  arms resolved different KV capacities — no performance number controls the
+  branch;
 * per-class instrumentation windows (reset after warmups, snapshot after the measured
   repetitions) retaining the mechanism counters and issue-#5 layer timing;
 * failures preserved, blocks marked incomplete, no repetition deleted or invisibly
   retried, no dynamic shortening;
-* per-arm descriptive statistics after a block completes; never a cross-arm ratio,
-  never a campaign verdict.
+* per-arm descriptive statistics after a block completes; never a cross-arm
+  comparison, never a campaign verdict.
 
 This package does not run the canonical campaign; P6 does, after the campaign-order
 amendment merges.
@@ -26,6 +37,7 @@ from __future__ import annotations
 
 import json
 import platform
+import re
 import sys
 import time
 from collections.abc import Mapping, Sequence
@@ -58,12 +70,18 @@ from . import CAMPAIGN_RUNNER_VERSION
 from .campaign_arms import (
     BASELINE_ARM_ID,
     CANDIDATE_ARM_ID,
+    CANDIDATE_PINNED_KV_TOKENS,
     CANONICAL_PLACEMENT_SHA256,
     EXPECTED_GPU1_EXPERT_BYTES,
     EXPECTED_GPU1_SLOTS,
     GPU0_UUID,
     GPU1_UUID,
+    KV_MATCHED_ARM_ID,
+    KV_RULE_CONDITION,
+    KV_RULE_UNRESOLVED,
+    NOT_REQUIRED_BY_KV_RULE,
     PHASE0_BASELINE_COMMIT,
+    REQUIRED_BY_KV_RULE,
     ArmDefinitionError,
     CampaignArm,
     compare_primary_arms,
@@ -93,6 +111,7 @@ from .campaign_validity import (
     GENERATION_FAILED,
     GPU_IDLE_NOT_RESTORED,
     SERVER_FAILED,
+    SUPPLEMENTARY_REQUIRED_BLOCK_MISSING,
     BaselineIdentityError,
     SessionValidity,
     validate_baseline_runtime,
@@ -128,6 +147,20 @@ _PREREQUISITE_KEYS = (
     "p2_p3_p4_requalification_artifact_sha256",
     "freetoken_runtime_commit",
 )
+# Declared evidence digests that must be lowercase, normalized 64-hex SHA-256
+# values. A nonempty string alone proves nothing.
+_PREREQUISITE_SHA_KEYS: tuple[str, ...] = (
+    "correctness_reference_v2_artifact_sha256",
+    "candidate_c3_artifact_sha256",
+    "p2_p3_p4_requalification_artifact_sha256",
+)
+# Optional companion keys: when a manifest names the artifact path, the runner
+# rehashes the bytes and compares; when it does not, the record distinguishes
+# "identity syntactically verified" from "bytes independently rehashed".
+_PREREQUISITE_PATH_KEY = {k: k[: -len("sha256")] + "path" for k in _PREREQUISITE_SHA_KEYS}
+
+_HEX40_RE = re.compile(r"^[0-9a-fA-F]{40}$")
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 class CampaignRefused(ValueError):
@@ -223,15 +256,30 @@ def phase1_software_provenance(settings: CampaignSettings) -> dict[str, Any]:
     return base
 
 
-def load_prerequisites(path: str | None) -> dict[str, Any]:
-    """The correctness/mechanism prerequisite manifest.
+def load_prerequisites(
+    path: str | None, *, repo_head: str | None = None
+) -> dict[str, Any]:
+    """The correctness/mechanism prerequisite manifest, bound to this checkout.
 
     Records the exact passing correctness-reference-v2 artifact, candidate C3
-    artifact, P2/P3/P4 requalification artifact, and the FreeToken runtime commit the
-    performance campaign build was qualified with. A canonical session refuses to
-    start without it; correctness is re-established on the exact campaign build
-    before performance is accepted (P6). The performance runner itself never enables
-    the C3 full-logit recorder.
+    artifact, P2/P3/P4 requalification artifact, and the FreeToken runtime
+    commit the performance campaign build was qualified with. A canonical
+    session refuses to start without it, and refuses on any of these (fail
+    closed, before a server starts):
+
+    * every required key present and nonempty;
+    * ``freetoken_runtime_commit`` is a valid 40-hex commit SHA, and —
+      mandatory — EQUALS the current clean FreeToken HEAD the campaign runs
+      from (``repo_head``); correctness qualified on a different build is not
+      correctness for this campaign;
+    * every declared evidence digest is a lowercase, normalized 64-hex
+      SHA-256 value;
+    * when the manifest supplies an ``*_artifact_path`` for a declared digest,
+      the file is rehashed and must agree; when it does not, the verification
+      record distinguishes "identity syntactically verified" from "bytes
+      independently rehashed / not available".
+
+    The performance runner itself never enables the C3 full-logit recorder.
     """
     if path is None:
         return {
@@ -242,6 +290,8 @@ def load_prerequisites(path: str | None) -> dict[str, Any]:
                 "exact passing correctness artifacts for this build"
             ),
         }
+    import hashlib
+
     p = Path(path)
     if not p.is_file():
         raise CampaignRefused(f"correctness prerequisites manifest not found: {path}")
@@ -256,7 +306,90 @@ def load_prerequisites(path: str | None) -> dict[str, Any]:
                 f"correctness prerequisites manifest is missing {key!r}: performance "
                 "from an unqualified build is not evidence"
             )
-    return {"supplied": True, **doc}
+
+    commit = str(doc["freetoken_runtime_commit"]).strip()
+    if not _HEX40_RE.match(commit):
+        raise CampaignRefused(
+            f"prerequisites freetoken_runtime_commit {commit!r} is not a valid 40-hex "
+            "commit SHA; the campaign build must be named exactly"
+        )
+    normalized = commit.lower()
+    commit_record: dict[str, Any] = {
+        "declared": commit,
+        "normalized": normalized,
+        "valid_40_hex": True,
+        "current_head": repo_head.lower() if repo_head else None,
+        "equals_current_head": (
+            normalized == repo_head.lower() if repo_head else None
+        ),
+        "rule": (
+            "mandatory: the declared runtime commit must equal the current clean "
+            "FreeToken HEAD this campaign runs from; correctness qualified on "
+            "another commit is not correctness for this campaign"
+        ),
+    }
+    if repo_head and normalized != repo_head.lower():
+        raise CampaignRefused(
+            f"prerequisites freetoken_runtime_commit {normalized} does not equal the "
+            f"current FreeToken HEAD {repo_head.lower()}: the correctness artifacts "
+            "were qualified on a different build. Requalify correctness on the exact "
+            "campaign checkout (current-commit equality is mandatory)"
+        )
+
+    evidence: dict[str, Any] = {}
+    for sha_key in _PREREQUISITE_SHA_KEYS:
+        declared = str(doc[sha_key]).strip()
+        if not _SHA256_RE.match(declared):
+            raise CampaignRefused(
+                f"prerequisites {sha_key}={declared!r} is not a lowercase normalized "
+                "64-hex SHA-256 value; uppercase or malformed digests are refused"
+            )
+        path_key = _PREREQUISITE_PATH_KEY[sha_key]
+        artifact_path = doc.get(path_key)
+        entry: dict[str, Any] = {
+            "declared": declared,
+            "valid_lowercase_sha256": True,
+            "artifact_path": artifact_path,
+            "bytes_independently_rehashed": False,
+            "rehashed_sha256": None,
+            "matches_declared": None,
+        }
+        if artifact_path:
+            artifact = Path(artifact_path)
+            if not artifact.is_file():
+                raise CampaignRefused(
+                    f"prerequisites {path_key}={artifact_path!r} does not exist; a "
+                    "declared artifact path must be readable so its bytes can be "
+                    "rehashed"
+                )
+            rehashed = hashlib.sha256(artifact.read_bytes()).hexdigest()
+            entry.update(
+                bytes_independently_rehashed=True,
+                rehashed_sha256=rehashed,
+                matches_declared=rehashed == declared,
+            )
+            if rehashed != declared:
+                raise CampaignRefused(
+                    f"prerequisites {sha_key} disagrees with the bytes at "
+                    f"{path_key}={artifact_path!r}: declared {declared}, rehashed "
+                    f"{rehashed}. The declared evidence identity is wrong"
+                )
+            entry["status"] = "identity syntactically verified; bytes independently rehashed and agreeing"
+        else:
+            entry["status"] = (
+                "identity syntactically verified; bytes not independently rehashed "
+                "(no artifact path supplied; artifact is external to this manifest)"
+            )
+        evidence[sha_key] = entry
+
+    return {
+        "supplied": True,
+        **doc,
+        "verification": {
+            "freetoken_runtime_commit": commit_record,
+            "evidence_sha256": evidence,
+        },
+    }
 
 
 def _hostname() -> Any:
@@ -285,6 +418,12 @@ def provenance_document(
     gpu0 = gpu_mod.resolve_gpu(GPU0_UUID)
     gpu1 = gpu_mod.resolve_gpu(GPU1_UUID)
     gpu_block = prov.gpu_provenance(GPU0_UUID, gpu0.resolved_uuid)
+    head_block = prov.git_commit(prov.freetoken_repo_root())
+    head = (
+        head_block.get("value")
+        if isinstance(head_block, dict) and isinstance(head_block.get("value"), str)
+        else None
+    )
     return {
         "software": phase1_software_provenance(settings),
         "model": prov.model_provenance(
@@ -341,7 +480,9 @@ def provenance_document(
             if placement
             else prov.unavailable("no candidate arm requires a placement")
         ),
-        "prerequisites": load_prerequisites(settings.prerequisites_path),
+        "prerequisites": load_prerequisites(
+            settings.prerequisites_path, repo_head=head
+        ),
         "historical_phase0_baseline_commit": PHASE0_BASELINE_COMMIT,
         "historical_phase0_baseline_note": (
             "the Phase-0 baseline was measured on that commit; this campaign "
@@ -366,16 +507,76 @@ def _ordered_primary_pair(
     return arms[BASELINE_ARM_ID], arms[CANDIDATE_ARM_ID]
 
 
+def session_one_gate_record(out_root: Path) -> dict[str, Any]:
+    """Read the sibling session-1 record that gates any session-2 start.
+
+    Session 2 runs the candidate first by design, so the only thing that can
+    stand between the campaign-build baseline identity gate and the first
+    candidate measurement anywhere in the campaign is this precondition:
+    session-1 (B1 first) must already exist under the same ``--out-root`` and
+    its B1 resolution must have passed. Fail closed on anything unreadable.
+    """
+    summary_path = Path(out_root) / "session-1" / "session-summary.json"
+    record: dict[str, Any] = {
+        "required": True,
+        "path": str(summary_path),
+        "present": False,
+        "ok": False,
+        "reason": None,
+    }
+    if not summary_path.is_file():
+        record["reason"] = (
+            "session-1 session-summary.json not found: Session 1 runs B1 first and "
+            "its campaign-build baseline identity gate must pass before any candidate "
+            "measurement anywhere in the campaign — including before Session 2, "
+            "whose first arm is the candidate"
+        )
+        return record
+    record["present"] = True
+    try:
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        record["reason"] = f"session-1 session-summary.json is unreadable: {e}"
+        return record
+    gate = summary.get("baseline_identity_gate") or {}
+    record["execution_status"] = summary.get("execution_status")
+    record["validity"] = summary.get("validity")
+    record["baseline_identity_gate_passed"] = gate.get("passed")
+    if summary.get("execution_status") != "COMPLETE":
+        record["reason"] = (
+            "session-1 is not COMPLETE; a complete session-1 whose B1 campaign-build "
+            "identity gate passed must exist before session 2 starts"
+        )
+    elif summary.get("validity") != "VALID":
+        record["reason"] = (
+            "session-1 is not VALID; session 2 may not collect candidate "
+            "measurements on top of an invalid session-1"
+        )
+    elif gate.get("passed") is not True:
+        record["reason"] = (
+            "session-1's campaign-build baseline identity gate did not pass; the "
+            "Phase-0 baseline must be refreshed and the campaign rerun before any "
+            "candidate measurement"
+        )
+    else:
+        record["ok"] = True
+    return record
+
+
 def preflight_refusals(
     definition: CampaignDefinition,
     manifest: Manifest,
     placement: dict[str, Any] | None,
+    *,
+    session_number: int | None = None,
 ) -> list[str]:
     """Everything a canonical campaign would refuse to start on, cheaply.
 
     Runs in ``validate`` and again before a session executes; nothing measures until
     this list is empty (a dev-smoke campaign returns no refusals and is stamped
-    non-canonical everywhere).
+    non-canonical everywhere). ``session_number`` adds the session-scoped gates:
+    session 2 cannot start unless session-1's campaign-build baseline identity
+    gate already passed.
     """
     if not definition.canonical:
         return []
@@ -397,9 +598,15 @@ def preflight_refusals(
             check(value, canonical=True)
         except ValueError as e:
             reasons.append(str(e))
-    dirty = prov.check_clean_working_tree(prov.git_commit(prov.freetoken_repo_root()))
+    commit_block = prov.git_commit(prov.freetoken_repo_root())
+    dirty = prov.check_clean_working_tree(commit_block)
     if dirty:
         reasons.append(dirty)
+    head = (
+        commit_block.get("value")
+        if isinstance(commit_block, dict) and isinstance(commit_block.get("value"), str)
+        else None
+    )
     mismatch = prov.check_snapshot_revision(_model_pin(settings))
     if mismatch:
         reasons.append(mismatch)
@@ -459,7 +666,9 @@ def preflight_refusals(
             )
 
     try:
-        prerequisites = load_prerequisites(settings.prerequisites_path)
+        prerequisites = load_prerequisites(
+            settings.prerequisites_path, repo_head=head
+        )
         if not prerequisites.get("supplied"):
             reasons.append(
                 "canonical performance requires the correctness prerequisite manifest "
@@ -470,6 +679,36 @@ def preflight_refusals(
             )
     except CampaignRefused as e:
         reasons.append(str(e))
+    if settings.prerequisites_path and head is None:
+        reasons.append(
+            "the current FreeToken HEAD could not be resolved, so the prerequisite "
+            "freetoken_runtime_commit cannot be bound to this checkout; "
+            "current-commit equality is mandatory"
+        )
+
+    # Every canonical campaign predeclares the conditional supplementary arm with
+    # its trigger and pinned capacity fixed before execution; the plan may not
+    # claim to be fully specified while a supplementary arm could surprise it.
+    predeclared = [
+        a
+        for a in definition.arms
+        if a.id == KV_MATCHED_ARM_ID and a.execution_condition == KV_RULE_CONDITION
+    ]
+    if not predeclared:
+        reasons.append(
+            f"a canonical campaign predeclares the conditional supplementary arm "
+            f"{KV_MATCHED_ARM_ID} (trigger {KV_RULE_CONDITION}; pinned capacity "
+            f"{CANDIDATE_PINNED_KV_TOKENS} tokens) in the plan before execution; "
+            "add it with predeclared_kv_matched_arm()"
+        )
+
+    if session_number is not None and session_number >= 2:
+        gate = session_one_gate_record(settings.out_root)
+        if not gate["ok"]:
+            reasons.append(
+                f"session {session_number} cannot start: {gate['reason']} "
+                f"(looked for {gate['path']})"
+            )
 
     for name, selection in (
         ("GPU0", gpu_mod.resolve_gpu(GPU0_UUID)),
@@ -626,9 +865,12 @@ def build_placement_reference(definition: CampaignDefinition) -> dict[str, Any] 
 def session_full_arm_order(definition: CampaignDefinition, session_number: int) -> list[str]:
     """The executed arm order: the counterbalanced primaries, then any supplementary.
 
-    Supplementary arms run after both primaries resolve (their requirement is
-    mechanical from the primaries' recorded KV capacities), are clearly labelled, and
-    are counted separately — they never replace a primary arm.
+    The predeclared supplementary arm is planned in this position — after both
+    primaries — and executes only when its fixed condition (the KV rule,
+    evaluated from the two primary arms' recorded resolved KV capacities once
+    both runtime reports exist) resolves true. It is clearly labelled, counted
+    separately, and never replaces a primary arm; no performance number
+    controls the branch.
     """
     order = list(session_arm_order(session_number))
     order.extend(
@@ -642,16 +884,68 @@ def session_full_arm_order(definition: CampaignDefinition, session_number: int) 
 # ----------------------------------------------------------------------------------------
 
 
+def conditional_supplementary_declaration(
+    definition: CampaignDefinition, protocol: CampaignProtocol
+) -> list[dict[str, Any]]:
+    """The pre-execution declaration of every conditional supplementary arm.
+
+    Everything about the arm is fixed here — definition, exact flags, trigger,
+    pinned capacity, possible generation count, position, and its non-gating
+    status — so the plan is fully specified before any performance exists and
+    no runtime observation can reveal a mandatory-but-unplanned arm.
+    """
+    declarations: list[dict[str, Any]] = []
+    possible = len(protocol.classes) * (protocol.warmups + protocol.repetitions)
+    for arm in definition.arms:
+        if arm.role != "supplementary" or arm.execution_condition is None:
+            continue
+        declarations.append(
+            {
+                "arm_id": arm.id,
+                "definition": arm.record(),
+                "exact_flags": arm.flags(),
+                "condition": arm.execution_condition,
+                "trigger_fixed_before_execution": True,
+                "evaluated_from": (
+                    "the two primary arms' resolved runtime reports, after both exist; "
+                    "no performance number controls this branch"
+                ),
+                "pinned_kv_capacity_tokens": CANDIDATE_PINNED_KV_TOKENS,
+                "possible_generations_per_session": possible,
+                "position": "after both primary arms",
+                "status_vocabulary": [
+                    REQUIRED_BY_KV_RULE,
+                    NOT_REQUIRED_BY_KV_RULE,
+                    KV_RULE_UNRESOLVED,
+                ],
+                "supplementary_status": (
+                    "non-gating; never a primary comparator; never enters the "
+                    "primary cross-arm comparison"
+                ),
+            }
+        )
+    return declarations
+
+
 def plan_document(
     definition: CampaignDefinition, manifest: Manifest | None
 ) -> dict[str, Any]:
     """The whole two-session campaign as an explicit document, before any server.
 
     Every expected generation of both sessions appears with session/arm/class,
-    warmup/measured phase, repetition and execution index. There is no dynamic
-    shortening: the executed session must match this plan exactly.
+    warmup/measured phase, repetition and execution index. Conditional
+    supplementary generations appear too, tagged ``conditional``: the arm is
+    fully specified before execution and its generations execute only when the
+    fixed condition resolves true. There is no dynamic shortening: the executed
+    session must match this plan exactly.
     """
     arms_by_id = definition.arms_by_id()
+    supplementary_ids = [
+        a.id for a in definition.arms if a.role == "supplementary"
+    ]
+    conditional = conditional_supplementary_declaration(
+        definition, definition.protocol
+    )
     sessions: list[dict[str, Any]] = []
     for number in (1, 2):
         order = session_full_arm_order(definition, number)
@@ -667,9 +961,8 @@ def plan_document(
                 "session_number": number,
                 "arm_order": list(order),
                 "primary_arm_order": list(session_arm_order(number)),
-                "supplementary_arm_ids": [
-                    a.id for a in definition.arms if a.role == "supplementary"
-                ],
+                "supplementary_arm_ids": list(supplementary_ids),
+                "conditional_supplementary_arms": [dict(c) for c in conditional],
                 "class_order": list(definition.protocol.classes),
                 "class_order_reversed": False,
                 "fresh_server_per_arm": True,
@@ -684,9 +977,13 @@ def plan_document(
                 "primary_generation_count": sum(
                     1 for s in steps if arms_by_id[s.arm_id].role == "primary"
                 ),
+                "conditional_generation_count": sum(
+                    1 for s in steps if s.conditional
+                ),
             }
         )
     primary_total = sum(s["primary_generation_count"] for s in sessions)
+    conditional_total = sum(s["conditional_generation_count"] for s in sessions)
     return {
         "schema": CAMPAIGN_PLAN_SCHEMA,
         "campaign_runner_version": CAMPAIGN_RUNNER_VERSION,
@@ -711,13 +1008,35 @@ def plan_document(
             "canonical_per_session": PER_SESSION_PRIMARY_GENERATIONS,
             "canonical_campaign": CAMPAIGN_PRIMARY_GENERATIONS,
         },
+        "conditional_supplementary_generation_counts": {
+            "per_session": conditional_total // 2 if conditional else 0,
+            "possible_only": True,
+            "note": (
+                "possible generations of the predeclared conditional supplementary "
+                "arm; executed only when the fixed KV rule resolves true"
+            ),
+        },
         "counterbalanced_order": {
             "session-1": list(session_arm_order(1)),
             "session-2": list(session_arm_order(2)),
         },
+        "session_order_gates": {
+            "session_1_baseline_identity_gate": (
+                "session 1 runs B1 first; its runtime resolution is the "
+                "campaign-build baseline identity gate and must pass before the "
+                "first candidate measurement anywhere in the campaign"
+            ),
+            "session_2_precondition": (
+                "session 2 (candidate first, by design) refuses to start unless a "
+                "complete, valid session-1 record with a passed baseline identity "
+                "gate exists under --out-root"
+            ),
+        },
         "supplementary_arm_support": (
-            "the KV-matched supplementary baseline is resolved mechanically after "
-            "both primary arms resolve; it never replaces a primary arm"
+            "the conditional supplementary KV-matched baseline is predeclared in "
+            "every canonical plan with its trigger and pinned capacity fixed before "
+            "execution; it executes only when the primary arms resolve different KV "
+            "capacities and never replaces a primary arm"
         ),
     }
 
@@ -765,6 +1084,19 @@ def validation_document(definition: CampaignDefinition) -> dict[str, Any]:
         s["class_order"] == list(CANONICAL_CLASSES) and not s["class_order_reversed"]
         for s in plan["sessions"]
     )
+    declaration = conditional_supplementary_declaration(
+        definition, definition.protocol
+    )
+    predeclared_ok = bool(declaration) and all(
+        d["pinned_kv_capacity_tokens"] == CANDIDATE_PINNED_KV_TOKENS
+        and d["possible_generations_per_session"]
+        == len(definition.protocol.classes)
+        * (definition.protocol.warmups + definition.protocol.repetitions)
+        and "--num-tokens" in d["exact_flags"]
+        and d["exact_flags"][d["exact_flags"].index("--num-tokens") + 1]
+        == str(CANDIDATE_PINNED_KV_TOKENS)
+        for d in declaration
+    )
 
     return {
         "schema": "inferswarm.phase1.campaign-validation/1",
@@ -776,6 +1108,7 @@ def validation_document(definition: CampaignDefinition) -> dict[str, Any]:
             and count_ok
             and ordering_ok
             and class_orders_ok
+            and predeclared_ok
             and comparison["held_equal_all"]
             and not comparison["undeclared_differences"]
             and not definition.protocol.deviations
@@ -793,6 +1126,16 @@ def validation_document(definition: CampaignDefinition) -> dict[str, Any]:
         "counts": {
             **plan["primary_generation_counts"],
             "counts_ok": count_ok,
+        },
+        "supplementary_predeclaration": {
+            "predeclared": predeclared_ok,
+            "conditional_arms": declaration,
+            "session_one_gate": (
+                "session 1 B1 runtime resolution is the campaign-build baseline "
+                "identity gate and must pass before the first candidate measurement "
+                "anywhere in the campaign; session 2 (candidate first) refuses to "
+                "start without a passing session-1 record under --out-root"
+            ),
         },
         "session_orders": session_orders,
         "session_ordering_ok": ordering_ok,
@@ -883,8 +1226,15 @@ class SessionExecution:
             arms_by_id=self.arms_by_id,
             protocol=self.definition.protocol,
         )
+        # Primary (and any unconditionally-forced supplementary) blocks are
+        # expected unconditionally. A conditional supplementary arm's tallies are
+        # created only when its condition resolves true, so a NOT_REQUIRED arm can
+        # never pollute completeness with blocks that were correctly never executed.
         self.tallies: dict[tuple, BlockTally] = {}
         for arm_id, class_id, block in iter_blocks(self.steps):
+            arm = self.arms_by_id[arm_id]
+            if arm.role == "supplementary" and arm.execution_condition:
+                continue
             self.tallies[(arm_id, class_id)] = BlockTally(
                 arm_id=arm_id,
                 class_id=class_id,
@@ -898,6 +1248,9 @@ class SessionExecution:
         self.idle_records: list[dict[str, Any]] = []
         self.kv_capacities: dict[str, int | None] = {}
         self.stopped_early_reason: str | None = None
+        self.drift_disposition: dict[str, Any] | None = None
+        self.supplementary_decision: dict[str, Any] | None = None
+        self.baseline_gate: dict[str, Any] = {"checked": False, "passed": False}
         self._recorded_indices: set[int] = set()
         self.boundary_record: dict[str, Any] | None = None
 
@@ -917,7 +1270,12 @@ class SessionExecution:
         )
         if not self.boundary_record["passed"]:
             raise CampaignRefused(str(self.boundary_record.get("reason")))
-        refusals = preflight_refusals(self.definition, self.manifest, self.placement)
+        refusals = preflight_refusals(
+            self.definition,
+            self.manifest,
+            self.placement,
+            session_number=self.session_number,
+        )
         if refusals:
             raise CampaignRefused("canonical session refused: " + "; ".join(refusals))
 
@@ -943,6 +1301,19 @@ class SessionExecution:
 
         by_class = self.manifest.by_class()
         for arm_id in dict.fromkeys(s.arm_id for s in self.steps):
+            arm = self.arms_by_id[arm_id]
+            # A predeclared conditional supplementary arm executes only when its
+            # fixed condition — evaluated from the two primary arms' recorded
+            # resolved KV capacities, never from a performance number — is true.
+            if arm.role == "supplementary" and arm.execution_condition:
+                self.supplementary_decision = decision = self._kv_rule_decision()
+                if decision["required"] is not True:
+                    # NOT_REQUIRED_BY_KV_RULE or UNRESOLVED: no generations, no
+                    # failure records — the disposition lives in the session
+                    # summary. An unresolved condition always co-occurs with a
+                    # primary-arm invalidation.
+                    continue
+                self._ensure_conditional_tallies(arm_id)
             if self.stopped_early_reason is not None:
                 self._record_arm_not_executed(arm_id, self.stopped_early_reason)
                 continue
@@ -951,14 +1322,83 @@ class SessionExecution:
                 self._record_arm_not_executed(arm_id, idle["reason"])
                 continue
             try:
-                self._run_arm(self.arms_by_id[arm_id], by_class)
+                self._run_arm(arm, by_class)
             except BaselineIdentityError as e:
-                # The amendment's STOP: no candidate performance after a drifted
-                # baseline. The baseline arm's own records are already written; the
-                # remaining arms are recorded as not executed.
+                # Session-aware STOP (campaign-order amendment). Session 1: B1 ran
+                # first, so the campaign-build baseline identity gate failed before
+                # any candidate generation — the remaining arms are recorded as not
+                # executed. Session 2: the candidate ran first by design; the
+                # revalidation drift makes the ENTIRE session invalid, its candidate
+                # measurements are retained as invalid evidence and are not
+                # eligible for the Phase-1 analysis, and the complete affected
+                # campaign must be rerun.
                 self.stopped_early_reason = str(e)
+                if self.session_number >= 2:
+                    self.drift_disposition = {
+                        "session": self.session_number,
+                        "finding": str(e),
+                        "session_validity": "INVALID",
+                        "candidate_measurements": (
+                            "retained as invalid evidence; not eligible for any "
+                            "Phase-1 analysis, cross-arm comparison, or campaign "
+                            "verdict"
+                        ),
+                        "required_remediation": (
+                            "refresh the Phase-0 baseline and rerun the complete "
+                            "affected campaign"
+                        ),
+                        "reuse_policy": (
+                            "no candidate data from this session is reused or "
+                            "spliced into the rerun"
+                        ),
+                    }
                 continue
         return self._finalize()
+
+    def _kv_rule_decision(self) -> dict[str, Any]:
+        """Evaluate the predeclared KV rule from the primary arms' recorded reports."""
+        baseline_kv = self.kv_capacities.get(BASELINE_ARM_ID)
+        candidate_kv = self.kv_capacities.get(CANDIDATE_ARM_ID)
+        requirement = supplementary_requirement(baseline_kv, candidate_kv)
+        if requirement["decidable"]:
+            required = requirement["required"]
+            status = REQUIRED_BY_KV_RULE if required else NOT_REQUIRED_BY_KV_RULE
+            reason = (
+                "the primary arms resolved different KV capacities; the predeclared "
+                "supplementary arm is required"
+                if required
+                else "the primary arms resolved equal KV capacities; the predeclared "
+                "supplementary arm is not required and its generations are not executed"
+            )
+        else:
+            required = None
+            status = KV_RULE_UNRESOLVED
+            reason = requirement["unavailable_reason"] or (
+                "the condition could not be evaluated from the primary arms' "
+                "runtime reports"
+            )
+        return {
+            **requirement,
+            "required": required,
+            "status": status,
+            "reason": reason,
+            "branch_inputs": {
+                "baseline_kv_tokens": baseline_kv,
+                "candidate_kv_tokens": candidate_kv,
+            },
+        }
+
+    def _ensure_conditional_tallies(self, arm_id: str) -> None:
+        for aid, class_id, block in iter_blocks(self.steps):
+            if aid != arm_id or (aid, class_id) in self.tallies:
+                continue
+            self.tallies[(aid, class_id)] = BlockTally(
+                arm_id=aid,
+                class_id=class_id,
+                block_id=block[0].block_id,
+                expected_warmups=sum(1 for s in block if not s.measured),
+                expected_measured=sum(1 for s in block if s.measured),
+            )
 
     def _record_arm_not_executed(self, arm_id: str, reason: str) -> None:
         """Preserve the absence of an arm's generations; never silently skip."""
@@ -1095,6 +1535,10 @@ class SessionExecution:
                     "except the auto-slot band, which the pinned --num-tokens "
                     "legitimately moves"
                 )
+        if arm.id == BASELINE_ARM_ID:
+            checked = bool(record.get("checked"))
+            passed = checked and not record.get("identity_findings")
+            self.baseline_gate = {"checked": checked, "passed": passed}
         self.runtime_records[arm.id] = {
             "arm_id": arm.id,
             "runtime_config": runtime_config,
@@ -1107,11 +1551,24 @@ class SessionExecution:
             and record.get("identity_findings")
             and record.get("strict", True)
         ):
+            findings = "; ".join(record["identity_findings"])
+            if self.session_number == 1:
+                raise BaselineIdentityError(
+                    "baseline B1 identity drift (session-1 campaign-build baseline "
+                    "identity gate): "
+                    + findings
+                    + ". The session stops before any candidate generation; the "
+                    "Phase-0 baseline must be refreshed and the campaign rerun; this "
+                    "campaign does not substitute another arm."
+                )
             raise BaselineIdentityError(
-                "baseline B1 identity drift: "
-                + "; ".join(record["identity_findings"])
-                + ". The Phase-0 baseline must be refreshed before candidate "
-                "performance; this campaign does not substitute another arm."
+                "baseline B1 identity drift (session-2 revalidation): "
+                + findings
+                + ". Session 2 is INVALID; the candidate measurements already "
+                "collected are retained as invalid evidence and are not eligible "
+                "for the Phase-1 analysis; the Phase-0 baseline must be refreshed "
+                "and the complete affected campaign rerun; no candidate data is "
+                "reused or spliced."
             )
 
     # ---- one block -------------------------------------------------------------------
@@ -1327,7 +1784,35 @@ class SessionExecution:
         reps = self.writer.generations()
         tallies = list(self.tallies.values())
         failure_count = sum(1 for r in reps if r.get("failed"))
+
+        decision = self.supplementary_decision
+        required = decision.get("required") if decision else None
+        possible_supplementary = len(self.definition.protocol.classes) * (
+            self.definition.protocol.warmups + self.definition.protocol.repetitions
+        )
+        required_supplementary_tallies = (
+            [t for t in tallies if t.arm_id == KV_MATCHED_ARM_ID]
+            if required is True
+            else []
+        )
+        required_block_completed = (
+            bool(required_supplementary_tallies)
+            and all(t.complete for t in required_supplementary_tallies)
+            if required is True
+            else None
+        )
+        # A canonical session can never look COMPLETE/VALID when the predeclared
+        # condition resolved true and the required supplementary block is missing.
+        if required is True and required_block_completed is not True:
+            self.validity.add(
+                SUPPLEMENTARY_REQUIRED_BLOCK_MISSING,
+                f"the KV rule resolved {REQUIRED_BY_KV_RULE} but the "
+                f"{KV_MATCHED_ARM_ID} block is missing or incomplete",
+                arm_id=KV_MATCHED_ARM_ID,
+            )
         status = execution_status(tallies, failure_count)
+        if required is True and required_block_completed is not True:
+            status = "INCOMPLETE"
 
         held: dict[str, Any] = {}
         for field_path in (
@@ -1346,6 +1831,25 @@ class SessionExecution:
 
         baseline_kv = self.kv_capacities.get(BASELINE_ARM_ID)
         candidate_kv = self.kv_capacities.get(CANDIDATE_ARM_ID)
+        supplementary_record = (
+            decision
+            if decision is not None
+            else supplementary_requirement(baseline_kv, candidate_kv)
+        )
+        gate_role = (
+            "campaign-build baseline identity gate (session 1 runs B1 first)"
+            if self.session_number == 1
+            else "session-2 revalidation of the campaign-build baseline identity gate"
+        )
+        gate_consequence = (
+            "a drift here stops the session before any candidate generation, "
+            "anywhere in the campaign"
+            if self.session_number == 1
+            else "a drift here makes the entire session INVALID: candidate "
+            "measurements already collected are retained as invalid evidence, "
+            "excluded from every Phase-1 analysis, and the complete affected "
+            "campaign must be rerun with no candidate data reused or spliced"
+        )
         doc = {
             "session_id": f"session-{self.session_number}",
             "session_number": self.session_number,
@@ -1354,6 +1858,11 @@ class SessionExecution:
             **self.validity.record(),
             "execution_order": {
                 "arm_order": list(dict.fromkeys(s.arm_id for s in self.steps)),
+                "executed_arm_order": list(
+                    dict.fromkeys(
+                        r.get("arm_id") for r in reps if r.get("arm_id")
+                    )
+                ),
                 "primary_arm_order": list(session_arm_order(self.session_number)),
                 "class_order": list(self.definition.protocol.classes),
                 "all_block_identities": [t.block_id for t in tallies],
@@ -1361,12 +1870,33 @@ class SessionExecution:
                     r.get("execution_index") for r in reps
                 ),
             },
+            "baseline_identity_gate": {
+                "role": gate_role,
+                "arm_id": BASELINE_ARM_ID,
+                **self.baseline_gate,
+                "consequence_on_drift": gate_consequence,
+            },
             "completion": {
                 "expected_primary_generations": (
                     PER_SESSION_PRIMARY_GENERATIONS
                     if self.definition.protocol.canonical
                     else None
                 ),
+                "conditional_supplementary_generations": (
+                    possible_supplementary if required is True else None
+                ),
+                "supplementary_condition": {
+                    "arm_id": KV_MATCHED_ARM_ID,
+                    "condition": KV_RULE_CONDITION,
+                    "pinned_kv_capacity_tokens": CANDIDATE_PINNED_KV_TOKENS,
+                    "resolved": decision.get("decidable") if decision else None,
+                    "required": required,
+                    "status": decision.get("status") if decision else None,
+                    "reason": decision.get("reason") if decision else None,
+                    "required_supplementary_block_completed": (
+                        required_block_completed
+                    ),
+                },
                 "observed_generations": len(reps),
                 "failed_generations": failure_count,
                 "incomplete_blocks": [t.record() for t in tallies if not t.complete],
@@ -1387,13 +1917,12 @@ class SessionExecution:
             "baseline_noise_floor_status": baseline_noise_floor(
                 [t for t in tallies if t.arm_id == BASELINE_ARM_ID], reps
             ),
-            "supplementary_arm_requirement": supplementary_requirement(
-                baseline_kv, candidate_kv
-            ),
+            "supplementary_arm_requirement": supplementary_record,
             "kv_capacities_tokens": self.kv_capacities,
             "thermal_records": self.thermal_records,
             "idle_records": self.idle_records,
             "stopped_early_reason": self.stopped_early_reason,
+            "baseline_drift_disposition": self.drift_disposition,
             "startup_records": self.startup_records,
             "runtime_validation": {
                 arm_id: rec.get("validation")
@@ -1401,7 +1930,8 @@ class SessionExecution:
             },
             "no_verdict_note": (
                 "this session summary contains per-arm descriptive statistics only; "
-                "no cross-arm ratio and no campaign verdict is computed by this runner"
+                "no cross-arm comparison and no campaign verdict is computed by "
+                "this runner"
             ),
         }
         self.writer.write_session_summary(doc)

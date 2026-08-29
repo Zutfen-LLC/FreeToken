@@ -26,6 +26,7 @@ from inferswarm_phase1.campaign_arms import (
     baseline_b1_arm,
     candidate_v2_arm,
     kv_matched_arm,
+    predeclared_kv_matched_arm,
 )
 from inferswarm_phase1.campaign_protocol import build_protocol
 
@@ -37,6 +38,7 @@ from .phase1_fakes import (
     install_clean_environment,
     install_mocked_server,
     moe_window_snapshot,
+    write_session_one_gate,
 )
 
 ALL_CLASSES = ("W1", "W2", "W3", "W4")
@@ -62,7 +64,8 @@ def _settings(tmp_path, **kw) -> CampaignSettings:
 
 def _definition(tmp_path, *, canonical=True, arms=None, protocol=None, **settings_kw):
     return CampaignDefinition(
-        arms=arms or [baseline_b1_arm(), candidate_v2_arm()],
+        arms=arms
+        or [baseline_b1_arm(), candidate_v2_arm(), predeclared_kv_matched_arm()],
         protocol=protocol
         or build_protocol(
             warmups=None,
@@ -111,6 +114,7 @@ def test_a_complete_session_preserves_every_generation(tmp_path, mocked_server):
 
 
 def test_session_two_reverses_the_executed_arm_order(tmp_path, mocked_server):
+    write_session_one_gate(tmp_path)
     SessionExecution(definition=_definition(tmp_path), session_number=2,
                      thermal_reset_attested="cooled to idle at 2026-08-30T09:00").execute()
     served = [s["arm"] for s in mocked_server["started"]]
@@ -318,6 +322,10 @@ def test_supplementary_requirement_is_mechanical_from_resolved_kv_capacities(
     assert requirement["baseline_kv_tokens"] == 17075
     assert requirement["candidate_kv_tokens"] == 17075
     assert requirement["arm_id"] == "baseline_b1_kv_matched"
+    assert requirement["condition"] == (
+        "candidate_resolved_kv_capacity != baseline_resolved_kv_capacity"
+    )
+    assert requirement["pinned_kv_capacity_tokens"] == 17075
 
 
 def test_supplementary_requirement_fires_when_kv_capacities_differ(tmp_path, mocked_server):
@@ -329,22 +337,94 @@ def test_supplementary_requirement_fires_when_kv_capacities_differ(tmp_path, moc
     assert requirement["required"] is True
     assert requirement["baseline_kv_tokens"] == 19000
     assert requirement["candidate_kv_tokens"] == 17075
+    # the predeclared arm actually executes, after both primaries
+    served = [s["arm"] for s in mocked_server["started"]]
+    assert served == [BASELINE_ARM_ID, CANDIDATE_ARM_ID, "baseline_b1_kv_matched"]
 
 
-def test_the_supplementary_arm_runs_after_the_primaries_counted_separately(
+def test_equal_capacities_execute_no_supplementary_generations(tmp_path, mocked_server):
+    doc = SessionExecution(definition=_definition(tmp_path), session_number=1).execute()
+    condition = doc["completion"]["supplementary_condition"]
+    assert condition["required"] is False
+    assert condition["status"] == "NOT_REQUIRED_BY_KV_RULE"
+    assert condition["required_supplementary_block_completed"] is None
+    assert doc["completion"]["conditional_supplementary_generations"] is None
+    # no kv-matched arm directory, no generation records for it
+    assert not (Path(doc["run_directory"]) / "baseline_b1_kv_matched").exists()
+    assert doc["completion"]["observed_generations"] == 96
+    assert doc["execution_status"] == "COMPLETE"
+    assert doc["validity"] == "VALID"
+
+
+def test_unequal_capacities_run_the_exact_predeclared_supplementary_arm(
     tmp_path, mocked_server
 ):
+    mocked_server["runtime_by_arm"][BASELINE_ARM_ID] = baseline_runtime_config(
+        runtime={"num_pages": 19000},
+    )
+    doc = SessionExecution(definition=_definition(tmp_path), session_number=1).execute()
+    condition = doc["completion"]["supplementary_condition"]
+    assert condition["required"] is True
+    assert condition["status"] == "REQUIRED_BY_KV_RULE"
+    assert condition["pinned_kv_capacity_tokens"] == 17075
+    assert condition["required_supplementary_block_completed"] is True
+    assert doc["completion"]["conditional_supplementary_generations"] == 48
+    assert doc["completion"]["observed_generations"] == 96 + 48
+    assert doc["completion"]["expected_primary_generations"] == 96
+    # the supplementary server was started with the predeclared --num-tokens 17075
+    kv_command = mocked_server["started"][-1]["command"]
+    assert kv_command[kv_command.index("--num-tokens") + 1] == "17075"
+    assert doc["execution_status"] == "COMPLETE"
+    assert doc["validity"] == "VALID"
+
+
+def test_required_but_not_run_supplementary_block_is_incomplete_and_invalid(
+    tmp_path, mocked_server
+):
+    mocked_server["runtime_by_arm"][BASELINE_ARM_ID] = baseline_runtime_config(
+        runtime={"num_pages": 19000},
+    )
+    # the GPU idle check refuses exactly the supplementary arm's start: only once
+    # both primary servers have finished does GPU0 look occupied
+    from unittest import mock
+
+    def stale_after_primaries(uuid):
+        return (6 << 30) if len(mocked_server["started"]) >= 2 else (8 << 20)
+
+    with mock.patch.object(
+        campaign_mod, "gpu_memory_used_bytes", stale_after_primaries
+    ):
+        doc = SessionExecution(definition=_definition(tmp_path), session_number=1).execute()
+    assert doc["completion"]["supplementary_condition"]["required"] is True
+    assert (
+        doc["completion"]["supplementary_condition"]["required_supplementary_block_completed"]
+        is False
+    )
+    assert doc["execution_status"] == "INCOMPLETE"
+    assert doc["validity"] == "INVALID"
+    assert "supplementary.required_block_missing" in doc["campaign_invalidation_codes"]
+    # the required block's generations are preserved as not-executed failures
+    assert doc["completion"]["failed_generations"] == 48
+    kv_w1 = Path(doc["run_directory"]) / "baseline_b1_kv_matched" / "W1.jsonl"
+    assert kv_w1.exists()
+
+
+def test_dev_smoke_forced_kv_arm_runs_unconditionally(tmp_path, mocked_server):
     definition = _definition(
         tmp_path,
-        arms=[baseline_b1_arm(), candidate_v2_arm(), kv_matched_arm(17075)],
+        canonical=False,
+        protocol=build_protocol(warmups=1, repetitions=1, classes=["W1"], dev_smoke=True),
+        arms=[
+            baseline_b1_arm(),
+            candidate_v2_arm(),
+            kv_matched_arm(17075, conditional=False),
+        ],
     )
     doc = SessionExecution(definition=definition, session_number=1).execute()
     served = [s["arm"] for s in mocked_server["started"]]
     assert served == [BASELINE_ARM_ID, CANDIDATE_ARM_ID, "baseline_b1_kv_matched"]
-    # primary counts stay exactly 96; the supplementary arm is extra
-    assert doc["completion"]["observed_generations"] == 96 + 48
-    assert doc["completion"]["expected_primary_generations"] == 96
-    assert doc["supplementary_arm_requirement"]["arm_id"] == "baseline_b1_kv_matched"
+    assert doc["completion"]["observed_generations"] == 3 * 2  # 3 arms x (1+1)
+    assert doc["completion"]["expected_primary_generations"] is None
 
 
 # --- dev smoke ---------------------------------------------------------------------------------------
@@ -370,7 +450,9 @@ def test_dev_smoke_sessions_are_labelled_noncanonical_everywhere(tmp_path, mocke
 def test_session_summary_records_order_blocks_and_provenance(tmp_path, mocked_server):
     doc = SessionExecution(definition=_definition(tmp_path), session_number=1).execute()
     order = doc["execution_order"]
-    assert order["arm_order"] == [BASELINE_ARM_ID, CANDIDATE_ARM_ID]
+    # planned order includes the predeclared conditional arm; it did not execute
+    assert order["arm_order"] == [BASELINE_ARM_ID, CANDIDATE_ARM_ID, "baseline_b1_kv_matched"]
+    assert order["executed_arm_order"] == [BASELINE_ARM_ID, CANDIDATE_ARM_ID]
     assert order["primary_arm_order"] == [BASELINE_ARM_ID, CANDIDATE_ARM_ID]
     assert order["class_order"] == ["W1", "W2", "W3", "W4"]
     assert len(order["all_block_identities"]) == 8
@@ -380,6 +462,8 @@ def test_session_summary_records_order_blocks_and_provenance(tmp_path, mocked_se
     assert consistency["placement_canonical"] is True
     assert doc["held_constant_validation"]["runtime.memory_ratio"]["equal"] is True
     assert doc["baseline_noise_floor_status"]["per_class"]["W1"]["within_5_percent_ceiling"] is True
+    assert doc["baseline_identity_gate"]["passed"] is True
+    assert doc["baseline_identity_gate"]["checked"] is True
     # every artifact file is hash-indexed
     assert "plan.json" in doc["artifact_sha256"]
     assert "session-summary.json" in doc["artifact_sha256"]
@@ -423,6 +507,7 @@ def test_stale_gpu_memory_refuses_the_next_canonical_arm(tmp_path, mocked_server
     used = {"bytes": 8 << 20}
     run2 = tmp_path / "run2"
     run2.mkdir()
+    write_session_one_gate(tmp_path, out_root=str(run2 / "runs"))
     with mock.patch.object(
         campaign_mod, "gpu_memory_used_bytes", lambda uuid: used["bytes"]
     ):
@@ -449,12 +534,18 @@ def test_every_artifact_round_trips_with_its_schema(tmp_path, mocked_server):
     root = Path(doc["run_directory"])
     plan = json.loads((root / "plan.json").read_text())
     assert plan["schema"] == "inferswarm.phase1.session-plan/1"
-    assert plan["generation_count"] == 96
+    # 96 expected primary + 48 possible conditional supplementary generations
+    assert plan["generation_count"] == 144
+    assert plan["primary_generation_count"] == 96
+    assert plan["conditional_generation_count"] == 48
     assert plan["no_dynamic_shortening"] is True
     provenance = json.loads((root / "provenance.json").read_text())
     assert provenance["schema"] == "inferswarm.phase1.session-provenance/1"
     assert provenance["software"]["phase1_campaign_runner_version"]
     assert provenance["prerequisites"]["supplied"] is True
+    assert provenance["prerequisites"]["verification"]["freetoken_runtime_commit"][
+        "equals_current_head"
+    ] is True
     assert provenance["placement"]["artifact_sha256"] == provenance["placement"]["frozen_sha256"]
     assert provenance["historical_phase0_baseline_commit"] == "2c3da952e47391bf392e0ece8ae4c67acbc91762"
     runtime = json.loads((root / CANDIDATE_ARM_ID / "runtime.json").read_text())

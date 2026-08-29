@@ -12,10 +12,13 @@ existed), replacing the physically impossible repetition-level A/B/A/B interleav
   cache clearing between classes.
 
 Per arm: 4 x (2 + 10) = 48 generations. Per session: 96 primary generations. Two
-sessions: 192 primary generations. Supplementary arms are counted separately.
+sessions: 192 primary generations. The predeclared conditional supplementary arm
+adds up to 48 possible generations per session, counted separately from the
+primary totals and executed only when its fixed condition resolves true.
 
 The plan is built whole before the first server starts, contains every expected
-generation, and cannot be shortened dynamically.
+generation (primary) and every possible generation (conditional supplementary),
+and cannot be shortened dynamically.
 """
 
 from __future__ import annotations
@@ -141,7 +144,13 @@ def build_protocol(
 
 @dataclass(frozen=True)
 class PlannedGeneration:
-    """One generation the campaign will perform, in exact campaign execution order."""
+    """One generation the campaign will perform, in exact campaign execution order.
+
+    ``conditional`` marks the generations of a predeclared conditional
+    supplementary arm: they are in the plan (the arm is fully specified before
+    execution) but execute only when the arm's fixed condition — evaluated from
+    the primary arms' resolved runtime reports — is true.
+    """
 
     session_id: str
     session_number: int
@@ -153,6 +162,7 @@ class PlannedGeneration:
     repetition: int  # 0-based within its phase and block
     measured: bool
     block_id: str
+    conditional: bool = False
 
     def record(self) -> dict[str, Any]:
         return {
@@ -166,6 +176,7 @@ class PlannedGeneration:
             "repetition": self.repetition,
             "measured": self.measured,
             "block_id": self.block_id,
+            "conditional": self.conditional,
         }
 
 
@@ -191,12 +202,16 @@ def build_session_plan(
 
     Arm-major (one server process per arm, all of that arm's classes inside it),
     classes always in protocol order — the class order is never reversed, not even in
-    session 2: reversal applies only to the arm order.
+    session 2: reversal applies only to the arm order. Supplementary arms (which
+    run after both primaries) may be conditional: their generations are planned
+    with ``conditional=True`` and execute only when the arm's fixed condition is
+    resolved true from the primary arms' runtime reports.
     """
     steps: list[PlannedGeneration] = []
     index = 0
     for arm_id in arm_order:
         arm = arms_by_id[arm_id]
+        conditional = getattr(arm, "execution_condition", None) is not None
         for class_id in protocol.classes:
             block_id = f"session-{session_number}/{arm_id}/{class_id}/block-1"
             for i in range(protocol.warmups):
@@ -212,6 +227,7 @@ def build_session_plan(
                         repetition=i,
                         measured=False,
                         block_id=block_id,
+                        conditional=conditional,
                     )
                 )
                 index += 1
@@ -228,6 +244,7 @@ def build_session_plan(
                         repetition=i,
                         measured=True,
                         block_id=block_id,
+                        conditional=conditional,
                     )
                 )
                 index += 1

@@ -4,14 +4,20 @@ Subcommands:
 
     plan          emit the complete two-session campaign plan as JSON (no model start)
     validate      dry-run validation: provenance preflight, held-constant comparison,
-                  intended-difference enumeration, counts, ordering, hashes
+                  intended-difference enumeration, counts, ordering, hashes, and the
+                  predeclared conditional supplementary arm
     run-session   execute one session (the P6 surface; refuses to start when the
-                  preflight fails)
+                  preflight fails; session 2 additionally requires the attested
+                  thermal reset and a passing session-1 baseline identity gate
+                  record under --out-root)
 
 ``--dev-smoke`` is the only way to alter the protocol (repetitions, warmups, class
 selection); every alteration is recorded as a deviation, forces canonical=false, and
 makes the artifact unusable by the canonical analysis. Without ``--dev-smoke``,
-protocol changes are rejected.
+protocol changes are rejected. ``--kv-matched-tokens`` exists only as a
+dev-smoke/testing override that forces the supplementary arm unconditionally;
+canonical campaigns predeclare that arm with its trigger and pinned capacity fixed
+before execution.
 """
 
 from __future__ import annotations
@@ -39,6 +45,7 @@ from .campaign_arms import (
     baseline_b1_arm,
     candidate_v2_arm,
     kv_matched_arm,
+    predeclared_kv_matched_arm,
 )
 from .campaign_protocol import build_protocol
 
@@ -87,9 +94,11 @@ def _add_common(p: argparse.ArgumentParser) -> None:
         type=int,
         default=None,
         help=(
-            "add the supplementary KV-matched baseline arm with this --num-tokens "
-            "(derive it from the candidate's resolved KV capacity; it never replaces "
-            "the primary baseline)"
+            "DEV-SMOKE/TESTING OVERRIDE ONLY (refused in canonical mode): force the "
+            "supplementary KV-matched baseline arm with this --num-tokens "
+            "unconditionally. Canonical campaigns predeclare it: trigger "
+            "candidate_resolved_kv_capacity != baseline_resolved_kv_capacity, "
+            "pinned --num-tokens 17075."
         ),
     )
     p.add_argument("--warmups", type=int, default=None, help="NON-CANONICAL override; needs --dev-smoke")
@@ -127,7 +136,33 @@ def _definition(args: argparse.Namespace) -> CampaignDefinition:
     )
     arms = [baseline_b1_arm(), candidate_v2_arm()]
     if args.kv_matched_tokens is not None:
-        arms.append(kv_matched_arm(args.kv_matched_tokens))
+        if not args.dev_smoke:
+            raise ValueError(
+                "--kv-matched-tokens is a dev-smoke/testing override only: a "
+                "canonical campaign predeclares the conditional supplementary arm "
+                "(baseline_b1_kv_matched, trigger "
+                "candidate_resolved_kv_capacity != baseline_resolved_kv_capacity, "
+                "pinned --num-tokens 17075) and never passes it manually"
+            )
+        import dataclasses
+
+        protocol = dataclasses.replace(
+            protocol,
+            deviations=protocol.deviations
+            + (
+                (
+                    f"--kv-matched-tokens {args.kv_matched_tokens}: developer override "
+                    "forcing the supplementary KV-matched arm unconditionally"
+                ),
+            ),
+        )
+        arms.append(kv_matched_arm(args.kv_matched_tokens, conditional=False))
+    elif args.dev_smoke:
+        # Keep the predeclared conditional arm available in dev smoke too; the
+        # ordinary KV rule decides whether it runs.
+        arms.append(predeclared_kv_matched_arm())
+    else:
+        arms.append(predeclared_kv_matched_arm())
     settings = CampaignSettings(
         model_path=args.model,
         manifest_path=args.manifest,

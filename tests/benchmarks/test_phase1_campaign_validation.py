@@ -26,14 +26,18 @@ from inferswarm_phase1.campaign_arms import (
     GPU1_UUID,
     baseline_b1_arm,
     candidate_v2_arm,
+    predeclared_kv_matched_arm,
 )
 from inferswarm_phase1.campaign_protocol import build_protocol
 
 from .phase1_fakes import (
+    FAKE_FREETOKEN_HEAD,
     INFERSWARM_SHA40,
     SHA40,
     install_clean_environment,
     write_canonical_manifest,
+    write_prerequisites,
+    write_session_one_gate,
 )
 
 _FROZEN: dict = {}
@@ -60,7 +64,8 @@ def _settings(tmp_path, **kw) -> CampaignSettings:
 
 def _definition(tmp_path, *, canonical=True, protocol=None, settings=None, arms=None):
     return CampaignDefinition(
-        arms=arms or [baseline_b1_arm(), candidate_v2_arm()],
+        arms=arms
+        or [baseline_b1_arm(), candidate_v2_arm(), predeclared_kv_matched_arm()],
         protocol=protocol
         or build_protocol(warmups=None, repetitions=None, classes=None, dev_smoke=not canonical),
         settings=settings or _settings(tmp_path),
@@ -90,6 +95,15 @@ def test_canonical_validation_passes_and_proves_comparability(tmp_path):
     assert doc["session_ordering_ok"] is True
     assert doc["class_orders_ok"] is True
     assert doc["workload_identity"]["canonical"] is True
+    assert doc["supplementary_predeclaration"]["predeclared"] is True
+    declaration = doc["supplementary_predeclaration"]["conditional_arms"][0]
+    assert declaration["arm_id"] == "baseline_b1_kv_matched"
+    assert declaration["condition"] == (
+        "candidate_resolved_kv_capacity != baseline_resolved_kv_capacity"
+    )
+    assert declaration["pinned_kv_capacity_tokens"] == 17075
+    assert declaration["possible_generations_per_session"] == 48
+    assert declaration["trigger_fixed_before_execution"] is True
 
 
 # --- deliberate held-constant mutations ---------------------------------------------------
@@ -149,7 +163,9 @@ def test_wrong_gpu0_uuid_in_an_arm_is_rejected(tmp_path):
             *[f for f in baseline_b1_arm().config_flags[2:]],
         ),
     )
-    doc = validation_document(_definition(tmp_path, arms=[drifted, candidate_v2_arm()]))
+    doc = validation_document(
+        _definition(tmp_path, arms=[drifted, candidate_v2_arm(), predeclared_kv_matched_arm()])
+    )
     assert any(
         "must be the frozen physical UUID" in r for r in doc["preflight_refusals"]
     )
@@ -174,7 +190,9 @@ def test_memory_ratio_drift_between_arms_is_rejected(tmp_path):
     flags = list(candidate_v2_arm().config_flags)
     flags[flags.index("0.85")] = "0.9"
     drifted = dataclasses.replace(candidate_v2_arm(), config_flags=tuple(flags))
-    doc = validation_document(_definition(tmp_path, arms=[baseline_b1_arm(), drifted]))
+    doc = validation_document(
+        _definition(tmp_path, arms=[baseline_b1_arm(), drifted, predeclared_kv_matched_arm()])
+    )
     assert any("--memory-ratio differs" in r for r in doc["preflight_refusals"])
 
 
@@ -184,7 +202,9 @@ def test_kv_reserve_drift_between_arms_is_rejected(tmp_path):
     flags = list(candidate_v2_arm().config_flags)
     flags[flags.index("17075")] = "16000"
     drifted = dataclasses.replace(candidate_v2_arm(), config_flags=tuple(flags))
-    doc = validation_document(_definition(tmp_path, arms=[baseline_b1_arm(), drifted]))
+    doc = validation_document(
+        _definition(tmp_path, arms=[baseline_b1_arm(), drifted, predeclared_kv_matched_arm()])
+    )
     assert any("--kv-reserve-tokens differs" in r for r in doc["preflight_refusals"])
 
 
@@ -287,10 +307,45 @@ def test_frozen_gpu_uuids_are_the_rig_identities():
 
 
 def test_session_two_refuses_to_start_without_thermal_attestation(tmp_path):
+    write_session_one_gate(tmp_path)
     with pytest.raises(CampaignRefused, match="thermal"):
         SessionExecution(
             definition=_definition(tmp_path), session_number=2
         ).execute()
+
+
+def test_session_two_refuses_to_start_without_a_passing_session_one_gate(tmp_path):
+    with pytest.raises(CampaignRefused, match="session 2 cannot start"):
+        SessionExecution(
+            definition=_definition(tmp_path),
+            session_number=2,
+            thermal_reset_attested="cooled to idle at 2026-08-30T09:00",
+        ).execute()
+
+
+def test_session_two_refuses_when_the_session_one_gate_did_not_pass(tmp_path):
+    gate = write_session_one_gate(tmp_path)
+    doc = json.loads(gate.read_text())
+    doc["baseline_identity_gate"]["passed"] = False
+    gate.write_text(json.dumps(doc))
+    with pytest.raises(CampaignRefused, match="baseline identity gate did not pass"):
+        SessionExecution(
+            definition=_definition(tmp_path),
+            session_number=2,
+            thermal_reset_attested="cooled to idle at 2026-08-30T09:00",
+        ).execute()
+
+
+def test_missing_predeclared_supplementary_arm_is_a_preflight_refusal(tmp_path):
+    definition = _definition(
+        tmp_path, arms=[baseline_b1_arm(), candidate_v2_arm()]
+    )
+    doc = validation_document(definition)
+    assert any(
+        "predeclares the conditional supplementary arm" in r
+        for r in doc["preflight_refusals"]
+    )
+    assert doc["canonical"] is False
 
 
 def test_dev_smoke_validation_is_stampedly_noncanonical(tmp_path):
@@ -298,3 +353,117 @@ def test_dev_smoke_validation_is_stampedly_noncanonical(tmp_path):
     assert doc["canonical"] is False
     assert any("--dev-smoke" in b for b in doc["canonical_blockers"])
     assert doc["preflight_refusals"] == []
+
+
+# --- correctness prerequisites bound to the exact campaign checkout ------------------------
+
+
+def test_prerequisite_commit_from_an_old_runtime_commit_is_refused(tmp_path):
+    stale = write_prerequisites(tmp_path, commit="9" * 40)
+    settings = _settings(tmp_path, prerequisites_path=str(stale))
+    doc = validation_document(_definition(tmp_path, settings=settings))
+    assert any(
+        "does not equal the current FreeToken HEAD" in r
+        for r in doc["preflight_refusals"]
+    )
+    assert doc["canonical"] is False
+
+
+def test_prerequisite_commit_malformed_is_refused(tmp_path):
+    malformed = write_prerequisites(tmp_path, commit="main")
+    settings = _settings(tmp_path, prerequisites_path=str(malformed))
+    doc = validation_document(_definition(tmp_path, settings=settings))
+    assert any(
+        "is not a valid 40-hex commit SHA" in r for r in doc["preflight_refusals"]
+    )
+
+
+def test_prerequisite_malformed_artifact_sha_is_refused(tmp_path):
+    malformed = write_prerequisites(
+        tmp_path, shas={"candidate_c3_artifact_sha256": "B" * 64}
+    )
+    settings = _settings(tmp_path, prerequisites_path=str(malformed))
+    doc = validation_document(_definition(tmp_path, settings=settings))
+    assert any(
+        "not a lowercase normalized 64-hex SHA-256" in r
+        for r in doc["preflight_refusals"]
+    )
+
+
+def test_prerequisite_short_artifact_sha_is_refused(tmp_path):
+    malformed = write_prerequisites(
+        tmp_path, shas={"correctness_reference_v2_artifact_sha256": "a" * 63}
+    )
+    settings = _settings(tmp_path, prerequisites_path=str(malformed))
+    doc = validation_document(_definition(tmp_path, settings=settings))
+    assert any(
+        "not a lowercase normalized 64-hex SHA-256" in r
+        for r in doc["preflight_refusals"]
+    )
+
+
+def test_prerequisite_exact_current_commit_and_valid_shas_pass(tmp_path):
+    exact = write_prerequisites(tmp_path, commit=FAKE_FREETOKEN_HEAD)
+    settings = _settings(tmp_path, prerequisites_path=str(exact))
+    doc = validation_document(_definition(tmp_path, settings=settings))
+    assert doc["preflight_refusals"] == []
+    assert doc["canonical"] is True
+
+
+def test_prerequisite_artifact_paths_are_rehashed_and_must_agree(tmp_path):
+    import hashlib
+
+    artifact = tmp_path / "correctness_reference_v2.json"
+    artifact.write_bytes(b"reference artifact bytes")
+    good = write_prerequisites(
+        tmp_path,
+        paths={
+            "correctness_reference_v2_artifact_path": str(artifact),
+            "correctness_reference_v2_artifact_sha256": hashlib.sha256(
+                artifact.read_bytes()
+            ).hexdigest(),
+        },
+    )
+    settings = _settings(tmp_path, prerequisites_path=str(good))
+    doc = validation_document(_definition(tmp_path, settings=settings))
+    assert doc["preflight_refusals"] == []
+
+    artifact.write_bytes(b"tampered bytes")  # declared digest now disagrees
+    doc2 = validation_document(_definition(tmp_path, settings=settings))
+    assert any(
+        "disagrees with the bytes at" in r for r in doc2["preflight_refusals"]
+    )
+
+
+def test_prerequisite_verification_record_distinguishes_rehash_availability(tmp_path):
+    import hashlib
+
+    from inferswarm_phase1.campaign import load_prerequisites
+
+    artifact = tmp_path / "c3.json"
+    artifact.write_bytes(b"c3 artifact bytes")
+    manifest = write_prerequisites(
+        tmp_path,
+        paths={
+            "candidate_c3_artifact_path": str(artifact),
+            "candidate_c3_artifact_sha256": hashlib.sha256(
+                artifact.read_bytes()
+            ).hexdigest(),
+        },
+    )
+    record = load_prerequisites(str(manifest), repo_head=FAKE_FREETOKEN_HEAD)
+    evidence = record["verification"]["evidence_sha256"]
+    assert (
+        evidence["candidate_c3_artifact_sha256"]["bytes_independently_rehashed"]
+        is True
+    )
+    assert (
+        evidence["candidate_c3_artifact_sha256"]["matches_declared"] is True
+    )
+    # the two fields without a path are identity-verified only, explicitly
+    for key in (
+        "correctness_reference_v2_artifact_sha256",
+        "p2_p3_p4_requalification_artifact_sha256",
+    ):
+        assert evidence[key]["bytes_independently_rehashed"] is False
+        assert "bytes not independently rehashed" in evidence[key]["status"]

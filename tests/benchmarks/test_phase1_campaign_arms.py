@@ -8,16 +8,19 @@ import pytest
 from inferswarm_phase1.campaign_arms import (
     BASELINE_ARM_ID,
     CANDIDATE_ARM_ID,
+    CANDIDATE_PINNED_KV_TOKENS,
     EXPECTED_GPU1_EXPERT_BYTES,
     EXPECTED_GPU1_SLOTS,
     GPU0_UUID,
     GPU1_UUID,
+    KV_MATCHED_ARM_ID,
     ArmDefinitionError,
     baseline_b1_arm,
     candidate_v2_arm,
     compare_primary_arms,
     flags_to_dict,
     kv_matched_arm,
+    predeclared_kv_matched_arm,
     validate_arm_definitions,
 )
 
@@ -144,6 +147,50 @@ def test_kv_matched_arm_differs_from_b1_only_in_num_tokens():
 def test_kv_matched_arm_requires_a_positive_capacity():
     with pytest.raises(ArmDefinitionError):
         kv_matched_arm(0)
+
+
+def test_predeclared_arm_is_b1_plus_exactly_the_candidate_pinned_num_tokens():
+    pre = predeclared_kv_matched_arm()
+    assert pre.id == KV_MATCHED_ARM_ID
+    assert pre.execution_condition == (
+        "candidate_resolved_kv_capacity != baseline_resolved_kv_capacity"
+    )
+    pre_flags = flags_to_dict(pre.flags())
+    b1_flags = flags_to_dict(baseline_b1_arm().flags())
+    assert pre_flags["--num-tokens"] == "17075"
+    differing = {
+        k for k in set(pre_flags) | set(b1_flags) if pre_flags.get(k) != b1_flags.get(k)
+    }
+    assert differing == {"--num-tokens"}
+
+
+def test_predeclared_arm_pin_is_the_candidate_requested_num_tokens():
+    candidate = flags_to_dict(candidate_v2_arm().flags())
+    assert CANDIDATE_PINNED_KV_TOKENS == 17075
+    assert candidate["--num-tokens"] == str(CANDIDATE_PINNED_KV_TOKENS)
+
+
+def test_predeclared_arm_wrong_pin_is_refused():
+    import dataclasses
+
+    from inferswarm_phase1.campaign_arms import KV_RULE_CONDITION
+
+    pre = predeclared_kv_matched_arm()
+    flags = list(pre.config_flags)
+    flags[flags.index("--num-tokens") + 1] = "19000"  # not the candidate pin
+    wrong_pin = dataclasses.replace(
+        pre, config_flags=tuple(flags), execution_condition=KV_RULE_CONDITION
+    )
+    reasons = validate_arm_definitions(
+        [baseline_b1_arm(), candidate_v2_arm(), wrong_pin]
+    )
+    assert any("pins" in r and "17075" in r for r in reasons)
+
+
+def test_dev_forced_kv_arm_has_no_execution_condition():
+    forced = kv_matched_arm(23456, conditional=False)
+    assert forced.execution_condition is None
+    assert "dev-smoke override" in (forced.supplementary_reason or "")
 
 
 # --- the machine-readable comparison ------------------------------------------------------

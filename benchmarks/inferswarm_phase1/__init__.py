@@ -10,4 +10,7 @@ from __future__ import annotations
 
 # Bumped whenever the campaign runner changes in a way that could move a number or an
 # artifact shape. Recorded in every plan/provenance artifact.
-CAMPAIGN_RUNNER_VERSION = "0.1.0"
+# 0.2.0: session-aware baseline-identity gate semantics; prerequisites bound to the
+# exact current clean FreeToken HEAD with SHA validation/rehashing; the conditional
+# KV-matched supplementary arm predeclared with its trigger and pinned capacity.
+CAMPAIGN_RUNNER_VERSION = "0.2.0"

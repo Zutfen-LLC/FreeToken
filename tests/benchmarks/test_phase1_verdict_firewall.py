@@ -20,7 +20,11 @@ from inferswarm_phase1.campaign import (
     CampaignSettings,
     SessionExecution,
 )
-from inferswarm_phase1.campaign_arms import baseline_b1_arm, candidate_v2_arm
+from inferswarm_phase1.campaign_arms import (
+    baseline_b1_arm,
+    candidate_v2_arm,
+    predeclared_kv_matched_arm,
+)
 from inferswarm_phase1.campaign_protocol import build_protocol
 
 from .phase1_fakes import (
@@ -101,7 +105,7 @@ def valid_session_document(monkeypatch, tmp_path):
         echo_server_output=False,
     )
     definition = CampaignDefinition(
-        arms=[baseline_b1_arm(), candidate_v2_arm()],
+        arms=[baseline_b1_arm(), candidate_v2_arm(), predeclared_kv_matched_arm()],
         protocol=build_protocol(warmups=None, repetitions=None, classes=None, dev_smoke=False),
         settings=settings,
         canonical=True,
