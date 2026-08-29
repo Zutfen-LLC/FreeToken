@@ -769,9 +769,16 @@ def test_session_summary_records_order_blocks_and_provenance(tmp_path, mocked_se
     assert doc["baseline_noise_floor_status"]["per_class"]["W1"]["within_5_percent_ceiling"] is True
     assert doc["baseline_identity_gate"]["passed"] is True
     assert doc["baseline_identity_gate"]["checked"] is True
-    # every artifact file is hash-indexed
+    # every artifact file is hash-indexed; the embedded index is written inside
+    # session-summary.json and therefore predates it (no self-referential hash),
+    # while the returned-only full-directory index covers the summary as well
     assert "plan.json" in doc["artifact_sha256"]
-    assert "session-summary.json" in doc["artifact_sha256"]
+    assert "session-summary.json" not in doc["artifact_sha256"]
+    assert "session-summary.json" in doc["full_directory_sha256"]
+    on_disk = json.loads(
+        (Path(doc["run_directory"]) / "session-summary.json").read_text()
+    )
+    assert on_disk["artifact_sha256"] == doc["artifact_sha256"]
 
 
 def test_per_class_summaries_carry_the_required_descriptive_fields(tmp_path, mocked_server):

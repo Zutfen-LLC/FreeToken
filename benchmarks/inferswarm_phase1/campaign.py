@@ -2290,9 +2290,19 @@ class SessionExecution:
                 "this runner"
             ),
         }
-        self.writer.write_session_summary(doc)
+        # The SHA-256 index must be INSIDE the on-disk summary: session 2 reads
+        # session-summary.json — not this returned document — and verifies the
+        # session-1 artifact set against the embedded index. It is computed after
+        # every session artifact required by the gate is written but before the
+        # summary itself, so it deliberately excludes session-summary.json: a file
+        # cannot contain its own hash, and nothing here attempts one.
         doc["artifact_sha256"] = self.writer.artifact_sha256_index()
+        self.writer.write_session_summary(doc)
         doc["run_directory"] = str(self.root)
+        # Returned only, never embedded: the full-directory index (the summary
+        # included), reported under its own name so the embedded gate index keeps
+        # its meaning.
+        doc["full_directory_sha256"] = self.writer.artifact_sha256_index()
         return doc
 
 

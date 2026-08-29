@@ -323,3 +323,96 @@ def test_gate_record_reports_identity_equality_and_differences(tmp_path):
     assert [
         d["component"] for d in record2["identity"]["differences"]
     ] == ["freetoken_head"]
+
+
+# --- the real writer/reader handoff -------------------------------------------------------------
+
+
+def test_the_real_session_one_writer_hands_the_artifact_index_to_session_two(
+    tmp_path, mocked_server
+):
+    """The on-disk handoff, not the returned document and not write_session_one_gate().
+
+    A real (mocked-server) canonical session 1 runs through SessionExecution; its
+    session-summary.json is read back from disk and must carry the artifact SHA-256
+    index session 2's gate verifies against; a real session 2 then executes against
+    that session-1 directory, passes the gate, and starts the candidate first.
+    """
+    import hashlib
+    import json
+    from pathlib import Path
+
+    from inferswarm_phase1.campaign_arms import (
+        BASELINE_ARM_ID,
+        CANDIDATE_ARM_ID,
+    )
+
+    doc1 = SessionExecution(definition=_definition(tmp_path), session_number=1).execute()
+    assert doc1["execution_status"] == "COMPLETE"
+    assert doc1["validity"] == "VALID"
+
+    summary_path = Path(doc1["run_directory"]) / "session-summary.json"
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    index = summary["artifact_sha256"]
+    assert isinstance(index, dict) and index
+
+    # every gate-required artifact is indexed with an independently verifiable
+    # digest, and the embedded index is not self-referential
+    session_dir = summary_path.parent
+    for relative in ("plan.json", "provenance.json", "baseline_b1/runtime.json"):
+        recorded = index[relative]
+        assert _SHA256_RE.match(recorded)
+        actual = hashlib.sha256((session_dir / relative).read_bytes()).hexdigest()
+        assert actual == recorded
+    assert "session-summary.json" not in index
+
+    # the gate record built from this REAL session-1 directory passes
+    gate = session_one_gate_record(
+        Path(tmp_path) / "runs",
+        current_identity=default_campaign_identity(tmp_path),
+    )
+    assert gate["ok"] is True
+    assert gate["artifact_set"]["verified"] is True
+
+    # a real session 2 against that real session-1 directory: the gate passes and
+    # the candidate arm runs first
+    doc2 = SessionExecution(
+        definition=_definition(tmp_path),
+        session_number=2,
+        thermal_reset_attested="independently cooled reset observed",
+    ).execute()
+    assert [s["arm"] for s in mocked_server["started"]] == [
+        BASELINE_ARM_ID,  # session 1: baseline first
+        CANDIDATE_ARM_ID,
+        CANDIDATE_ARM_ID,  # session 2: candidate first
+        BASELINE_ARM_ID,
+    ]
+    assert doc2["execution_status"] == "COMPLETE"
+    assert doc2["validity"] == "VALID"
+
+
+def test_tampering_a_real_session_one_artifact_refuses_session_two_before_any_server(
+    tmp_path, mocked_server
+):
+    import json
+    from pathlib import Path
+
+    from inferswarm_phase1.campaign_arms import BASELINE_ARM_ID, CANDIDATE_ARM_ID
+
+    doc1 = SessionExecution(definition=_definition(tmp_path), session_number=1).execute()
+    assert doc1["execution_status"] == "COMPLETE"
+
+    # tamper with one of the gate-required files AFTER the real session 1 wrote it
+    runtime = Path(doc1["run_directory"]) / "baseline_b1" / "runtime.json"
+    tampered = json.loads(runtime.read_text(encoding="utf-8"))
+    tampered["runtime_config"] = {"sneaky": True}
+    runtime.write_text(json.dumps(tampered, indent=2), encoding="utf-8")
+
+    excinfo = _refuse_session_two(tmp_path)
+    assert "expected artifact set" in str(excinfo.value)
+    assert "runtime.json" in str(excinfo.value)
+    # session 1's two servers ran; session 2 never started one
+    assert [s["arm"] for s in mocked_server["started"]] == [
+        BASELINE_ARM_ID,
+        CANDIDATE_ARM_ID,
+    ]
