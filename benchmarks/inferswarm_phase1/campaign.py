@@ -127,6 +127,7 @@ from .campaign_validity import (
     SUPPLEMENTARY_REQUIRED_BLOCK_MISSING,
     BaselineIdentityError,
     CandidateContractError,
+    InstrumentationControlError,
     RuntimeContractError,
     SessionValidity,
     SupplementaryContractError,
@@ -156,6 +157,51 @@ BETWEEN_ARM_SETTLE_SECONDS = 3.0
 # One measured block per class = repetitions x output tokens decode steps; W1/W2 are
 # 512, so 10 x 512 = 5120 covers every class's window after the post-warmup reset.
 DEFAULT_TIMING_MAX_STEPS = 10 * 512
+
+# The frozen Phase-1 campaign instrumentation-control timeout: the server-side
+# operation budget sent with every POST /v1/moe/instrumentation reset/snapshot
+# request, in seconds. MEASURED on the canonical Session-1 build: the B1/W1
+# post-block snapshot of ~204,800 retained complete-layer timing records
+# (5,120 decode steps x 40 MoE layers) takes 136.93 s, so the previous frozen
+# 60 s budget returned HTTP 504 after a fully completed block. 300 s covers the
+# measured snapshot with margin while staying an explicit, auditable constant.
+# This is control-plane behavior only: it changes no performance threshold and
+# no measured inference interval.
+MOE_INSTRUMENTATION_TIMEOUT_SECONDS = 300.0
+
+# The HTTP client waits slightly longer than the server-side operation budget so
+# a server-produced timeout response (HTTP 504 with the engine's structured
+# status/request id) always wins over a local socket timeout.
+MOE_INSTRUMENTATION_HTTP_GRACE_SECONDS = 5.0
+
+
+def instrumentation_control_record() -> dict[str, Any]:
+    """The frozen control-plane budget for the engine-owned instrumentation windows.
+
+    Recorded in the campaign plan, every session plan, and provenance, so the
+    reset/snapshot control behavior is auditable. Deliberately distinct from
+    ``--server-timeout``: model startup and instrumentation snapshot collection
+    are different operations with different recorded budgets, and neither is
+    derived from the other.
+    """
+    return {
+        "endpoint": "/v1/moe/instrumentation",
+        "operations": ["reset", "snapshot"],
+        "operation_timeout_seconds": MOE_INSTRUMENTATION_TIMEOUT_SECONDS,
+        "http_client_timeout_seconds": (
+            MOE_INSTRUMENTATION_TIMEOUT_SECONDS + MOE_INSTRUMENTATION_HTTP_GRACE_SECONDS
+        ),
+        "frozen_before_execution": True,
+        "cli_override": None,
+        "note": (
+            "control-plane only: the operation budget sent with every "
+            "reset/snapshot request and the HTTP client budget waiting slightly "
+            "longer so a server-produced timeout response wins over a local "
+            "socket timeout; distinct from --server-timeout (model startup) and "
+            "from every measured inference interval; changing it moves no "
+            "performance threshold and no timing record"
+        ),
+    }
 
 _PREREQUISITE_KEYS = (
     "correctness_reference_v2_artifact_sha256",
@@ -501,6 +547,7 @@ def provenance_document(
         "prerequisites": load_prerequisites(
             settings.prerequisites_path, repo_head=head
         ),
+        "instrumentation_control": instrumentation_control_record(),
         "historical_phase0_baseline_commit": PHASE0_BASELINE_COMMIT,
         "historical_phase0_baseline_note": (
             "the Phase-0 baseline was measured on that commit; this campaign "
@@ -1258,6 +1305,7 @@ def plan_document(
             a.id: serve_command(a, definition.settings, port=0) for a in definition.arms
         },
         "env_overrides": definition.settings.env_overrides(),
+        "instrumentation_control": instrumentation_control_record(),
         "workload_manifest": manifest.record() if manifest is not None else None,
         "sessions": sessions,
         "primary_generation_counts": {
@@ -1443,7 +1491,26 @@ def validation_document(definition: CampaignDefinition) -> dict[str, Any]:
 # ----------------------------------------------------------------------------------------
 
 
+def _bounded_body_snippet(raw: bytes, limit: int = 200) -> str:
+    """A bounded, printable diagnostic of an unreadable response body."""
+    text = raw[:limit].decode("utf-8", errors="replace")
+    suffix = "..." if len(raw) > limit else ""
+    return text + suffix
+
+
 def _post_json(url: str, body: Mapping[str, Any], *, timeout: float) -> dict[str, Any]:
+    """POST one control request and decode its response, failing closed.
+
+    The instrumentation endpoint uses HTTP status codes for outcomes (200 ok,
+    409 busy, 422 unsupported, 504 timeout, 503 failed). ``urlopen`` raises
+    ``HTTPError`` for every non-2xx response, so the expected error statuses are
+    decoded here and returned as structured documents (tagged with
+    ``http_status``) for the caller to fail closed on; a body that is not a
+    JSON object, and any transport-level failure (URL/socket/timeout), become a
+    ``ServerError`` rather than a raw urllib exception terminating
+    SessionExecution.
+    """
+    import urllib.error
     import urllib.request
 
     request = urllib.request.Request(
@@ -1451,21 +1518,71 @@ def _post_json(url: str, body: Mapping[str, Any], *, timeout: float) -> dict[str
         data=json.dumps(dict(body)).encode("utf-8"),
         headers={"Content-Type": "application/json"},
     )
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return json.load(response)
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            raw = response.read()
+    except urllib.error.HTTPError as e:
+        try:
+            raw = e.read()
+        except OSError:
+            raw = b""
+        try:
+            decoded = json.loads(raw) if raw else None
+        except ValueError:
+            decoded = None
+        if isinstance(decoded, dict):
+            return {**decoded, "http_status": e.code}
+        raise ServerError(
+            f"HTTP {e.code} from POST {url} with a non-JSON response body: "
+            f"{_bounded_body_snippet(raw)!r}"
+        ) from e
+    except (urllib.error.URLError, OSError) as e:
+        raise ServerError(
+            f"POST {url} failed before a response arrived ({e!r})"
+        ) from e
+    try:
+        decoded = json.loads(raw)
+    except ValueError as e:
+        raise ServerError(
+            f"POST {url} returned a non-JSON body: {_bounded_body_snippet(raw)!r}"
+        ) from e
+    if not isinstance(decoded, dict):
+        raise ServerError(
+            f"POST {url} returned a non-object JSON body: {decoded!r}"
+        )
+    return decoded
 
 
 def moe_instrumentation(
-    origin: str, operation: str, *, timeout: float = 60.0
+    origin: str,
+    operation: str,
+    *,
+    timeout: float = MOE_INSTRUMENTATION_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
-    """POST /v1/moe/instrumentation — the engine-owned idle-boundary reset/snapshot."""
+    """POST /v1/moe/instrumentation — the engine-owned idle-boundary reset/snapshot.
+
+    The server-side operation budget is the frozen campaign constant (never
+    ``--server-timeout``) and the HTTP client waits ``timeout`` plus a small
+    grace so a server-produced timeout response wins over a local socket
+    timeout. Every non-ok outcome — including the expected HTTP error statuses
+    the server answers with — raises ``ServerError`` carrying the operation,
+    the HTTP status, the engine status, and the engine error/request id where
+    present. No retry, no hiding.
+    """
     response = _post_json(
         f"{origin}/v1/moe/instrumentation",
         {"operation": operation, "timeout": timeout},
-        timeout=timeout + 5,
+        timeout=timeout + MOE_INSTRUMENTATION_HTTP_GRACE_SECONDS,
     )
     if response.get("status") != "ok" or "payload" not in response:
-        raise ServerError(f"MoE instrumentation {operation} failed: {response}")
+        details = "; ".join(
+            f"{key}={response[key]!r}"
+            for key in ("http_status", "status", "error", "request_id")
+            if response.get(key) is not None
+        )
+        raise ServerError(
+            f"MoE instrumentation {operation} failed: {details or response!r}"
+        )
     return response["payload"]
 
 
@@ -1562,6 +1679,7 @@ class SessionExecution:
                 **session_plan,
                 "campaign_runner_version": CAMPAIGN_RUNNER_VERSION,
                 "protocol": self.definition.protocol.record(),
+                "instrumentation_control": instrumentation_control_record(),
                 "no_dynamic_shortening": True,
             }
         )
@@ -1928,6 +2046,37 @@ class SessionExecution:
 
     # ---- one block -------------------------------------------------------------------
 
+    def _instrumentation_boundary(
+        self, arm: CampaignArm, class_id: str, origin: str, operation: str
+    ) -> dict[str, Any]:
+        """One reset/snapshot control request at an engine-owned idle boundary.
+
+        A failed control operation cannot be retried or worked around: the
+        measured window's required evidence (mechanism counters and issue #5's
+        complete timing population) would not exist. The failure invalidates
+        the session and stops it here — every generation already collected is
+        preserved unchanged and every remaining planned generation, of this arm
+        and of every later arm, is preserved as not-executed evidence.
+        """
+        try:
+            return moe_instrumentation(
+                origin, operation, timeout=MOE_INSTRUMENTATION_TIMEOUT_SECONDS
+            )
+        except ServerError as e:
+            reason = (
+                f"{arm.id}/{class_id}: the instrumentation {operation} boundary "
+                f"failed: {e}"
+            )
+            self.validity.add(
+                SERVER_FAILED, reason, arm_id=arm.id, class_id=class_id
+            )
+            raise InstrumentationControlError(
+                reason
+                + ". The session stops here: the remaining planned generations "
+                "are preserved as not-executed evidence; no retry, no splicing, "
+                "and no performance ratio is computed"
+            ) from e
+
     def _run_block(
         self,
         arm: CampaignArm,
@@ -1949,10 +2098,10 @@ class SessionExecution:
         # The measurement window is the measured repetitions: counters and timing are
         # reset at an engine-owned idle boundary after the discarded warmups (warmup
         # residency is preserved), and snapshotted after the last measured repetition.
-        reset_snapshot = moe_instrumentation(origin, "reset")
+        reset_snapshot = self._instrumentation_boundary(arm, class_id, origin, "reset")
         for step in measured:
             self._generate(arm, step, workload, origin, body)
-        window = moe_instrumentation(origin, "snapshot")
+        window = self._instrumentation_boundary(arm, class_id, origin, "snapshot")
         self.writer.write_block_mechanism(
             arm.id,
             class_id,

@@ -175,6 +175,22 @@ class SupplementaryContractError(RuntimeContractError):
     """
 
 
+class InstrumentationControlError(RuntimeContractError):
+    """A reset/snapshot control request failed on the engine-owned boundary.
+
+    The engine answered the instrumentation control request with a non-ok
+    outcome (busy/unsupported/timeout/failed) — or the control request never
+    completed — so the measured window's required mechanism/timing evidence
+    (issue #5's complete timing population) cannot be collected. The session
+    stops immediately: every generation already collected is preserved
+    unchanged, every remaining planned generation of this arm AND every later
+    arm is preserved as not-executed evidence, the session is INVALID/
+    INCOMPLETE, ``run-session`` returns nonzero, and no retry, no splicing,
+    and no performance ratio exists. This is control-plane behavior only: no
+    timing record is truncated and no performance threshold moves.
+    """
+
+
 def _lookup(doc: Any, dotted: str) -> Any:
     node = doc
     for part in dotted.split("."):
