@@ -27,7 +27,7 @@ def dist(v: list[float]) -> dict:
 
 def ordinal(uuid: str) -> int:
     for i in range(torch.cuda.device_count()):
-        if str(torch.cuda.get_device_properties(i).uuid).lower() == uuid.lower(): return i
+        if str(torch.cuda.get_device_properties(i).uuid).lower() == uuid.removeprefix("GPU-").lower(): return i
     raise RuntimeError(f"required physical GPU absent: {uuid}")
 
 
