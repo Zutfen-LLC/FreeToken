@@ -85,9 +85,15 @@ def test_reconstruction_preserves_route_order_before_one_sum():
     assert torch.equal(routes.sum(dim=1), torch.tensor([[9., 6.]]))
 
 
+def test_ab_reconstruction_uses_distinct_second_output_scratch():
+    source = textwrap.dedent(inspect.getsource(InferSwarmD3GraphMultiworkerExecutor.decode))
+    assert "destination=self.gpu0_reconstruction if branch_index==0 else self.gpu0_final_routes" in source
+    assert "torch.add(routes,getattr(self,f\"gpu0_{x}_return_routes\"),out=destination)" in source
+
+
 def test_graph_contract_and_decode_host_firewall_are_explicit():
     executor = object.__new__(InferSwarmD3GraphMultiworkerExecutor)
-    executor._capture_complete = False; executor._graph_recapture_count = 0; executor.device_counts = torch.zeros((1, 5), dtype=torch.int64)
+    executor._capture_complete = False; executor._graph_recapture_count = 0; executor._fallback_count = 0; executor._failure_count = 0; executor.device_counts = torch.zeros((1, 5), dtype=torch.int64)
     for captured in ([], [2], [1, 2]):
         with pytest.raises(RuntimeError, match="silent eager fallback"):
             executor.set_graph_state(captured)
@@ -106,3 +112,4 @@ def test_report_constants_and_absent_state():
     assert D3_FANOUT_SHAPE == "CONCURRENT_BOUNDED_TWO_WORKER"
     report = absent_d3_graph_multiworker_report()
     assert report["enabled"] is False and report["graph_active"] is False and report["eager_fallback"] is False
+    assert report["fallback_count"] == 0 and report["failure_count"] == 0
