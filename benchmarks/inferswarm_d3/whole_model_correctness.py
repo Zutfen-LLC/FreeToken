@@ -44,6 +44,7 @@ def command(root: Path, model: str, port: int, shape: str, placement: str) -> li
               "--host", "127.0.0.1", "--port", str(port), "--gpu", PRIMARY,
               "--moe-backend", "offload", "--moe-cpu-layers", "0", "--nvfp4-backend", "triton",
               "--moe-cache-size", "3774", "--max-running-requests", "1", "--cuda-graph-max-bs", "1",
+              "--kv-reserve-tokens", "17075", "--num-tokens", "17075",
               "--sampling-defaults", "none", "--inferswarm-correctness-diagnostics"]
     if shape != "local":
         result += ["--inferswarm-experimental-d3-graph-multiworker", "--inferswarm-d3-active-workers", shape,

@@ -9,6 +9,7 @@ def test_local_command_is_gpu0_graph_only(tmp_path):
     assert "--inferswarm-experimental-d2-graph-remote" not in got
     assert got[got.index("--cuda-graph-max-bs") + 1] == "1"
     assert got[got.index("--moe-cache-size") + 1] == "3774"
+    assert got[got.index("--num-tokens") + 1] == "17075"
 
 
 def test_d3_commands_only_bind_active_uuid_workers(tmp_path):
