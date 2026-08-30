@@ -30,9 +30,9 @@ def probe_d3_workers(*, active_workers: tuple[str, ...] = ("a", "b"), worker_a_s
     selectors = {"a": (worker_a_spec, worker_a_uuid, WORKER_A_UUID), "b": (worker_b_spec, worker_b_uuid, WORKER_B_UUID)}
     if not active_workers or any(label not in selectors for label in active_workers):
         raise ValueError("D3 active worker shape is invalid")
-    if any((uuid or spec) is None or (uuid or spec).upper() != expected for label in active_workers for spec, uuid, expected in (selectors[label],)):
+    if any((uuid or spec) is None or (uuid or spec).upper() != expected.upper() for label in active_workers for spec, uuid, expected in (selectors[label],)):
         raise ValueError("D3 worker selectors must resolve to the frozen worker-A and worker-B physical UUIDs")
-    if primary_resolved_uuid is not None and primary_resolved_uuid.upper() != PRIMARY_UUID:
+    if primary_resolved_uuid is not None and primary_resolved_uuid.upper() != PRIMARY_UUID.upper():
         raise ValueError("D3 primary must resolve to the frozen GPU0 physical UUID")
     probed = {}
     for label in active_workers:
@@ -42,7 +42,7 @@ def probe_d3_workers(*, active_workers: tuple[str, ...] = ("a", "b"), worker_a_s
     uuids = (a or b).primary.uuid, *(worker.secondary.uuid for worker in probed.values())
     if any(value is None for value in uuids) or len({value.upper() for value in uuids}) != 1 + len(active_workers):
         raise ValueError("D3 primary, worker A, and worker B must be three distinct physical CUDA devices")
-    if any(worker.secondary.uuid.upper() != selectors[label][2] for label, worker in probed.items()) or (a or b).primary.uuid.upper() != PRIMARY_UUID:
+    if any(worker.secondary.uuid.upper() != selectors[label][2].upper() for label, worker in probed.items()) or (a or b).primary.uuid.upper() != PRIMARY_UUID.upper():
         raise ValueError("D3 CUDA device UUID verification disagrees with the frozen physical assignment")
     return a, b
 

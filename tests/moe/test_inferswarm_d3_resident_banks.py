@@ -8,6 +8,20 @@ import freetoken.moe.inferswarm_d3_resident_banks as d3_banks
 from freetoken.moe.inferswarm_d3_placement import load_d3_placement
 
 
+def test_d3_uuid_guard_accepts_driver_canonical_prefix_case(monkeypatch):
+    """CUDA/NVML canonicalizes GPU- while frozen constants retain their source case."""
+    class Worker:
+        primary = type("P", (), {"uuid": d3_banks.PRIMARY_UUID})()
+        secondary = type("S", (), {"uuid": d3_banks.WORKER_A_UUID, "visible_ordinal": 1})()
+    monkeypatch.setattr(d3_banks, "probe_secondary_device", lambda *args, **kwargs: Worker())
+    a, b = d3_banks.probe_d3_workers(
+        active_workers=("a",), worker_a_spec=d3_banks.WORKER_A_UUID.upper(), worker_b_spec=None,
+        worker_a_uuid=d3_banks.WORKER_A_UUID.upper(), worker_b_uuid=None,
+        primary_visible_ordinal=0, primary_resolved_uuid=d3_banks.PRIMARY_UUID.upper(),
+    )
+    assert a is not None and b is None
+
+
 ARTIFACT = "/home/zutfen/inferswarm/docs/investigations/data/phase1r-d3-three-device-placement.json"
 
 
