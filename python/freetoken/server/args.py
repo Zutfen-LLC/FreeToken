@@ -61,9 +61,11 @@ class ServerArgs(SchedulerConfig):
     # D3 is intentionally a separate two-worker research interface.  It does not alter
     # canonical P3 or the D2 single-worker flag/placement contract.
     inferswarm_experimental_d3_graph_multiworker: bool = False
+    inferswarm_experimental_d4_capability_weighted: bool = False
     # Fixed startup-only D3 execution shape; never selected on a decode token.
     inferswarm_d3_active_workers: str = "ab"
     inferswarm_d3_placement: str | None = None
+    inferswarm_d4_placement: str | None = None
     inferswarm_d3_worker_a_gpu: str | None = None
     inferswarm_d3_worker_b_gpu: str | None = None
     inferswarm_d3_worker_a_gpu_assigned: str | None = None
@@ -331,8 +333,10 @@ def parse_args(
         ),
     )
     parser.add_argument("--inferswarm-experimental-d3-graph-multiworker", action="store_true", default=ServerArgs.inferswarm_experimental_d3_graph_multiworker, help="EXPERIMENTAL D3 captured GPU0/A/B fan-out; separate from canonical and D2 paths")
+    parser.add_argument("--inferswarm-experimental-d4-capability-weighted", action="store_true", default=ServerArgs.inferswarm_experimental_d4_capability_weighted, help="EXPERIMENTAL D4 placement on the unchanged D3 executor")
     parser.add_argument("--inferswarm-d3-active-workers", choices=("a", "b", "ab"), default=ServerArgs.inferswarm_d3_active_workers, help="EXPERIMENTAL D3 fixed captured worker shape (a, b, or ab)")
     parser.add_argument("--inferswarm-d3-placement", type=str, default=ServerArgs.inferswarm_d3_placement, help="SHA-pinned frozen D3 placement artifact")
+    parser.add_argument("--inferswarm-d4-placement", type=str, default=ServerArgs.inferswarm_d4_placement, help="SHA-pinned frozen D4 placement artifact")
     parser.add_argument("--inferswarm-d3-worker-a-gpu", type=_lazy_single_gpu_arg, default=ServerArgs.inferswarm_d3_worker_a_gpu, help="D3 worker A GPU UUID or visible selector")
     parser.add_argument("--inferswarm-d3-worker-b-gpu", type=_lazy_single_gpu_arg, default=ServerArgs.inferswarm_d3_worker_b_gpu, help="D3 worker B GPU UUID or visible selector")
 
@@ -819,6 +823,7 @@ def parse_args(
         parser.error("--inferswarm-remote-decode requires --inferswarm-placement")
     d2 = kwargs["inferswarm_experimental_d2_graph_remote"]
     d3 = kwargs["inferswarm_experimental_d3_graph_multiworker"]
+    d4 = kwargs["inferswarm_experimental_d4_capability_weighted"]
     if d2 and kwargs["inferswarm_remote_decode"]:
         parser.error(
             "--inferswarm-experimental-d2-graph-remote is mutually exclusive with "
@@ -836,9 +841,16 @@ def parse_args(
         parser.error("--inferswarm-experimental-d3-graph-multiworker is mutually exclusive with canonical and D2 remote decode")
     d3_active = kwargs["inferswarm_d3_active_workers"]
     required_d3_workers = (("a", kwargs["inferswarm_d3_worker_a_gpu"]), ("b", kwargs["inferswarm_d3_worker_b_gpu"]))
-    if d3 and (kwargs["inferswarm_d3_placement"] is None or any(selector is None for label, selector in required_d3_workers if label in d3_active)):
-        parser.error(f"D3 graph multiworker shape {d3_active!r} requires --inferswarm-d3-placement and its active worker selector(s)")
-    if not d3 and (kwargs["inferswarm_d3_active_workers"] != "ab" or any(kwargs[name] is not None for name in ("inferswarm_d3_placement", "inferswarm_d3_worker_a_gpu", "inferswarm_d3_worker_b_gpu"))):
+    if d4 and not d3:
+        parser.error("D4 capability weighting requires the unchanged D3 graph executor flag")
+    placement = kwargs["inferswarm_d4_placement"] if d4 else kwargs["inferswarm_d3_placement"]
+    if d3 and (placement is None or any(selector is None for label, selector in required_d3_workers if label in d3_active)):
+        parser.error(f"D3/D4 graph multiworker shape {d3_active!r} requires its placement and active worker selector(s)")
+    if d4 and kwargs["inferswarm_d3_placement"] is not None:
+        parser.error("D4 must use --inferswarm-d4-placement")
+    if not d4 and kwargs["inferswarm_d4_placement"] is not None:
+        parser.error("--inferswarm-d4-placement requires the D4 experimental flag")
+    if not d3 and (kwargs["inferswarm_d3_active_workers"] != "ab" or any(kwargs[name] is not None for name in ("inferswarm_d3_placement", "inferswarm_d4_placement", "inferswarm_d3_worker_a_gpu", "inferswarm_d3_worker_b_gpu"))):
         parser.error("D3 placement and worker selectors require --inferswarm-experimental-d3-graph-multiworker")
 
     # resolve some arguments

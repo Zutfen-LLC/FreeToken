@@ -30,6 +30,7 @@ PRIMARY = "GPU-d5c05739-96c1-7e49-89b6-bf54c2121c55"
 WORKER_A = "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176"
 WORKER_B = "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099"
 PLACEMENT_SHA = "6677fe1c506376a55aa8dcabb8d5761dc0373ced9d9b053209991059556d5887"
+D4_PLACEMENT_SHA = "283595b7559bb3aa46a08c7d00cfef1e0a77eb62967d6392c618a63f35d34cdf"
 
 
 def _git_head() -> str:
@@ -132,6 +133,10 @@ def _args(ns: argparse.Namespace):
             "--moe-backend", "offload", "--moe-cpu-layers", "0", "--nvfp4-backend", "triton",
             "--moe-cache-size", "3774", "--max-running-requests", "1", "--cuda-graph-max-bs", "1",
             "--sampling-defaults", "none"]
+    if ns.d4:
+        argv += ["--inferswarm-experimental-d4-capability-weighted"]
+        index = argv.index("--inferswarm-d3-placement")
+        argv[index] = "--inferswarm-d4-placement"
     if ns.shape in ("a", "ab"): argv += ["--inferswarm-d3-worker-a-gpu", WORKER_A]
     if ns.shape in ("b", "ab"): argv += ["--inferswarm-d3-worker-b-gpu", WORKER_B]
     parsed, _ = parse_args(argv)
@@ -159,7 +164,8 @@ def _run_shape(ns: argparse.Namespace) -> dict[str, Any]:
             if report.get(key) != want: raise RuntimeError(f"D3 graph certification failed {key}: {report.get(key)!r}")
         if report["active_workers"] != expected_active or report["captured_batch_sizes"] != [1]:
             raise RuntimeError("D3 captured shape disagrees with requested shape")
-        if report["corrected_placement_sha256"] != PLACEMENT_SHA: raise RuntimeError("placement digest disagreed")
+        expected_sha = D4_PLACEMENT_SHA if ns.d4 else PLACEMENT_SHA
+        if report["corrected_placement_sha256"] != expected_sha: raise RuntimeError("placement digest disagreed")
         if report["primary_uuid"] != PRIMARY or report.get("worker_a_uuid") not in (None, WORKER_A) or report.get("worker_b_uuid") not in (None, WORKER_B):
             raise RuntimeError("runtime physical UUID disagreed")
         before = _vm(); measured_start = time.monotonic()
@@ -174,7 +180,7 @@ def _run_shape(ns: argparse.Namespace) -> dict[str, Any]:
         diagnostics = _one_layer_diagnostics(engine, d3, ns.placement, ns.shape, ns.replays)
         after = _vm()
         return {"schema": "inferswarm.d3.physical-primitive/1", "physical_tested_freetoken_commit": _git_head(),
-                "infer_swarm_placement_commit": "5c916e799aeb237ab518b17639fa948e6b00ff4d", "corrected_placement_sha256": PLACEMENT_SHA,
+                "infer_swarm_placement_commit": "c7e0dc0a", "corrected_placement_sha256": expected_sha,
                 "model": ns.model, "model_revision": ns.revision, "shape": ns.shape, "startup_seconds": startup,
                 "physical_runtime_seconds_excluding_startup": time.monotonic() - measured_start,
                 "whole_model_graph": report, "post_graph_smoke_ownership": d3.snapshot()["ownership"], "one_layer": diagnostics,
@@ -187,6 +193,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--model", required=True); p.add_argument("--revision", required=True); p.add_argument("--placement", required=True)
     p.add_argument("--shape", choices=("local", "a", "b", "ab"), required=True); p.add_argument("--output", required=True); p.add_argument("--replays", type=int, default=100)
+    p.add_argument("--d4", action="store_true")
     ns = p.parse_args()
     # local is graph-enabled baseline and intentionally has no D3 workers; D3 physical order begins at ab.
     if ns.shape == "local": raise RuntimeError("local reference worker is not implemented in this D3-only process; run after D3 capture")

@@ -370,7 +370,9 @@ class Engine:
             getattr(config, "inferswarm_experimental_d2_graph_remote", False)
         )
         d3_multiworker = bool(getattr(config, "inferswarm_experimental_d3_graph_multiworker", False))
-        d3_placement_path = getattr(config, "inferswarm_d3_placement", None)
+        d4_weighted = bool(getattr(config, "inferswarm_experimental_d4_capability_weighted", False))
+        d3_placement_path = (getattr(config, "inferswarm_d4_placement", None) if d4_weighted
+                             else getattr(config, "inferswarm_d3_placement", None))
         if getattr(config, "inferswarm_correctness_diagnostics", False):
             from .correctness_diagnostics import CorrectnessDiagnostics
 
@@ -409,9 +411,12 @@ class Engine:
             d3_active = tuple(getattr(config, "inferswarm_d3_active_workers", "ab"))
             if d3_placement_path is None or any(getattr(config, f"inferswarm_d3_worker_{label}_gpu", None) is None for label in d3_active):
                 raise ValueError("D3 multiworker requires frozen placement and its active worker selector(s)")
-            from freetoken.moe.inferswarm_d3_placement import load_d3_placement
+            if d4_weighted:
+                from freetoken.moe.inferswarm_d4_placement import load_d4_placement as load_architecture_placement
+            else:
+                from freetoken.moe.inferswarm_d3_placement import load_d3_placement as load_architecture_placement
             from freetoken.moe.inferswarm_d3_resident_banks import probe_d3_workers
-            self.inferswarm_d3_placement = load_d3_placement(d3_placement_path)
+            self.inferswarm_d3_placement = load_architecture_placement(d3_placement_path)
             self.inferswarm_d3_workers = probe_d3_workers(
                 active_workers=d3_active,
                 worker_a_spec=config.inferswarm_d3_worker_a_gpu, worker_b_spec=config.inferswarm_d3_worker_b_gpu,
