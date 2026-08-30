@@ -901,8 +901,9 @@ class Engine:
             self._init_inferswarm_remote_decode(config, cache, layers)
         if bool(getattr(config, "inferswarm_experimental_d2_graph_remote", False)):
             self._init_inferswarm_d2_graph_remote(config, cache, layers)
-        if d3_multiworker:
-            if d5_compact: self._init_inferswarm_d5_compact_routes(config, cache, layers)
+        d5_compact_runtime = bool(getattr(config, "inferswarm_experimental_d5_compact_routes", False))
+        if bool(getattr(config, "inferswarm_experimental_d3_graph_multiworker", False)) or d5_compact_runtime:
+            if d5_compact_runtime: self._init_inferswarm_d5_compact_routes(config, cache, layers)
             else: self._init_inferswarm_d3_graph_multiworker(config, cache, layers)
         self._init_moe_layer_timing(config, cache)
         self.ctx.moe_offload_cache = cache
