@@ -1138,8 +1138,12 @@ def _construct_storage_bulk(
                 observed.view(placement.remote_slots, -1).view(torch.uint8)).any(dim=1)
             slot = int(unequal.nonzero()[0].item())
             raise RuntimeError(f"bulk resident byte mismatch for {kind} {name!r}, remote_slot {slot}")
-        source_sha = _sha256_tensor_bytes(staging)
-        resident_sha = _sha256_tensor_bytes(observed)
+        # OpenSSL-backed hashlib releases the GIL. Hash the already byte-compared
+        # source and resident buffers concurrently without changing digest order.
+        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="d5-sha") as pool:
+            source_future = pool.submit(_sha256_tensor_bytes, staging)
+            resident_future = pool.submit(_sha256_tensor_bytes, observed)
+            source_sha, resident_sha = source_future.result(), resident_future.result()
         item["cpu_equality_hash_s"] += time.perf_counter() - tick
         if source_sha != resident_sha:
             raise RuntimeError(f"bulk resident aggregate hash mismatch for {kind} {name!r}")
