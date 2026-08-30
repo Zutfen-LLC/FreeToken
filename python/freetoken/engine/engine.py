@@ -356,6 +356,9 @@ class Engine:
         self.inferswarm_resident_bank = None
         self.inferswarm_remote_decode = None
         self.inferswarm_d2_graph_remote = None
+        self.inferswarm_d3_placement = None
+        self.inferswarm_d3_workers = None
+        self.inferswarm_d3_resident_banks = None
         self.inferswarm_correctness_diagnostics = None
         self.moe_layer_timing = None
         self._moe_measurement_step = 0
@@ -365,6 +368,8 @@ class Engine:
         d2_graph_remote = bool(
             getattr(config, "inferswarm_experimental_d2_graph_remote", False)
         )
+        d3_multiworker = bool(getattr(config, "inferswarm_experimental_d3_graph_multiworker", False))
+        d3_placement_path = getattr(config, "inferswarm_d3_placement", None)
         if getattr(config, "inferswarm_correctness_diagnostics", False):
             from .correctness_diagnostics import CorrectnessDiagnostics
 
@@ -399,6 +404,18 @@ class Engine:
             raise ValueError(
                 "D2 graph remote requires CUDA graph BS1 and max running requests 1"
             )
+        if d3_multiworker:
+            if d3_placement_path is None or getattr(config, "inferswarm_d3_worker_a_gpu", None) is None or getattr(config, "inferswarm_d3_worker_b_gpu", None) is None:
+                raise ValueError("D3 multiworker requires frozen placement and both worker selectors")
+            from freetoken.moe.inferswarm_d3_placement import load_d3_placement
+            from freetoken.moe.inferswarm_d3_resident_banks import probe_d3_workers
+            self.inferswarm_d3_placement = load_d3_placement(d3_placement_path)
+            self.inferswarm_d3_workers = probe_d3_workers(
+                worker_a_spec=config.inferswarm_d3_worker_a_gpu, worker_b_spec=config.inferswarm_d3_worker_b_gpu,
+                worker_a_uuid=getattr(config, "inferswarm_d3_worker_a_gpu_assigned", None), worker_b_uuid=getattr(config, "inferswarm_d3_worker_b_gpu_assigned", None),
+                primary_visible_ordinal=self.device.index,
+                primary_resolved_uuid=(config.gpu_assigned[config.tp_info.rank] if getattr(config, "gpu_assigned", None) else None),
+            )
         if secondary_spec is not None:
             from freetoken.moe.inferswarm_secondary import probe_secondary_device
 
@@ -430,6 +447,8 @@ class Engine:
             raise ValueError(
                 "--inferswarm-placement requires an offload-family MoE backend so P2 can reuse the existing normalized host expert banks"
             )
+        if d3_multiworker and not is_offload_moe_backend(config.moe_backend):
+            raise ValueError("D3 resident storage requires an offload-family MoE backend")
         if remote_decode and config.moe_backend != "offload":
             raise ValueError(
                 "--inferswarm-remote-decode requires resolved --moe-backend offload"
@@ -834,6 +853,8 @@ class Engine:
             cache.set_alphas(banks.gate_up_alpha, banks.down_alpha)
             if self.inferswarm_placement is not None:
                 self._init_inferswarm_resident_bank(config, banks)
+            if self.inferswarm_d3_placement is not None:
+                self._init_inferswarm_d3_resident_banks(config, banks)
         else:
             cache = cache_factory(config, self.device)
             cache.decode_target = decode_target
@@ -898,6 +919,16 @@ class Engine:
             f"{report.placement.remote_slots} slots, "
             f"{report.total_live_resident_bytes} live bytes on "
             f"cuda:{report.secondary_visible_ordinal}; storage initialization complete"
+        )
+
+    def _init_inferswarm_d3_resident_banks(self, config: EngineConfig, banks) -> None:
+        """D3 storage-only startup: no MoE layer attachment, route ownership, or graph work."""
+        from freetoken.moe.inferswarm_d3_resident_banks import load_d3_resident_banks
+        assert self.inferswarm_d3_placement is not None and self.inferswarm_d3_workers is not None
+        self.inferswarm_d3_resident_banks = load_d3_resident_banks(
+            self.inferswarm_d3_placement, banks, config.model_config,
+            self.inferswarm_d3_workers[0], self.inferswarm_d3_workers[1],
+            primary_visible_ordinal=self.device.index,
         )
 
     def _init_inferswarm_remote_decode(
