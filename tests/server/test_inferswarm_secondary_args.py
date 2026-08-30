@@ -181,9 +181,15 @@ def test_d3_is_separate_and_requires_two_distinct_workers():
     assert args.inferswarm_d3_worker_b_gpu == "2"
 
 
-def test_d3_refuses_missing_worker_or_wrong_graph_shape():
+def test_d3_single_worker_shapes_require_only_their_active_selector():
+    a = _parse("--inferswarm-experimental-d3-graph-multiworker", "--inferswarm-d3-active-workers", "a", "--inferswarm-d3-placement", "/tmp/d3.json", "--inferswarm-d3-worker-a-gpu", "1", "--cuda-graph-max-bs", "1", "--max-running-requests", "1")
+    b = _parse("--inferswarm-experimental-d3-graph-multiworker", "--inferswarm-d3-active-workers", "b", "--inferswarm-d3-placement", "/tmp/d3.json", "--inferswarm-d3-worker-b-gpu", "2", "--cuda-graph-max-bs", "1", "--max-running-requests", "1")
+    assert a.inferswarm_d3_active_workers == "a" and b.inferswarm_d3_active_workers == "b"
+
+
+def test_d3_refuses_missing_active_worker_or_wrong_graph_shape():
     with pytest.raises(SystemExit):
-        _parse("--inferswarm-experimental-d3-graph-multiworker", "--inferswarm-d3-placement", "/tmp/d3.json", "--inferswarm-d3-worker-a-gpu", "1")
+        _parse("--inferswarm-experimental-d3-graph-multiworker", "--inferswarm-d3-active-workers", "b", "--inferswarm-d3-placement", "/tmp/d3.json", "--inferswarm-d3-worker-a-gpu", "1")
     with pytest.raises(SystemExit):
         _parse("--inferswarm-experimental-d3-graph-multiworker", "--inferswarm-d3-placement", "/tmp/d3.json", "--inferswarm-d3-worker-a-gpu", "1", "--inferswarm-d3-worker-b-gpu", "2", "--cuda-graph-max-bs", "0", "--max-running-requests", "1")
 

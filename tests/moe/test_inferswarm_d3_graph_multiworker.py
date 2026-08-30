@@ -43,6 +43,24 @@ def test_lookup_partition_and_fallbacks_cover_every_identity():
     assert all(layer * 256 + int(expert) in set(placement.local_remainder) for layer, expert in enumerate(fallback))
 
 
+@pytest.mark.parametrize("active, remote, local_count", [(("a",), "a", 7240), (("b",), "b", 7240), (("a", "b"), "ab", 4240)])
+def test_fixed_shape_runtime_ownership_and_fallback_domain(active, remote, local_count):
+    placement = _placement()
+    a, b = build_d3_route_lookups(placement, torch.device("cpu"), active)
+    assert (a is not None) == ("a" in active)
+    assert (b is not None) == ("b" in active)
+    remote_ids = set()
+    if a is not None: remote_ids.update(torch.nonzero(a >= 0)[:, 0].tolist())
+    # Table cardinality, instead of a fabricated inactive remote table.
+    assert sum(int((x >= 0).sum()) for x in (a, b) if x is not None) == 3000 * len(active)
+    fallback = build_d3_local_fallback_ids(placement, torch.device("cpu"), active)
+    local = set(placement.local_remainder)
+    if "a" not in active: local.update(placement.worker_a.flat_ids_in_rank_order)
+    if "b" not in active: local.update(placement.worker_b.flat_ids_in_rank_order)
+    assert len(local) == local_count
+    assert all(layer * 256 + int(expert) in local for layer, expert in enumerate(fallback))
+
+
 def test_fixed_width_classification_has_one_owner_and_zero_weight_dummies():
     placement = _placement(); a, b = build_d3_route_lookups(placement, torch.device("cpu")); fallback = build_d3_local_fallback_ids(placement, torch.device("cpu"))
     # A, B, and local routes mixed in original order for layer zero.

@@ -406,12 +406,14 @@ class Engine:
                 "D2 graph remote requires CUDA graph BS1 and max running requests 1"
             )
         if d3_multiworker:
-            if d3_placement_path is None or getattr(config, "inferswarm_d3_worker_a_gpu", None) is None or getattr(config, "inferswarm_d3_worker_b_gpu", None) is None:
-                raise ValueError("D3 multiworker requires frozen placement and both worker selectors")
+            d3_active = tuple(getattr(config, "inferswarm_d3_active_workers", "ab"))
+            if d3_placement_path is None or any(getattr(config, f"inferswarm_d3_worker_{label}_gpu", None) is None for label in d3_active):
+                raise ValueError("D3 multiworker requires frozen placement and its active worker selector(s)")
             from freetoken.moe.inferswarm_d3_placement import load_d3_placement
             from freetoken.moe.inferswarm_d3_resident_banks import probe_d3_workers
             self.inferswarm_d3_placement = load_d3_placement(d3_placement_path)
             self.inferswarm_d3_workers = probe_d3_workers(
+                active_workers=d3_active,
                 worker_a_spec=config.inferswarm_d3_worker_a_gpu, worker_b_spec=config.inferswarm_d3_worker_b_gpu,
                 worker_a_uuid=getattr(config, "inferswarm_d3_worker_a_gpu_assigned", None), worker_b_uuid=getattr(config, "inferswarm_d3_worker_b_gpu_assigned", None),
                 primary_visible_ordinal=self.device.index,
@@ -933,6 +935,7 @@ class Engine:
         self.inferswarm_d3_resident_banks = load_d3_resident_banks(
             self.inferswarm_d3_placement, banks, config.model_config,
             self.inferswarm_d3_workers[0], self.inferswarm_d3_workers[1],
+            active_workers=tuple(getattr(config, "inferswarm_d3_active_workers", "ab")),
             primary_visible_ordinal=self.device.index,
         )
 
@@ -1050,12 +1053,13 @@ class Engine:
         )
         banks, workers, placement = self.inferswarm_d3_resident_banks, self.inferswarm_d3_workers, self.inferswarm_d3_placement
         assert banks is not None and workers is not None and placement is not None
-        validate_d3_runtime(config, cache, banks, workers)
-        lookup_a, lookup_b = build_d3_route_lookups(placement, self.device)
+        active_workers = tuple(getattr(config, "inferswarm_d3_active_workers", "ab"))
+        validate_d3_runtime(config, cache, banks, workers, active_workers)
+        lookup_a, lookup_b = build_d3_route_lookups(placement, self.device, active_workers)
         executor = InferSwarmD3GraphMultiworkerExecutor(
             resident_banks=banks, worker_a_device=workers[0], worker_b_device=workers[1], primary_device=self.device,
             worker_a_slot_lookup=lookup_a, worker_b_slot_lookup=lookup_b,
-            local_fallback_ids=build_d3_local_fallback_ids(placement, self.device),
+            local_fallback_ids=build_d3_local_fallback_ids(placement, self.device, active_workers), active_workers=active_workers,
             hidden_size=int(config.model_config.hidden_size), top_k=int(config.model_config.num_experts_per_tok), hidden_dtype=config.dtype,
             num_layers=int(config.model_config.num_moe_layers), intermediate_size=int(config.model_config.moe_intermediate_size),
         )
@@ -1063,7 +1067,7 @@ class Engine:
             layer.inferswarm_d3_graph_multiworker = executor
         cache.inferswarm_d3_graph_multiworker = executor
         self.inferswarm_d3_graph_multiworker = executor
-        logger.info_rank0("InferSwarm D3 graph multiworker attached: independent A/B fan-out")
+        logger.info_rank0(f"InferSwarm D3 graph attached: fixed active workers {','.join(active_workers)}")
 
     def _resolve_hybrid_fetch(self, config: EngineConfig, cache) -> None:
         """Resolve --moe-hybrid-max-fetch -1 (auto) into a bandwidth-matched fetch fraction.

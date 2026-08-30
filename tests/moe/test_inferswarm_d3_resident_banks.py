@@ -62,3 +62,17 @@ def test_d3_rejects_same_worker_cuda_device_before_allocation(monkeypatch):
     monkeypatch.setattr(d3_banks, "load_secondary_resident_bank", lambda *_args, **_kwargs: pytest.fail("must not allocate"))
     with pytest.raises(ValueError, match="distinct CUDA devices"):
         d3_banks.load_d3_resident_banks(load_d3_placement(ARTIFACT), object(), object(), _device(1, "A"), _device(1, "B"), primary_visible_ordinal=0)
+
+
+@pytest.mark.parametrize("active, expected", [(("a",), ["worker_a"]), (("b",), ["worker_b"])])
+def test_single_worker_shape_never_allocates_inactive_bank(monkeypatch, active, expected):
+    calls = []
+    def fake_load(worker_placement, _banks, _config, device, **_kwargs):
+        calls.append(worker_placement.canonical_placement)
+        return _bank(worker_placement, device.secondary.visible_ordinal)
+    monkeypatch.setattr(d3_banks, "load_secondary_resident_bank", fake_load)
+    pair = d3_banks.load_d3_resident_banks(load_d3_placement(ARTIFACT), object(), object(), _device(1, "A"), _device(2, "B"), active_workers=active, primary_visible_ordinal=0)
+    assert calls == expected
+    assert pair.total_native_expert_bytes == 5_326_848_000
+    assert (pair.worker_a is not None) == ("a" in active)
+    assert (pair.worker_b is not None) == ("b" in active)

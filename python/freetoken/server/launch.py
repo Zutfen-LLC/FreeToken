@@ -156,9 +156,10 @@ def _resolve_server_gpu_args(server_args: ServerArgs) -> ServerArgs:
                     f"--inferswarm-secondary-gpu resolves to the same physical GPU as the primary ({primary_uuid})"
                 )
 
+    d3_active = tuple(getattr(server_args, "inferswarm_d3_active_workers", "ab"))
     d3_assigned = []
     for label, selector in (("a", server_args.inferswarm_d3_worker_a_gpu), ("b", server_args.inferswarm_d3_worker_b_gpu)):
-        if selector is None:
+        if label not in d3_active or selector is None:
             d3_assigned.append(None)
             continue
         try:
