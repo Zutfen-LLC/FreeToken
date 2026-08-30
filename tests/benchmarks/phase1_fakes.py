@@ -511,7 +511,7 @@ def install_mocked_server(monkeypatch):
 
     calls = {
         "started": [], "stopped": 0, "generations": [], "moe_ops": [],
-        "instrumentation": [], "order": [],
+        "moe_timeouts": [], "instrumentation": [], "order": [],
     }
     runtime_by_arm = {}
 
@@ -580,9 +580,10 @@ def install_mocked_server(monkeypatch):
             "prefill_status": {"ok": True, "code": "ok", "reason": None, "attribution": "uid"},
         }
 
-    def fake_moe_instrumentation(origin, operation, *, timeout=60.0):
+    def fake_moe_instrumentation(origin, operation, *, timeout=None):
         arm = calls["started"][-1]["arm"] if calls["started"] else "baseline_b1"
         calls["moe_ops"].append((operation, arm))
+        calls["moe_timeouts"].append((operation, timeout))
         calls["order"].append((f"moe:{operation}", arm))
         if operation == "reset":
             return {"boundary": {"operation": "reset", "idle": True}}

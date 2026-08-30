@@ -20,4 +20,13 @@ from __future__ import annotations
 # baseline InferSwarm leakage is a B1 identity failure, engine-GPU mismatch stops the
 # arm); the resolved baseline expert-cache slot count is exact provenance with no
 # numeric validity band — KV-capacity differences belong to the supplementary-KV rule.
-CAMPAIGN_RUNNER_VERSION = "0.3.0"
+# 0.4.0: instrumentation-control fix — the frozen reset/snapshot operation budget is
+# 300 s (MEASURED canonical B1/W1 snapshot = 136.93 s for ~204,800 retained timing
+# records; the frozen 60 s budget returned HTTP 504 after a completed block), recorded
+# in every plan/provenance artifact; the expected HTTP control statuses (409/422/503/
+# 504) are decoded and converted to a fail-closed ServerError instead of a raw urllib
+# exception crashing the session; a failed reset/snapshot stops the session with every
+# already-collected generation preserved and every remaining planned generation
+# preserved as not-executed evidence. Control-plane only: no timing truncation, no
+# runtime/mechanism change, no performance threshold moved.
+CAMPAIGN_RUNNER_VERSION = "0.4.0"
