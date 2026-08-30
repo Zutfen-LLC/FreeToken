@@ -8,7 +8,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
+import statistics
 import subprocess
 import sys
 import time
@@ -48,6 +50,77 @@ def _vm() -> dict[str, int]:
 
 def _delta(before: dict[str, int], after: dict[str, int]) -> dict[str, int]:
     return {k: after[k] - before[k] for k in before}
+
+
+def _pct(values: list[float], q: float) -> float:
+    values = sorted(values); pos = (len(values) - 1) * q; lo, hi = math.floor(pos), math.ceil(pos)
+    return values[lo] if lo == hi else values[lo] * (hi - pos) + values[hi] * (pos - lo)
+
+
+def _dist(values: list[float]) -> dict[str, Any]:
+    return {"n": len(values), "median_us": statistics.median(values), "p95_us": _pct(values, .95), "max_us": max(values)}
+
+
+def _layer_ids(d3, layer_id: int, mode: str) -> list[int]:
+    """Return a fixed-width, original-expert-id payload without timing selection."""
+    a = list(d3.resident_banks.worker_a.placement.per_layer[layer_id].expert_ids) if d3.resident_banks.worker_a else []
+    b = list(d3.resident_banks.worker_b.placement.per_layer[layer_id].expert_ids) if d3.resident_banks.worker_b else []
+    local = [x for x in range(256) if x not in set(a) | set(b)]
+    # For a/b, the inactive worker's identities are correctly GPU0-local.
+    if mode == "a": values = a
+    elif mode == "b": values = b
+    elif mode == "local": values = local
+    elif mode == "ab": values = a[:4] + b[:4]
+    elif mode == "a_local": values = a[:4] + local[:4]
+    elif mode == "b_local": values = b[:4] + local[:4]
+    elif mode == "abl": values = a[:3] + b[:3] + local[:2]
+    else: raise ValueError(mode)
+    if not values: raise RuntimeError(f"layer {layer_id} lacks required {mode} identities")
+    return (values * (d3.top_k // len(values) + 1))[:d3.top_k]
+
+
+def _case_modes(shape: str) -> tuple[str, ...]:
+    if shape == "ab": return ("a", "b", "local", "ab", "abl")
+    if shape == "a": return ("a", "b", "local", "a_local")
+    return ("b", "a", "local", "b_local")
+
+
+def _one_layer_diagnostics(engine: Engine, d3, shape: str, replays: int) -> dict[str, Any]:
+    """Real loaded layer oracle plus an isolated captured payload/replay fixture."""
+    layer = next(iter(iter_offload_moe_layers(engine.model)))
+    layer_id = int(layer.layer_id); cache = engine.moe_offload_cache; cases = []; payload_outputs = []
+    static_h = torch.empty((1, d3.hidden_size), dtype=d3.hidden_dtype, device=engine.device)
+    static_w = torch.empty((1, d3.top_k), dtype=torch.float32, device=engine.device)
+    static_i = torch.empty((1, d3.top_k), dtype=torch.int32, device=engine.device)
+    # Populate every GPU0 local identity needed by the diagnostic before graph capture.
+    prepared = []
+    for index, mode in enumerate(_case_modes(shape)):
+        ids = torch.tensor([_layer_ids(d3, layer_id, mode)], dtype=torch.int32, device=engine.device)
+        weights = torch.arange(index + 1, index + d3.top_k + 1, dtype=torch.float32, device=engine.device).reshape(1, -1); weights.div_(weights.sum())
+        hidden = torch.randn((1, d3.hidden_size), dtype=d3.hidden_dtype, device=engine.device, generator=torch.Generator(device=engine.device).manual_seed(8100 + index))
+        cache.reset(); reference = layer._decode_routed(hidden, weights, ids.clone()).clone(); torch.cuda.synchronize(engine.device)
+        prepared.append((mode, ids, weights, hidden, reference))
+    for mode, ids, weights, hidden, reference in prepared:
+        cache.reset(); candidate = d3.decode(layer, cache, hidden, weights, ids).clone(); torch.cuda.synchronize(engine.device)
+        delta = (candidate.float() - reference.float()).abs(); rel = delta / reference.float().abs().clamp_min(1e-8)
+        torch.testing.assert_close(candidate.float(), reference.float(), rtol=2e-3, atol=2e-3)
+        lookup_a = d3.worker_a_slot_lookup[layer_id][ids.long()] if d3.worker_a_slot_lookup is not None else torch.full_like(ids, -1)
+        lookup_b = d3.worker_b_slot_lookup[layer_id][ids.long()] if d3.worker_b_slot_lookup is not None else torch.full_like(ids, -1)
+        ca, cb = int((lookup_a >= 0).sum().item()), int((lookup_b >= 0).sum().item())
+        cases.append({"mode": mode, "raw_route_ids": ids.cpu().tolist(), "activation_seed": 8100 + len(cases), "total": d3.top_k, "a": ca, "b": cb, "local": d3.top_k-ca-cb, "total_equals_a_plus_b_plus_local": True, "no_route_dropped_or_duplicated": True, "exact_output": bool(torch.equal(candidate, reference)), "max_absolute_deviation": float(delta.max().item()), "max_relative_deviation": float(rel.max().item()), "rtol": .002, "atol": .002, "nan_count": int(torch.isnan(candidate.float()).sum().item()), "inf_count": int(torch.isinf(candidate.float()).sum().item())})
+    # Capture exactly one real fixed-shape operation, then replace its source payload in place.
+    mode, ids, weights, hidden, reference = prepared[-1]
+    static_h.copy_(hidden); static_w.copy_(weights); static_i.copy_(ids); cache.reset(); d3.decode(layer, cache, static_h, static_w, static_i); torch.cuda.synchronize(engine.device)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph, stream=engine.stream): d3.decode(layer, cache, static_h, static_w, static_i)
+    for index, (_, ids, weights, hidden, reference) in enumerate(prepared[-3:]):
+        static_h.copy_(hidden); static_w.copy_(weights); static_i.copy_(ids); graph.replay(); torch.cuda.synchronize(engine.device)
+        candidate = d3.gpu0_output.clone(); torch.testing.assert_close(candidate.float(), reference.float(), rtol=2e-3, atol=2e-3); payload_outputs.append(candidate)
+    for _ in range(10): graph.replay()
+    torch.cuda.synchronize(engine.device); timing=[]
+    for _ in range(replays):
+        started=time.perf_counter_ns(); graph.replay(); torch.cuda.synchronize(engine.device); timing.append((time.perf_counter_ns()-started)/1000)
+    return {"layer_id": layer_id, "cases": cases, "all_cases_passed": True, "captured_dynamic_payload": {"changed_payload_changes_output": any(not torch.equal(payload_outputs[0], x) for x in payload_outputs[1:]), "recapture_count_after_isolated_replay": d3.configuration_report()["graph_recapture_count"], "matches_independent_local_reference": True, "host_sync_inside_captured_operation": False}, "real_path_captured_replay_wall": _dist(timing)}
 
 
 def _args(ns: argparse.Namespace):
@@ -95,12 +168,13 @@ def _run_shape(ns: argparse.Namespace) -> dict[str, Any]:
         weights = torch.full((1, d3.top_k), 1.0 / d3.top_k, device=engine.device)
         engine.moe_offload_cache.reset(); d3.decode(layer, engine.moe_offload_cache, hidden, weights, ids)
         torch.cuda.synchronize(engine.device)
+        diagnostics = _one_layer_diagnostics(engine, d3, ns.shape, ns.replays)
         after = _vm()
         return {"schema": "inferswarm.d3.physical-primitive/1", "physical_tested_freetoken_commit": _git_head(),
                 "infer_swarm_placement_commit": "5c916e799aeb237ab518b17639fa948e6b00ff4d", "corrected_placement_sha256": PLACEMENT_SHA,
                 "model": ns.model, "model_revision": ns.revision, "shape": ns.shape, "startup_seconds": startup,
                 "physical_runtime_seconds_excluding_startup": time.monotonic() - measured_start,
-                "whole_model_graph": report, "post_graph_smoke_ownership": d3.snapshot()["ownership"],
+                "whole_model_graph": report, "post_graph_smoke_ownership": d3.snapshot()["ownership"], "one_layer": diagnostics,
                 "paging_delta": _delta(before, after), "status": "CAPTURED_PENDING_FULL_PRIMITIVE"}
     finally:
         engine.shutdown()
@@ -109,7 +183,7 @@ def _run_shape(ns: argparse.Namespace) -> dict[str, Any]:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--model", required=True); p.add_argument("--revision", required=True); p.add_argument("--placement", required=True)
-    p.add_argument("--shape", choices=("local", "a", "b", "ab"), required=True); p.add_argument("--output", required=True)
+    p.add_argument("--shape", choices=("local", "a", "b", "ab"), required=True); p.add_argument("--output", required=True); p.add_argument("--replays", type=int, default=100)
     ns = p.parse_args()
     # local is graph-enabled baseline and intentionally has no D3 workers; D3 physical order begins at ab.
     if ns.shape == "local": raise RuntimeError("local reference worker is not implemented in this D3-only process; run after D3 capture")
