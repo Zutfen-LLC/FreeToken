@@ -75,7 +75,9 @@ def _post(origin: str, operation: str) -> dict[str, Any]:
     with urllib.request.urlopen(req, timeout=310) as response:
         result = json.load(response)
     if result.get("status") != "ok": raise RuntimeError(f"instrumentation {operation} failed: {result}")
-    return result
+    payload = result.get("payload")
+    if not isinstance(payload, dict): raise RuntimeError(f"instrumentation {operation} omitted payload: {result}")
+    return payload
 
 
 def _contract(runtime: dict[str, Any], shape: str) -> dict[str, Any]:
@@ -109,7 +111,7 @@ def run_shape(root: Path, model: str, revision: str, manifest_path: str, placeme
         # The reset is the only boundary before the single generation; no warmup or repetition.
         reset = _post(origin, "reset") if shape != "local" else _post(origin, "reset")
         before = _vm(handle.proc.pid); generated_at = time.monotonic(); observation = stream_generation(origin, body, timeout=900); after = _vm(handle.proc.pid)
-        snapshot = _post(origin, "snapshot")["snapshot"]
+        snapshot = _post(origin, "snapshot")
         diagnostics = snapshot["inferswarm_correctness_diagnostics"]
         records = diagnostics["records"]
         if diagnostics.get("truncated") or diagnostics.get("overflow_requests") or len(records) != 1: raise RuntimeError(f"invalid correctness diagnostics: {diagnostics}")

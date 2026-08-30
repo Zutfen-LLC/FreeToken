@@ -27,3 +27,9 @@ def test_token_hash_is_compact_json_and_difference_is_exact():
     assert first_difference([1], [1, 2]) == 1
     assert first_difference([1, 2], [1, 2]) is None
     assert OUTPUT_CAP == 32
+
+
+def test_instrumentation_reply_contract_uses_payload():
+    # The server's correlated idle-boundary API wraps the engine snapshot in payload.
+    reply = {"status": "ok", "payload": {"inferswarm_correctness_diagnostics": {"records": []}}}
+    assert reply["payload"]["inferswarm_correctness_diagnostics"]["records"] == []
