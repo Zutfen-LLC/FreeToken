@@ -88,9 +88,13 @@ def _case_modes(shape: str) -> tuple[str, ...]:
     return ("b", "a", "local", "b_local")
 
 
-def _one_layer_diagnostics(engine: Engine, d3, placement_path: str, shape: str, replays: int) -> dict[str, Any]:
+def _one_layer_diagnostics(engine: Engine, d3, placement_path: str, shape: str, replays: int, *, d4: bool = False) -> dict[str, Any]:
     """Real loaded layer oracle plus an isolated captured payload/replay fixture."""
-    placement = load_d3_placement(placement_path)
+    if d4:
+        from freetoken.moe.inferswarm_d4_placement import load_d4_placement
+        placement = load_d4_placement(placement_path)
+    else:
+        placement = load_d3_placement(placement_path)
     layer = next(iter(iter_offload_moe_layers(engine.model)))
     layer_id = int(layer.layer_id); cache = engine.moe_offload_cache; cases = []; payload_outputs = []
     static_h = torch.empty((1, d3.hidden_size), dtype=d3.hidden_dtype, device=engine.device)
@@ -177,7 +181,7 @@ def _run_shape(ns: argparse.Namespace) -> dict[str, Any]:
         weights = torch.full((1, d3.top_k), 1.0 / d3.top_k, device=engine.device)
         engine.moe_offload_cache.reset(); d3.decode(layer, engine.moe_offload_cache, hidden, weights, ids)
         torch.cuda.synchronize(engine.device)
-        diagnostics = _one_layer_diagnostics(engine, d3, ns.placement, ns.shape, ns.replays)
+        diagnostics = _one_layer_diagnostics(engine, d3, ns.placement, ns.shape, ns.replays, d4=ns.d4)
         after = _vm()
         return {"schema": "inferswarm.d3.physical-primitive/1", "physical_tested_freetoken_commit": _git_head(),
                 "infer_swarm_placement_commit": "c7e0dc0a", "corrected_placement_sha256": expected_sha,
