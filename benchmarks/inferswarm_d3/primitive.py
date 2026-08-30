@@ -22,6 +22,7 @@ import torch
 from freetoken.engine.engine import Engine
 from freetoken.gpu_select import set_assigned_gpu
 from freetoken.moe.offload_cache import iter_offload_moe_layers
+from freetoken.moe.inferswarm_d3_placement import load_d3_placement
 from freetoken.server.args import parse_args
 from freetoken.server.launch import _resolve_server_gpu_args
 
@@ -61,10 +62,11 @@ def _dist(values: list[float]) -> dict[str, Any]:
     return {"n": len(values), "median_us": statistics.median(values), "p95_us": _pct(values, .95), "max_us": max(values)}
 
 
-def _layer_ids(d3, layer_id: int, mode: str) -> list[int]:
+def _layer_ids(placement, d3, layer_id: int, mode: str) -> list[int]:
     """Return a fixed-width, original-expert-id payload without timing selection."""
-    a = list(d3.resident_banks.worker_a.placement.per_layer[layer_id].expert_ids) if d3.resident_banks.worker_a else []
-    b = list(d3.resident_banks.worker_b.placement.per_layer[layer_id].expert_ids) if d3.resident_banks.worker_b else []
+    # Use the immutable full placement, including intentionally inactive workers.
+    a = list(placement.worker_a.per_layer[layer_id].expert_ids)
+    b = list(placement.worker_b.per_layer[layer_id].expert_ids)
     local = [x for x in range(256) if x not in set(a) | set(b)]
     # For a/b, the inactive worker's identities are correctly GPU0-local.
     if mode == "a": values = a
@@ -85,8 +87,9 @@ def _case_modes(shape: str) -> tuple[str, ...]:
     return ("b", "a", "local", "b_local")
 
 
-def _one_layer_diagnostics(engine: Engine, d3, shape: str, replays: int) -> dict[str, Any]:
+def _one_layer_diagnostics(engine: Engine, d3, placement_path: str, shape: str, replays: int) -> dict[str, Any]:
     """Real loaded layer oracle plus an isolated captured payload/replay fixture."""
+    placement = load_d3_placement(placement_path)
     layer = next(iter(iter_offload_moe_layers(engine.model)))
     layer_id = int(layer.layer_id); cache = engine.moe_offload_cache; cases = []; payload_outputs = []
     static_h = torch.empty((1, d3.hidden_size), dtype=d3.hidden_dtype, device=engine.device)
@@ -95,7 +98,7 @@ def _one_layer_diagnostics(engine: Engine, d3, shape: str, replays: int) -> dict
     # Populate every GPU0 local identity needed by the diagnostic before graph capture.
     prepared = []
     for index, mode in enumerate(_case_modes(shape)):
-        ids = torch.tensor([_layer_ids(d3, layer_id, mode)], dtype=torch.int32, device=engine.device)
+        ids = torch.tensor([_layer_ids(placement, d3, layer_id, mode)], dtype=torch.int32, device=engine.device)
         weights = torch.arange(index + 1, index + d3.top_k + 1, dtype=torch.float32, device=engine.device).reshape(1, -1); weights.div_(weights.sum())
         hidden = torch.randn((1, d3.hidden_size), dtype=d3.hidden_dtype, device=engine.device, generator=torch.Generator(device=engine.device).manual_seed(8100 + index))
         cache.reset(); reference = layer._decode_routed(hidden, weights, ids.clone()).clone(); torch.cuda.synchronize(engine.device)
@@ -168,7 +171,7 @@ def _run_shape(ns: argparse.Namespace) -> dict[str, Any]:
         weights = torch.full((1, d3.top_k), 1.0 / d3.top_k, device=engine.device)
         engine.moe_offload_cache.reset(); d3.decode(layer, engine.moe_offload_cache, hidden, weights, ids)
         torch.cuda.synchronize(engine.device)
-        diagnostics = _one_layer_diagnostics(engine, d3, ns.shape, ns.replays)
+        diagnostics = _one_layer_diagnostics(engine, d3, ns.placement, ns.shape, ns.replays)
         after = _vm()
         return {"schema": "inferswarm.d3.physical-primitive/1", "physical_tested_freetoken_commit": _git_head(),
                 "infer_swarm_placement_commit": "5c916e799aeb237ab518b17639fa948e6b00ff4d", "corrected_placement_sha256": PLACEMENT_SHA,
