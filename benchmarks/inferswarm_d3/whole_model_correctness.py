@@ -7,10 +7,14 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import sys
 import time
 import urllib.request
 from pathlib import Path
 from typing import Any
+
+# The evidence command intentionally invokes this dedicated file directly.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from inferswarm_phase0.client import free_port, fetch_instrumentation, start_server, stop_server, stream_generation
 from inferswarm_phase0.manifest import CANONICAL_GREEDY_SAMPLING, load_manifest
