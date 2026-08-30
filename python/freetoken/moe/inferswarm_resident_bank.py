@@ -1064,7 +1064,10 @@ def _bulk_stage_bank(
         selected = selected.contiguous()
         if selected.dtype != dtype or tuple(selected.shape[1:]) != row_shape:
             raise RuntimeError("bulk resident source layout mismatch")
-        staging.index_copy_(0, slots, selected)
+        # CPU index_copy does not implement float8. Scatter exact row bytes so every
+        # native bank dtype follows one no-conversion path.
+        staging.view(placement.remote_slots, -1).view(torch.uint8).index_copy_(
+            0, slots, selected.view(len(layer.expert_ids), -1).view(torch.uint8))
 
     tick = time.perf_counter()
     if cpu_workers == 1:
