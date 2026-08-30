@@ -226,6 +226,10 @@ class GraphRunner:
         )
         if d3 is not None:
             d3.reset_counters()
+        d5 = (getattr(self.moe_offload_cache, "inferswarm_d5_compact_routes", None)
+              if self.moe_offload_cache is not None else None)
+        if d5 is not None:
+            d5.reset_counters()
         free_memory = get_free_memory(self.device)
         logger.info_rank0(
             f"Free GPU memory after capturing CUDA graphs: {mem_GB(free_memory)}"

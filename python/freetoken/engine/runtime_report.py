@@ -292,6 +292,7 @@ def build_runtime_report(engine) -> Dict[str, Any]:
             absent_d2_graph_remote_report,
         )
         from freetoken.moe.inferswarm_d3_graph_multiworker import absent_d3_graph_multiworker_report
+        from freetoken.moe.inferswarm_d5_compact_routes import absent_d5_compact_routes_report
         from freetoken.moe.layer_timing import MOE_LAYER_TIMING_SCHEMA
 
         secondary = getattr(engine, "inferswarm_secondary_device", None)
@@ -300,6 +301,7 @@ def build_runtime_report(engine) -> Dict[str, Any]:
         d2_remote = getattr(engine, "inferswarm_d2_graph_remote", None)
         d3_remote = getattr(engine, "inferswarm_d3_graph_multiworker", None)
         d3_banks = getattr(engine, "inferswarm_d3_resident_banks", None)
+        d5_compact = getattr(engine, "inferswarm_d5_compact_routes", None)
         layer_timing = getattr(engine, "moe_layer_timing", None)
         report: Dict[str, Any] = {
             "schema": SCHEMA,
@@ -341,6 +343,9 @@ def build_runtime_report(engine) -> Dict[str, Any]:
             ),
             "inferswarm_d5_resident_loader": (
                 d3_banks.loader_profile if d3_banks is not None else None
+            ),
+            "inferswarm_d5_compact_routes": (
+                d5_compact.configuration_report() if d5_compact is not None else absent_d5_compact_routes_report()
             ),
             "moe_layer_timing": (
                 layer_timing.configuration_report()

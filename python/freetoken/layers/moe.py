@@ -239,6 +239,7 @@ class OffloadMoELayer(MoELayer):
         self.inferswarm_remote_decode = None
         self.inferswarm_d2_graph_remote = None
         self.inferswarm_d3_graph_multiworker = None
+        self.inferswarm_d5_compact_routes = None
 
     def forward(
         self,
@@ -333,6 +334,10 @@ class OffloadMoELayer(MoELayer):
             )
         if self.inferswarm_d2_graph_remote is not None:
             return self.inferswarm_d2_graph_remote.decode(
+                self, cache, hidden_states, topk_weights, topk_ids
+            )
+        if self.inferswarm_d5_compact_routes is not None:
+            return self.inferswarm_d5_compact_routes.decode(
                 self, cache, hidden_states, topk_weights, topk_ids
             )
         if self.inferswarm_d3_graph_multiworker is not None:
@@ -498,6 +503,7 @@ class OffloadMoELayer(MoELayer):
         out: torch.Tensor | None = None,
         gate_up_out: torch.Tensor | None = None,
         activation_out: torch.Tensor | None = None,
+        active_count: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Return native-NVFP4 decode contributions before the MoE sum reduction.
 
@@ -608,6 +614,7 @@ class OffloadMoELayer(MoELayer):
             out=out,
             gate_up_out=gate_up_out,
             activation_out=activation_out,
+            active_count=active_count,
         )
 
     def _expert_gemm(

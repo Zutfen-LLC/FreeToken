@@ -81,6 +81,7 @@ def _decode_gemm(
     topk_ids: torch.Tensor,
     mul_routed_weight: bool,
     a_row_is_route: bool,
+    active_count: torch.Tensor | None = None,
 ) -> None:
     M, top_k = topk_ids.shape
     N = packed.shape[1]
@@ -90,6 +91,7 @@ def _decode_gemm(
     grid = (total_routes, triton.cdiv(N, _DECODE_BLOCK_N))
     _decode_nvfp4_moe_kernel[grid](
         a, packed, scale, glob, c, topk_weights, topk_ids,
+        active_count if active_count is not None else topk_ids,
         _e2m1_lut(a.device.index),
         total_routes, N, K,
         a.stride(0), a.stride(1),
@@ -105,6 +107,7 @@ def _decode_gemm(
         A_ROW_IS_ROUTE=a_row_is_route,
         MUL_ROUTED_WEIGHT=mul_routed_weight,
         compute_type=_tl_dtype(c.dtype),
+        HAS_ACTIVE_COUNT=active_count is not None,
         num_warps=_DECODE_WARPS,
     )
 
@@ -119,6 +122,7 @@ def _decode_gemm_marlin(
     topk_ids: torch.Tensor,
     mul_routed_weight: bool,
     a_row_is_route: bool,
+    active_count: torch.Tensor | None = None,
 ) -> None:
     """Marlin-style decode GEMV: int32 wide loads + deferred reduction
     (:func:`_decode_nvfp4_marlin_kernel`). ``packed`` is the uint8 ``[S, N, K//2]`` bank;
@@ -132,6 +136,7 @@ def _decode_gemm_marlin(
     grid = (total_routes, triton.cdiv(N, _DECODE_MARLIN_BLOCK_N))
     _decode_nvfp4_marlin_kernel[grid](
         a, packed_i32, scale, glob, c, topk_weights, topk_ids,
+        active_count if active_count is not None else topk_ids,
         _e2m1_lut(a.device.index),
         total_routes, N, K,
         a.stride(0), a.stride(1),
@@ -147,6 +152,7 @@ def _decode_gemm_marlin(
         A_ROW_IS_ROUTE=a_row_is_route,
         MUL_ROUTED_WEIGHT=mul_routed_weight,
         compute_type=_tl_dtype(c.dtype),
+        HAS_ACTIVE_COUNT=active_count is not None,
         num_warps=_DECODE_MARLIN_WARPS,
     )
 
@@ -169,6 +175,7 @@ def _fused_experts_decode_nvfp4_route_contributions(
     route_contributions_out: torch.Tensor | None = None,
     gate_up_out: torch.Tensor | None = None,
     activation_out: torch.Tensor | None = None,
+    active_count: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Shared decode body through the per-route down projection.
 
@@ -193,7 +200,7 @@ def _fused_experts_decode_nvfp4_route_contributions(
         raise ValueError("NVFP4 gate/up workspace must match [M, top_k, 2I]")
     gemm_fn(
         hidden_states, gate_up_packed, gate_up_scale, gate_up_global,
-        ic1, topk_weights, topk_ids, apply_router_weight_on_input, False,
+        ic1, topk_weights, topk_ids, apply_router_weight_on_input, False, active_count,
     )
     ic2 = (
         torch.empty((M * top_k, inter), device=dev, dtype=dt)
@@ -217,7 +224,7 @@ def _fused_experts_decode_nvfp4_route_contributions(
             )
     gemm_fn(
         ic2, down_packed, down_scale, down_global,
-        ic3, topk_weights, topk_ids, not apply_router_weight_on_input, True,
+        ic3, topk_weights, topk_ids, not apply_router_weight_on_input, True, active_count,
     )
     return ic3
 
@@ -278,6 +285,7 @@ def fused_experts_decode_nvfp4_marlin_route_contributions(
     out: torch.Tensor | None = None,
     gate_up_out: torch.Tensor | None = None,
     activation_out: torch.Tensor | None = None,
+    active_count: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Return the production Marlin decode's ordered per-route contributions."""
     return _fused_experts_decode_nvfp4_route_contributions(
@@ -298,6 +306,7 @@ def fused_experts_decode_nvfp4_marlin_route_contributions(
         route_contributions_out=out,
         gate_up_out=gate_up_out,
         activation_out=activation_out,
+        active_count=active_count,
     )
 
 

@@ -360,6 +360,7 @@ class Engine:
         self.inferswarm_d3_workers = None
         self.inferswarm_d3_resident_banks = None
         self.inferswarm_d3_graph_multiworker = None
+        self.inferswarm_d5_compact_routes = None
         self.inferswarm_correctness_diagnostics = None
         self.moe_layer_timing = None
         self._moe_measurement_step = 0
@@ -369,7 +370,8 @@ class Engine:
         d2_graph_remote = bool(
             getattr(config, "inferswarm_experimental_d2_graph_remote", False)
         )
-        d3_multiworker = bool(getattr(config, "inferswarm_experimental_d3_graph_multiworker", False))
+        d5_compact = bool(getattr(config, "inferswarm_experimental_d5_compact_routes", False))
+        d3_multiworker = bool(getattr(config, "inferswarm_experimental_d3_graph_multiworker", False)) or d5_compact
         d4_weighted = bool(getattr(config, "inferswarm_experimental_d4_capability_weighted", False))
         d3_placement_path = (getattr(config, "inferswarm_d4_placement", None) if d4_weighted
                              else getattr(config, "inferswarm_d3_placement", None))
@@ -605,6 +607,8 @@ class Engine:
             )
         if self.inferswarm_d3_graph_multiworker is not None:
             self.inferswarm_d3_graph_multiworker.set_graph_state(list(self.graph_runner.graph_map))
+        if self.inferswarm_d5_compact_routes is not None:
+            self.inferswarm_d5_compact_routes.set_graph_state(list(self.graph_runner.graph_map))
         if config.attention_backend.split(",")[0] == "triton":
             # Prefill runs on the first comma part; warm its autotune cache.
             self._warmup_prefill()
@@ -897,8 +901,9 @@ class Engine:
             self._init_inferswarm_remote_decode(config, cache, layers)
         if bool(getattr(config, "inferswarm_experimental_d2_graph_remote", False)):
             self._init_inferswarm_d2_graph_remote(config, cache, layers)
-        if bool(getattr(config, "inferswarm_experimental_d3_graph_multiworker", False)):
-            self._init_inferswarm_d3_graph_multiworker(config, cache, layers)
+        if d3_multiworker:
+            if d5_compact: self._init_inferswarm_d5_compact_routes(config, cache, layers)
+            else: self._init_inferswarm_d3_graph_multiworker(config, cache, layers)
         self._init_moe_layer_timing(config, cache)
         self.ctx.moe_offload_cache = cache
         self.moe_offload_cache = cache
@@ -1077,6 +1082,26 @@ class Engine:
         cache.inferswarm_d3_graph_multiworker = executor
         self.inferswarm_d3_graph_multiworker = executor
         logger.info_rank0(f"InferSwarm D3 graph attached: fixed active workers {','.join(active_workers)}")
+
+    def _init_inferswarm_d5_compact_routes(self, config: EngineConfig, cache, layers) -> None:
+        from freetoken.moe.inferswarm_d3_graph_multiworker import build_d3_route_lookups, validate_d3_runtime
+        from freetoken.moe.inferswarm_d5_compact_routes import InferSwarmD5CompactRoutesExecutor
+        banks, workers, placement = self.inferswarm_d3_resident_banks, self.inferswarm_d3_workers, self.inferswarm_d3_placement
+        assert banks is not None and workers is not None and placement is not None
+        active_workers = tuple(getattr(config, "inferswarm_d3_active_workers", "ab"))
+        validate_d3_runtime(config, cache, banks, workers, active_workers)
+        lookup_a, lookup_b = build_d3_route_lookups(placement, self.device, active_workers)
+        executor = InferSwarmD5CompactRoutesExecutor(
+            resident_banks=banks, worker_a_device=workers[0], worker_b_device=workers[1],
+            primary_device=self.device, worker_a_slot_lookup=lookup_a, worker_b_slot_lookup=lookup_b,
+            active_workers=active_workers, hidden_size=int(config.model_config.hidden_size),
+            top_k=int(config.model_config.num_experts_per_tok), hidden_dtype=config.dtype,
+            num_layers=int(config.model_config.num_moe_layers),
+            intermediate_size=int(config.model_config.moe_intermediate_size))
+        for layer in layers: layer.inferswarm_d5_compact_routes = executor
+        cache.inferswarm_d5_compact_routes = executor
+        self.inferswarm_d5_compact_routes = executor
+        logger.info_rank0(f"InferSwarm D5 compact routes attached: active workers {','.join(active_workers)}")
 
     def _resolve_hybrid_fetch(self, config: EngineConfig, cache) -> None:
         """Resolve --moe-hybrid-max-fetch -1 (auto) into a bandwidth-matched fetch fraction.
@@ -1263,6 +1288,11 @@ class Engine:
         d3_banks = getattr(self, "inferswarm_d3_resident_banks", None)
         payload["inferswarm_d5_resident_loader"] = (
             d3_banks.loader_profile if d3_banks is not None else None
+        )
+        from freetoken.moe.inferswarm_d5_compact_routes import absent_d5_compact_routes_report
+        d5_compact = getattr(self, "inferswarm_d5_compact_routes", None)
+        payload["inferswarm_d5_compact_routes"] = (
+            d5_compact.snapshot() if d5_compact is not None else absent_d5_compact_routes_report()
         )
         from freetoken.moe.layer_timing import absent_moe_layer_timing_report
 
@@ -1467,6 +1497,8 @@ class Engine:
 
         if self.inferswarm_d3_graph_multiworker is not None:
             self.inferswarm_d3_graph_multiworker.set_graph_state(list(self.graph_runner.graph_map))
+        if self.inferswarm_d5_compact_routes is not None:
+            self.inferswarm_d5_compact_routes.set_graph_state(list(self.graph_runner.graph_map))
 
     def forward_batch(self, batch: Batch, args: BatchSamplingArgs) -> ForwardOutput:
         assert torch.cuda.current_stream() == self.stream

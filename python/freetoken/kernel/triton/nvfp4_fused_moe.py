@@ -53,6 +53,7 @@ def _decode_nvfp4_moe_kernel(
     c_ptr,             # [M, TOP_K, N] output (compute dtype)
     topk_weights_ptr,  # [M, TOP_K] fp32
     topk_ids_ptr,      # [M, TOP_K] int32 -> cache slot
+    active_count_ptr,  # optional device scalar; D5 fixed-grid useful-route bound
     lut_ptr,           # [16] fp32
     total_routes,
     N,
@@ -70,6 +71,7 @@ def _decode_nvfp4_moe_kernel(
     A_ROW_IS_ROUTE: tl.constexpr,
     MUL_ROUTED_WEIGHT: tl.constexpr,
     compute_type: tl.constexpr,
+    HAS_ACTIVE_COUNT: tl.constexpr,
 ):
     """Original LUT-gather serial-K decode GEMV. Kept as the A/B baseline; the production
     decode path is :func:`_decode_nvfp4_marlin_kernel`."""
@@ -77,6 +79,9 @@ def _decode_nvfp4_moe_kernel(
     n_block_id = tl.program_id(1)
     token_id = route_id // TOP_K
     route_k = route_id - token_id * TOP_K
+    route_active = route_id < total_routes
+    if HAS_ACTIVE_COUNT:
+        route_active &= route_k < tl.load(active_count_ptr)
 
     offs_n = n_block_id * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
     n_mask = offs_n < N
@@ -97,7 +102,7 @@ def _decode_nvfp4_moe_kernel(
 
         p_ptrs = packed_slot + offs_n[None, :] * stride_pn + byte_idx[:, None] * stride_pkb
         bytes_ = tl.load(
-            p_ptrs, mask=byte_mask[:, None] & n_mask[None, :], other=0
+            p_ptrs, mask=route_active & byte_mask[:, None] & n_mask[None, :], other=0
         ).to(tl.int32)
         lo = bytes_ & 0xF
         hi = (bytes_ >> 4) & 0xF
@@ -106,7 +111,7 @@ def _decode_nvfp4_moe_kernel(
 
         sblk = byte_idx // 8
         s_ptrs = scale_slot + offs_n[None, :] * stride_sn + sblk[:, None] * stride_sblk
-        s_mask = byte_mask[:, None] & n_mask[None, :]
+        s_mask = route_active & byte_mask[:, None] & n_mask[None, :]
         if e4m3_native_cx():
             scale = tl.load(s_ptrs, mask=s_mask, other=0.0).to(tl.float32)
         else:
@@ -114,16 +119,16 @@ def _decode_nvfp4_moe_kernel(
         b_lo = b_lo * scale
         b_hi = b_hi * scale
 
-        a_lo = tl.load(a_base + (2 * byte_idx) * stride_ak, mask=byte_mask, other=0.0).to(tl.float32)
-        a_hi = tl.load(a_base + (2 * byte_idx + 1) * stride_ak, mask=byte_mask, other=0.0).to(tl.float32)
+        a_lo = tl.load(a_base + (2 * byte_idx) * stride_ak, mask=route_active & byte_mask, other=0.0).to(tl.float32)
+        a_hi = tl.load(a_base + (2 * byte_idx + 1) * stride_ak, mask=route_active & byte_mask, other=0.0).to(tl.float32)
         accumulator += tl.sum(a_lo[:, None] * b_lo, axis=0)
         accumulator += tl.sum(a_hi[:, None] * b_hi, axis=0)
 
-    g = tl.load(global_ptr + slot * stride_ge + offs_n * stride_gn, mask=n_mask, other=0.0).to(tl.float32)
+    g = tl.load(global_ptr + slot * stride_ge + offs_n * stride_gn, mask=route_active & n_mask, other=0.0).to(tl.float32)
     accumulator = accumulator * g
 
     if MUL_ROUTED_WEIGHT:
-        weight = tl.load(topk_weights_ptr + token_id * stride_tw_m + route_k * stride_tw_k)
+        weight = tl.load(topk_weights_ptr + token_id * stride_tw_m + route_k * stride_tw_k, mask=route_active, other=0.0)
         accumulator = accumulator * weight
 
     c_ptrs = c_ptr + token_id * stride_cm + route_k * stride_ck + offs_n * stride_cn
@@ -139,6 +144,7 @@ def _decode_nvfp4_marlin_kernel(
     c_ptr,             # [M, TOP_K, N] output (compute dtype)
     topk_weights_ptr,  # [M, TOP_K] fp32
     topk_ids_ptr,      # [M, TOP_K] int32 -> cache slot
+    active_count_ptr,  # optional device scalar; D5 fixed-grid useful-route bound
     lut_ptr,           # [16] fp32
     total_routes,
     N,
@@ -156,6 +162,7 @@ def _decode_nvfp4_marlin_kernel(
     A_ROW_IS_ROUTE: tl.constexpr,
     MUL_ROUTED_WEIGHT: tl.constexpr,
     compute_type: tl.constexpr,
+    HAS_ACTIVE_COUNT: tl.constexpr,
 ):
     """Marlin-style NVFP4 decode GEMV: wide int32 weight loads + deferred reduction.
 
@@ -176,6 +183,9 @@ def _decode_nvfp4_marlin_kernel(
     n_block_id = tl.program_id(1)
     token_id = route_id // TOP_K
     route_k = route_id - token_id * TOP_K
+    route_active = route_id < total_routes
+    if HAS_ACTIVE_COUNT:
+        route_active &= route_k < tl.load(active_count_ptr)
 
     offs_n = n_block_id * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
     n_mask = offs_n < N
@@ -196,11 +206,11 @@ def _decode_nvfp4_marlin_kernel(
 
         word = tl.load(
             packed_slot + offs_n[None, :] * stride_pn + widx[:, None] * stride_pkw,
-            mask=w_mask[:, None] & n_mask[None, :], other=0,
+            mask=route_active & w_mask[:, None] & n_mask[None, :], other=0,
         )
         # 8 codes/word fall in the same or adjacent 16-wide block -> one scale per word.
         s_ptrs = scale_slot + offs_n[None, :] * stride_sn + (widx[:, None] // 2) * stride_sblk
-        s_mask = w_mask[:, None] & n_mask[None, :]
+        s_mask = route_active & w_mask[:, None] & n_mask[None, :]
         if e4m3_native_cx():
             scale = tl.load(s_ptrs, mask=s_mask, other=0.0).to(tl.float32)
         else:
@@ -211,16 +221,16 @@ def _decode_nvfp4_marlin_kernel(
         for j in tl.static_range(8):
             code = (word >> (4 * j)) & 0xF
             b = tl.load(lut_ptr + code)
-            a_j = tl.load(a_base + (kbase + j) * stride_ak, mask=w_mask, other=0.0).to(tl.float32)
+            a_j = tl.load(a_base + (kbase + j) * stride_ak, mask=route_active & w_mask, other=0.0).to(tl.float32)
             acc_w += a_j[:, None] * b
         partial += acc_w * scale
 
     accumulator = tl.sum(partial, axis=0)
-    g = tl.load(global_ptr + slot * stride_ge + offs_n * stride_gn, mask=n_mask, other=0.0).to(tl.float32)
+    g = tl.load(global_ptr + slot * stride_ge + offs_n * stride_gn, mask=route_active & n_mask, other=0.0).to(tl.float32)
     accumulator = accumulator * g
 
     if MUL_ROUTED_WEIGHT:
-        weight = tl.load(topk_weights_ptr + token_id * stride_tw_m + route_k * stride_tw_k)
+        weight = tl.load(topk_weights_ptr + token_id * stride_tw_m + route_k * stride_tw_k, mask=route_active, other=0.0)
         accumulator = accumulator * weight
 
     c_ptrs = c_ptr + token_id * stride_cm + route_k * stride_ck + offs_n * stride_cn
