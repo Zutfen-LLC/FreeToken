@@ -238,6 +238,7 @@ class OffloadMoELayer(MoELayer):
         # None keeps the ordinary and P2 resident-bank-only paths byte-for-byte direct.
         self.inferswarm_remote_decode = None
         self.inferswarm_d2_graph_remote = None
+        self.inferswarm_d3_graph_multiworker = None
 
     def forward(
         self,
@@ -332,6 +333,10 @@ class OffloadMoELayer(MoELayer):
             )
         if self.inferswarm_d2_graph_remote is not None:
             return self.inferswarm_d2_graph_remote.decode(
+                self, cache, hidden_states, topk_weights, topk_ids
+            )
+        if self.inferswarm_d3_graph_multiworker is not None:
+            return self.inferswarm_d3_graph_multiworker.decode(
                 self, cache, hidden_states, topk_weights, topk_ids
             )
         if cache.is_cpu_layer(self.layer_id):

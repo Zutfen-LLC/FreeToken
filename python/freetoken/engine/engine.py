@@ -359,6 +359,7 @@ class Engine:
         self.inferswarm_d3_placement = None
         self.inferswarm_d3_workers = None
         self.inferswarm_d3_resident_banks = None
+        self.inferswarm_d3_graph_multiworker = None
         self.inferswarm_correctness_diagnostics = None
         self.moe_layer_timing = None
         self._moe_measurement_step = 0
@@ -595,6 +596,8 @@ class Engine:
             self.inferswarm_d2_graph_remote.set_graph_state(
                 list(self.graph_runner.graph_map)
             )
+        if self.inferswarm_d3_graph_multiworker is not None:
+            self.inferswarm_d3_graph_multiworker.set_graph_state(list(self.graph_runner.graph_map))
         if config.attention_backend.split(",")[0] == "triton":
             # Prefill runs on the first comma part; warm its autotune cache.
             self._warmup_prefill()
@@ -887,6 +890,8 @@ class Engine:
             self._init_inferswarm_remote_decode(config, cache, layers)
         if bool(getattr(config, "inferswarm_experimental_d2_graph_remote", False)):
             self._init_inferswarm_d2_graph_remote(config, cache, layers)
+        if bool(getattr(config, "inferswarm_experimental_d3_graph_multiworker", False)):
+            self._init_inferswarm_d3_graph_multiworker(config, cache, layers)
         self._init_moe_layer_timing(config, cache)
         self.ctx.moe_offload_cache = cache
         self.moe_offload_cache = cache
@@ -1036,6 +1041,29 @@ class Engine:
             "InferSwarm D2 graph remote attached: fixed batch-one cross-device "
             f"fork/join to cuda:{secondary.secondary.visible_ordinal}"
         )
+
+    def _init_inferswarm_d3_graph_multiworker(self, config: EngineConfig, cache, layers) -> None:
+        """Attach D3 only after the independently verified resident banks exist."""
+        from freetoken.moe.inferswarm_d3_graph_multiworker import (
+            InferSwarmD3GraphMultiworkerExecutor, build_d3_local_fallback_ids,
+            build_d3_route_lookups, validate_d3_runtime,
+        )
+        banks, workers, placement = self.inferswarm_d3_resident_banks, self.inferswarm_d3_workers, self.inferswarm_d3_placement
+        assert banks is not None and workers is not None and placement is not None
+        validate_d3_runtime(config, cache, banks, workers)
+        lookup_a, lookup_b = build_d3_route_lookups(placement, self.device)
+        executor = InferSwarmD3GraphMultiworkerExecutor(
+            resident_banks=banks, worker_a_device=workers[0], worker_b_device=workers[1], primary_device=self.device,
+            worker_a_slot_lookup=lookup_a, worker_b_slot_lookup=lookup_b,
+            local_fallback_ids=build_d3_local_fallback_ids(placement, self.device),
+            hidden_size=int(config.model_config.hidden_size), top_k=int(config.model_config.num_experts_per_tok), hidden_dtype=config.dtype,
+            num_layers=int(config.model_config.num_moe_layers), intermediate_size=int(config.model_config.moe_intermediate_size),
+        )
+        for layer in layers:
+            layer.inferswarm_d3_graph_multiworker = executor
+        cache.inferswarm_d3_graph_multiworker = executor
+        self.inferswarm_d3_graph_multiworker = executor
+        logger.info_rank0("InferSwarm D3 graph multiworker attached: independent A/B fan-out")
 
     def _resolve_hybrid_fetch(self, config: EngineConfig, cache) -> None:
         """Resolve --moe-hybrid-max-fetch -1 (auto) into a bandwidth-matched fetch fraction.
@@ -1212,6 +1240,12 @@ class Engine:
             d2_remote.snapshot()
             if d2_remote is not None
             else absent_d2_graph_remote_report()
+        )
+        from freetoken.moe.inferswarm_d3_graph_multiworker import absent_d3_graph_multiworker_report
+
+        d3_remote = getattr(self, "inferswarm_d3_graph_multiworker", None)
+        payload["inferswarm_d3_graph_multiworker"] = (
+            d3_remote.snapshot() if d3_remote is not None else absent_d3_graph_multiworker_report()
         )
         from freetoken.moe.layer_timing import absent_moe_layer_timing_report
 
@@ -1413,6 +1447,9 @@ class Engine:
             self.inferswarm_d2_graph_remote.set_graph_state(
                 list(self.graph_runner.graph_map)
             )
+
+        if self.inferswarm_d3_graph_multiworker is not None:
+            self.inferswarm_d3_graph_multiworker.set_graph_state(list(self.graph_runner.graph_map))
 
     def forward_batch(self, batch: Batch, args: BatchSamplingArgs) -> ForwardOutput:
         assert torch.cuda.current_stream() == self.stream
