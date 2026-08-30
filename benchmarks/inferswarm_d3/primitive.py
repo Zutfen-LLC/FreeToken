@@ -23,9 +23,9 @@ from freetoken.moe.offload_cache import iter_offload_moe_layers
 from freetoken.server.args import parse_args
 from freetoken.server.launch import _resolve_server_gpu_args
 
-PRIMARY = "GPU-ecda1aaa-0c66-857b-8218-3d511dc75c03"
+PRIMARY = "GPU-d5c05739-96c1-7e49-89b6-bf54c2121c55"
 WORKER_A = "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176"
-WORKER_B = "GPU-d5c05739-96c1-7e49-89b6-bf54c2121c55"
+WORKER_B = "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099"
 PLACEMENT_SHA = "6677fe1c506376a55aa8dcabb8d5761dc0373ced9d9b053209991059556d5887"
 
 

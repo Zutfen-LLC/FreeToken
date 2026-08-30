@@ -8,9 +8,11 @@ from .inferswarm_d3_placement import D3Placement
 from .inferswarm_resident_bank import SecondaryResidentExpertBank, load_secondary_resident_bank
 from .inferswarm_secondary import probe_secondary_device
 
+# D3B inferswarm01 frozen physical roles: retain the demonstrated D2 pair
+# (d5c coordinator, e1f worker) and add the previously unused 1fc card as B.
 WORKER_A_UUID = "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176"
-WORKER_B_UUID = "GPU-d5c05739-96c1-7e49-89b6-bf54c2121c55"
-PRIMARY_UUID = "GPU-ecda1aaa-0c66-857b-8218-3d511dc75c03"
+WORKER_B_UUID = "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099"
+PRIMARY_UUID = "GPU-d5c05739-96c1-7e49-89b6-bf54c2121c55"
 
 
 @dataclass(frozen=True, slots=True)
