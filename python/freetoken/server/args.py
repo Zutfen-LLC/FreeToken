@@ -58,6 +58,14 @@ class ServerArgs(SchedulerConfig):
     # Post-NO-GO D2 architecture-search path.  Separate opt-in keeps canonical P3/P4
     # behavior and its eager-only contract unchanged.
     inferswarm_experimental_d2_graph_remote: bool = False
+    # D3 is intentionally a separate two-worker research interface.  It does not alter
+    # canonical P3 or the D2 single-worker flag/placement contract.
+    inferswarm_experimental_d3_graph_multiworker: bool = False
+    inferswarm_d3_placement: str | None = None
+    inferswarm_d3_worker_a_gpu: str | None = None
+    inferswarm_d3_worker_b_gpu: str | None = None
+    inferswarm_d3_worker_a_gpu_assigned: str | None = None
+    inferswarm_d3_worker_b_gpu_assigned: str | None = None
     # P4 intended scheduling shape; serialized is a diagnostic P3-equivalent control.
     inferswarm_remote_mode: str = "overlap"
     # Detailed records are bounded by decode steps; cumulative gates continue past it.
@@ -320,6 +328,10 @@ def parse_args(
             "multi-device CUDA graph; does not change --inferswarm-remote-decode"
         ),
     )
+    parser.add_argument("--inferswarm-experimental-d3-graph-multiworker", action="store_true", default=ServerArgs.inferswarm_experimental_d3_graph_multiworker, help="EXPERIMENTAL D3 captured GPU0/A/B fan-out; separate from canonical and D2 paths")
+    parser.add_argument("--inferswarm-d3-placement", type=str, default=ServerArgs.inferswarm_d3_placement, help="SHA-pinned frozen D3 placement artifact")
+    parser.add_argument("--inferswarm-d3-worker-a-gpu", type=_lazy_single_gpu_arg, default=ServerArgs.inferswarm_d3_worker_a_gpu, help="D3 worker A GPU UUID or visible selector")
+    parser.add_argument("--inferswarm-d3-worker-b-gpu", type=_lazy_single_gpu_arg, default=ServerArgs.inferswarm_d3_worker_b_gpu, help="D3 worker B GPU UUID or visible selector")
 
     parser.add_argument(
         "--inferswarm-remote-mode",
@@ -803,6 +815,7 @@ def parse_args(
     if kwargs["inferswarm_remote_decode"] and kwargs["inferswarm_placement"] is None:
         parser.error("--inferswarm-remote-decode requires --inferswarm-placement")
     d2 = kwargs["inferswarm_experimental_d2_graph_remote"]
+    d3 = kwargs["inferswarm_experimental_d3_graph_multiworker"]
     if d2 and kwargs["inferswarm_remote_decode"]:
         parser.error(
             "--inferswarm-experimental-d2-graph-remote is mutually exclusive with "
@@ -816,6 +829,12 @@ def parse_args(
         parser.error(
             "--inferswarm-experimental-d2-graph-remote requires --inferswarm-placement"
         )
+    if d3 and (d2 or kwargs["inferswarm_remote_decode"]):
+        parser.error("--inferswarm-experimental-d3-graph-multiworker is mutually exclusive with canonical and D2 remote decode")
+    if d3 and (kwargs["inferswarm_d3_placement"] is None or kwargs["inferswarm_d3_worker_a_gpu"] is None or kwargs["inferswarm_d3_worker_b_gpu"] is None):
+        parser.error("D3 graph multiworker requires --inferswarm-d3-placement and both --inferswarm-d3-worker-{a,b}-gpu")
+    if not d3 and any(kwargs[name] is not None for name in ("inferswarm_d3_placement", "inferswarm_d3_worker_a_gpu", "inferswarm_d3_worker_b_gpu")):
+        parser.error("D3 placement and worker selectors require --inferswarm-experimental-d3-graph-multiworker")
 
     # resolve some arguments
     run_shell |= kwargs.pop("shell_mode")
@@ -839,6 +858,10 @@ def parse_args(
         parser.error(
             "--inferswarm-experimental-d2-graph-remote requires --max-running-requests 1"
         )
+    if d3 and kwargs["cuda_graph_max_bs"] != 1:
+        parser.error("D3 graph multiworker requires --cuda-graph-max-bs 1")
+    if d3 and kwargs["max_running_req"] != 1:
+        parser.error("D3 graph multiworker requires --max-running-requests 1")
 
     if kwargs["model_path"].startswith("~"):
         kwargs["model_path"] = os.path.expanduser(kwargs["model_path"])

@@ -156,10 +156,30 @@ def _resolve_server_gpu_args(server_args: ServerArgs) -> ServerArgs:
                     f"--inferswarm-secondary-gpu resolves to the same physical GPU as the primary ({primary_uuid})"
                 )
 
+    d3_assigned = []
+    for label, selector in (("a", server_args.inferswarm_d3_worker_a_gpu), ("b", server_args.inferswarm_d3_worker_b_gpu)):
+        if selector is None:
+            d3_assigned.append(None)
+            continue
+        try:
+            resolved = resolve_gpu_uuids([selector])
+        except ValueError as exc:
+            raise ValueError(str(exc).replace("--gpu", f"--inferswarm-d3-worker-{label}-gpu", 1)) from exc
+        d3_assigned.append(resolved[0] if resolved else None)
+    known = [
+        value
+        for value in (*tuple(primary_assigned or ()), secondary_assigned, *d3_assigned)
+        if value is not None
+    ]
+    if len({value.upper() for value in known}) != len(known):
+        raise ValueError("InferSwarm secondary/D3 worker selectors must name distinct physical GPUs")
+
     return replace(
         server_args,
         gpu_assigned=primary_assigned,
         inferswarm_secondary_gpu_assigned=secondary_assigned,
+        inferswarm_d3_worker_a_gpu_assigned=d3_assigned[0],
+        inferswarm_d3_worker_b_gpu_assigned=d3_assigned[1],
     )
 
 

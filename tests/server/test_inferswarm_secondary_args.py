@@ -168,6 +168,33 @@ def test_d2_and_canonical_remote_flags_are_mutually_exclusive():
         )
 
 
+def test_d3_is_separate_and_requires_two_distinct_workers():
+    args = _parse(
+        "--inferswarm-experimental-d3-graph-multiworker",
+        "--inferswarm-d3-placement", "/tmp/d3.json",
+        "--inferswarm-d3-worker-a-gpu", "1",
+        "--inferswarm-d3-worker-b-gpu", "2",
+        "--cuda-graph-max-bs", "1", "--max-running-requests", "1",
+    )
+    assert args.inferswarm_experimental_d3_graph_multiworker is True
+    assert args.inferswarm_d3_worker_a_gpu == "1"
+    assert args.inferswarm_d3_worker_b_gpu == "2"
+
+
+def test_d3_refuses_missing_worker_or_wrong_graph_shape():
+    with pytest.raises(SystemExit):
+        _parse("--inferswarm-experimental-d3-graph-multiworker", "--inferswarm-d3-placement", "/tmp/d3.json", "--inferswarm-d3-worker-a-gpu", "1")
+    with pytest.raises(SystemExit):
+        _parse("--inferswarm-experimental-d3-graph-multiworker", "--inferswarm-d3-placement", "/tmp/d3.json", "--inferswarm-d3-worker-a-gpu", "1", "--inferswarm-d3-worker-b-gpu", "2", "--cuda-graph-max-bs", "0", "--max-running-requests", "1")
+
+
+def test_d3_parent_rejects_duplicate_workers(monkeypatch):
+    args = _parse("--gpu", PRIMARY_UUID, "--inferswarm-experimental-d3-graph-multiworker", "--inferswarm-d3-placement", "/tmp/d3.json", "--inferswarm-d3-worker-a-gpu", "1", "--inferswarm-d3-worker-b-gpu", "2", "--cuda-graph-max-bs", "1", "--max-running-requests", "1")
+    monkeypatch.setattr("freetoken.gpu_select.resolve_gpu_uuids", lambda specs: (PRIMARY_UUID,) if specs[0] == PRIMARY_UUID else (SECONDARY_UUID,))
+    with pytest.raises(ValueError, match="distinct physical GPUs"):
+        _resolve_server_gpu_args(args)
+
+
 @pytest.mark.parametrize("value", ["0,1", f"{PRIMARY_UUID},{SECONDARY_UUID}"])
 def test_parser_rejects_multiple_secondary_entries(value):
     with pytest.raises(SystemExit):
