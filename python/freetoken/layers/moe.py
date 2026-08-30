@@ -237,6 +237,7 @@ class OffloadMoELayer(MoELayer):
         # P3 attaches this only when --inferswarm-remote-decode is explicitly active.
         # None keeps the ordinary and P2 resident-bank-only paths byte-for-byte direct.
         self.inferswarm_remote_decode = None
+        self.inferswarm_d2_graph_remote = None
 
     def forward(
         self,
@@ -327,6 +328,10 @@ class OffloadMoELayer(MoELayer):
             timing.mark(self.layer_id, "complete_start", begin_layer=True)
         if self.inferswarm_remote_decode is not None:
             return self.inferswarm_remote_decode.decode(
+                self, cache, hidden_states, topk_weights, topk_ids
+            )
+        if self.inferswarm_d2_graph_remote is not None:
+            return self.inferswarm_d2_graph_remote.decode(
                 self, cache, hidden_states, topk_weights, topk_ids
             )
         if cache.is_cpu_layer(self.layer_id):
@@ -486,6 +491,8 @@ class OffloadMoELayer(MoELayer):
         views: tuple[torch.Tensor, ...],
         alphas: tuple[torch.Tensor, torch.Tensor] | None,
         out: torch.Tensor | None = None,
+        gate_up_out: torch.Tensor | None = None,
+        activation_out: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Return native-NVFP4 decode contributions before the MoE sum reduction.
 
@@ -594,6 +601,8 @@ class OffloadMoELayer(MoELayer):
             act_alpha,
             act_limit,
             out=out,
+            gate_up_out=gate_up_out,
+            activation_out=activation_out,
         )
 
     def _expert_gemm(

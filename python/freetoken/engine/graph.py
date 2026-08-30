@@ -212,6 +212,13 @@ class GraphRunner:
             # payload residency and every tensor address referenced by the graph.
             self.moe_offload_cache.reset_stats()
             timing.reset()
+        d2 = (
+            getattr(self.moe_offload_cache, "inferswarm_d2_graph_remote", None)
+            if self.moe_offload_cache is not None
+            else None
+        )
+        if d2 is not None:
+            d2.reset_counters()
         free_memory = get_free_memory(self.device)
         logger.info_rank0(
             f"Free GPU memory after capturing CUDA graphs: {mem_GB(free_memory)}"

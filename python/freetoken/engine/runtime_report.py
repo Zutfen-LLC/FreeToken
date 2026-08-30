@@ -288,11 +288,15 @@ def build_runtime_report(engine) -> Dict[str, Any]:
         from freetoken.moe.inferswarm_remote_decode import (
             absent_remote_decode_configuration_report,
         )
+        from freetoken.moe.inferswarm_d2_graph_remote import (
+            absent_d2_graph_remote_report,
+        )
         from freetoken.moe.layer_timing import MOE_LAYER_TIMING_SCHEMA
 
         secondary = getattr(engine, "inferswarm_secondary_device", None)
         resident = getattr(engine, "inferswarm_resident_bank", None)
         remote_decode = getattr(engine, "inferswarm_remote_decode", None)
+        d2_remote = getattr(engine, "inferswarm_d2_graph_remote", None)
         layer_timing = getattr(engine, "moe_layer_timing", None)
         report: Dict[str, Any] = {
             "schema": SCHEMA,
@@ -323,6 +327,11 @@ def build_runtime_report(engine) -> Dict[str, Any]:
                 remote_decode.configuration_report()
                 if remote_decode is not None
                 else absent_remote_decode_configuration_report()
+            ),
+            "inferswarm_d2_graph_remote": (
+                d2_remote.configuration_report()
+                if d2_remote is not None
+                else absent_d2_graph_remote_report()
             ),
             "moe_layer_timing": (
                 layer_timing.configuration_report()

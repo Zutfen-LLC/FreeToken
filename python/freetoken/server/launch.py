@@ -201,6 +201,11 @@ def launch_server(
         logger.info(
             f"--inferswarm-remote-decode enabled (mode={server_args.inferswarm_remote_mode}, persistent-stream explicit host-staged transport)"
         )
+    if server_args.inferswarm_experimental_d2_graph_remote:
+        logger.info(
+            "--inferswarm-experimental-d2-graph-remote enabled "
+            "(post-NO-GO unified multi-device CUDA graph experiment)"
+        )
 
     def start_subprocess() -> "BackendHandle":
         import multiprocessing as mp

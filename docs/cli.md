@@ -89,6 +89,7 @@ See [models.md](models.md#moe-backends) for what each backend does.
 | `--disable-moe-prefill-overlap` | overlap on | Disable the two-buffer prefill copy overlap |
 | `--moe-layer-timing-max-steps` | 0 | Opt-in bounded complete routed-MoE layer timing; graph replay remains enabled when otherwise configured |
 | `--moe-layer-timing-role` | unspecified | Diagnostic provenance: `unspecified`, `baseline`, or `candidate` |
+| `--inferswarm-experimental-d2-graph-remote` | off | Post-NO-GO batch-1 two-GPU CUDA-graph research path; requires a secondary GPU, frozen placement, and `--cuda-graph-max-bs 1`; never changes canonical `--inferswarm-remote-decode` |
 
 ### API behaviour
 

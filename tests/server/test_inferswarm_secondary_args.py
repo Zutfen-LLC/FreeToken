@@ -30,6 +30,7 @@ def test_parser_accepts_no_secondary_without_changing_defaults():
     assert args.inferswarm_secondary_gpu_assigned is None
     assert args.inferswarm_placement is None
     assert args.inferswarm_remote_decode is False
+    assert args.inferswarm_experimental_d2_graph_remote is False
     assert args.inferswarm_remote_mode == "overlap"
     assert args.inferswarm_mechanism_max_steps == 256
 
@@ -118,6 +119,52 @@ def test_remote_decode_refuses_cuda_graph_capture():
             "--inferswarm-remote-decode",
             "--cuda-graph-max-bs",
             "1",
+        )
+
+
+def test_d2_graph_remote_is_separate_and_requires_graph_bs1():
+    args = _parse(
+        "--inferswarm-secondary-gpu",
+        SECONDARY_UUID,
+        "--inferswarm-placement",
+        "/tmp/placement.json",
+        "--inferswarm-experimental-d2-graph-remote",
+        "--cuda-graph-max-bs",
+        "1",
+        "--max-running-requests",
+        "1",
+    )
+    assert args.inferswarm_experimental_d2_graph_remote is True
+    assert args.inferswarm_remote_decode is False
+
+
+@pytest.mark.parametrize("graph_bs", ["0", "2"])
+def test_d2_graph_remote_refuses_graph_disable_or_wrong_shape(graph_bs):
+    with pytest.raises(SystemExit):
+        _parse(
+            "--inferswarm-secondary-gpu",
+            SECONDARY_UUID,
+            "--inferswarm-placement",
+            "/tmp/placement.json",
+            "--inferswarm-experimental-d2-graph-remote",
+            "--cuda-graph-max-bs",
+            graph_bs,
+            "--max-running-requests",
+            "1",
+        )
+
+
+def test_d2_and_canonical_remote_flags_are_mutually_exclusive():
+    with pytest.raises(SystemExit):
+        _parse(
+            "--inferswarm-secondary-gpu",
+            SECONDARY_UUID,
+            "--inferswarm-placement",
+            "/tmp/placement.json",
+            "--inferswarm-remote-decode",
+            "--inferswarm-experimental-d2-graph-remote",
+            "--cuda-graph-max-bs",
+            "0",
         )
 
 

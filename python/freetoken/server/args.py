@@ -55,6 +55,9 @@ class ServerArgs(SchedulerConfig):
     inferswarm_placement: str | None = None
     # InferSwarm Phase-1 P3 decode execution.  False preserves P1/P2 inert behavior.
     inferswarm_remote_decode: bool = False
+    # Post-NO-GO D2 architecture-search path.  Separate opt-in keeps canonical P3/P4
+    # behavior and its eager-only contract unchanged.
+    inferswarm_experimental_d2_graph_remote: bool = False
     # P4 intended scheduling shape; serialized is a diagnostic P3-equivalent control.
     inferswarm_remote_mode: str = "overlap"
     # Detailed records are bounded by decode steps; cumulative gates continue past it.
@@ -305,6 +308,16 @@ def parse_args(
         default=ServerArgs.inferswarm_remote_decode,
         help=(
             "Experimental InferSwarm Phase-1 P4 remote decode. Requires --inferswarm-secondary-gpu, --inferswarm-placement, and eager decode"
+        ),
+    )
+
+    parser.add_argument(
+        "--inferswarm-experimental-d2-graph-remote",
+        action="store_true",
+        default=ServerArgs.inferswarm_experimental_d2_graph_remote,
+        help=(
+            "EXPERIMENTAL post-NO-GO D2 batch-one remote decode captured into one "
+            "multi-device CUDA graph; does not change --inferswarm-remote-decode"
         ),
     )
 
@@ -789,6 +802,20 @@ def parse_args(
         parser.error("--inferswarm-remote-decode requires --inferswarm-secondary-gpu")
     if kwargs["inferswarm_remote_decode"] and kwargs["inferswarm_placement"] is None:
         parser.error("--inferswarm-remote-decode requires --inferswarm-placement")
+    d2 = kwargs["inferswarm_experimental_d2_graph_remote"]
+    if d2 and kwargs["inferswarm_remote_decode"]:
+        parser.error(
+            "--inferswarm-experimental-d2-graph-remote is mutually exclusive with "
+            "--inferswarm-remote-decode"
+        )
+    if d2 and kwargs["inferswarm_secondary_gpu"] is None:
+        parser.error(
+            "--inferswarm-experimental-d2-graph-remote requires --inferswarm-secondary-gpu"
+        )
+    if d2 and kwargs["inferswarm_placement"] is None:
+        parser.error(
+            "--inferswarm-experimental-d2-graph-remote requires --inferswarm-placement"
+        )
 
     # resolve some arguments
     run_shell |= kwargs.pop("shell_mode")
@@ -804,6 +831,14 @@ def parse_args(
         )
     if kwargs["inferswarm_remote_decode"] and kwargs["cuda_graph_max_bs"] != 0:
         parser.error("--inferswarm-remote-decode requires --cuda-graph-max-bs 0")
+    if d2 and kwargs["cuda_graph_max_bs"] != 1:
+        parser.error(
+            "--inferswarm-experimental-d2-graph-remote requires --cuda-graph-max-bs 1"
+        )
+    if d2 and kwargs["max_running_req"] != 1:
+        parser.error(
+            "--inferswarm-experimental-d2-graph-remote requires --max-running-requests 1"
+        )
 
     if kwargs["model_path"].startswith("~"):
         kwargs["model_path"] = os.path.expanduser(kwargs["model_path"])

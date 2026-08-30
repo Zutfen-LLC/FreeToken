@@ -167,6 +167,8 @@ def _fused_experts_decode_nvfp4_route_contributions(
     act_alpha: float = 1.702,
     act_limit: float = 7.0,
     route_contributions_out: torch.Tensor | None = None,
+    gate_up_out: torch.Tensor | None = None,
+    activation_out: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Shared decode body through the per-route down projection.
 
@@ -182,12 +184,24 @@ def _fused_experts_decode_nvfp4_route_contributions(
     inter = two_i // 2
     dev, dt = hidden_states.device, hidden_states.dtype
 
-    ic1 = torch.empty((M, top_k, two_i), device=dev, dtype=dt)
+    ic1 = (
+        torch.empty((M, top_k, two_i), device=dev, dtype=dt)
+        if gate_up_out is None
+        else gate_up_out
+    )
+    if tuple(ic1.shape) != (M, top_k, two_i) or ic1.device != dev or ic1.dtype != dt:
+        raise ValueError("NVFP4 gate/up workspace must match [M, top_k, 2I]")
     gemm_fn(
         hidden_states, gate_up_packed, gate_up_scale, gate_up_global,
         ic1, topk_weights, topk_ids, apply_router_weight_on_input, False,
     )
-    ic2 = torch.empty((M * top_k, inter), device=dev, dtype=dt)
+    ic2 = (
+        torch.empty((M * top_k, inter), device=dev, dtype=dt)
+        if activation_out is None
+        else activation_out
+    )
+    if tuple(ic2.shape) != (M * top_k, inter) or ic2.device != dev or ic2.dtype != dt:
+        raise ValueError("NVFP4 activation workspace must match [M * top_k, I]")
     _run_act(activation, ic1.view(-1, two_i), ic2, act_alpha, act_limit)
     if route_contributions_out is None:
         ic3 = torch.empty((M, top_k, H), device=dev, dtype=dt)
@@ -262,6 +276,8 @@ def fused_experts_decode_nvfp4_marlin_route_contributions(
     act_limit: float = 7.0,
     *,
     out: torch.Tensor | None = None,
+    gate_up_out: torch.Tensor | None = None,
+    activation_out: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Return the production Marlin decode's ordered per-route contributions."""
     return _fused_experts_decode_nvfp4_route_contributions(
@@ -280,6 +296,8 @@ def fused_experts_decode_nvfp4_marlin_route_contributions(
         act_alpha,
         act_limit,
         route_contributions_out=out,
+        gate_up_out=gate_up_out,
+        activation_out=activation_out,
     )
 
 

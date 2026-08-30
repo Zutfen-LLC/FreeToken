@@ -355,12 +355,16 @@ class Engine:
         self.inferswarm_placement = None
         self.inferswarm_resident_bank = None
         self.inferswarm_remote_decode = None
+        self.inferswarm_d2_graph_remote = None
         self.inferswarm_correctness_diagnostics = None
         self.moe_layer_timing = None
         self._moe_measurement_step = 0
         placement_path = getattr(config, "inferswarm_placement", None)
         secondary_spec = getattr(config, "inferswarm_secondary_gpu", None)
         remote_decode = bool(getattr(config, "inferswarm_remote_decode", False))
+        d2_graph_remote = bool(
+            getattr(config, "inferswarm_experimental_d2_graph_remote", False)
+        )
         if getattr(config, "inferswarm_correctness_diagnostics", False):
             from .correctness_diagnostics import CorrectnessDiagnostics
 
@@ -380,6 +384,20 @@ class Engine:
         if remote_decode and config.cuda_graph_max_bs != 0:
             raise ValueError(
                 "--inferswarm-remote-decode requires --cuda-graph-max-bs 0"
+            )
+        if d2_graph_remote and remote_decode:
+            raise ValueError(
+                "D2 graph remote and canonical remote decode are mutually exclusive"
+            )
+        if d2_graph_remote and (secondary_spec is None or placement_path is None):
+            raise ValueError(
+                "D2 graph remote requires a secondary GPU and frozen placement"
+            )
+        if d2_graph_remote and (
+            config.cuda_graph_max_bs != 1 or config.max_running_req != 1
+        ):
+            raise ValueError(
+                "D2 graph remote requires CUDA graph BS1 and max running requests 1"
             )
         if secondary_spec is not None:
             from freetoken.moe.inferswarm_secondary import probe_secondary_device
@@ -554,6 +572,10 @@ class Engine:
         )
         if self.moe_layer_timing is not None:
             self.moe_layer_timing.set_graph_state(list(self.graph_runner.graph_map))
+        if self.inferswarm_d2_graph_remote is not None:
+            self.inferswarm_d2_graph_remote.set_graph_state(
+                list(self.graph_runner.graph_map)
+            )
         if config.attention_backend.split(",")[0] == "triton":
             # Prefill runs on the first comma part; warm its autotune cache.
             self._warmup_prefill()
@@ -842,6 +864,8 @@ class Engine:
             self._init_cpu_moe_executor(config, cache, layers)
         if bool(getattr(config, "inferswarm_remote_decode", False)):
             self._init_inferswarm_remote_decode(config, cache, layers)
+        if bool(getattr(config, "inferswarm_experimental_d2_graph_remote", False)):
+            self._init_inferswarm_d2_graph_remote(config, cache, layers)
         self._init_moe_layer_timing(config, cache)
         self.ctx.moe_offload_cache = cache
         self.moe_offload_cache = cache
@@ -935,11 +959,51 @@ class Engine:
             role=config.moe_layer_timing_role,
             graph_requested=config.cuda_graph_max_bs != 0,
             remote_overlap_active=(remote is not None and remote.mode == "overlap"),
+            d2_graph_remote_active=self.inferswarm_d2_graph_remote is not None,
         )
         cache.layer_timing = timing
         self.moe_layer_timing = timing
         logger.info_rank0(
             f"MoE complete-layer timing enabled: capacity={timing.max_steps} steps, role={timing.role!r}, CUDA globaltimer marker storage"
+        )
+
+    def _init_inferswarm_d2_graph_remote(
+        self, config: EngineConfig, cache, layers
+    ) -> None:
+        """Attach the isolated post-NO-GO D2 executor before graph capture."""
+        resident = self.inferswarm_resident_bank
+        secondary = self.inferswarm_secondary_device
+        assert resident is not None, "D2 requires the initialized P2 resident bank"
+        assert secondary is not None, "D2 requires the validated secondary device"
+        from freetoken.moe.inferswarm_d2_graph_remote import (
+            InferSwarmD2GraphRemoteExecutor,
+            build_local_fallback_ids,
+            build_remote_slot_lookup,
+            validate_d2_runtime,
+        )
+
+        validate_d2_runtime(config, cache, resident, secondary)
+        executor = InferSwarmD2GraphRemoteExecutor(
+            resident_bank=resident,
+            secondary_device=secondary,
+            primary_device=self.device,
+            route_lookup=build_remote_slot_lookup(resident.placement, self.device),
+            local_fallback_ids=build_local_fallback_ids(
+                resident.placement, self.device
+            ),
+            hidden_size=int(config.model_config.hidden_size),
+            top_k=int(config.model_config.num_experts_per_tok),
+            hidden_dtype=config.dtype,
+            num_layers=int(config.model_config.num_moe_layers),
+            intermediate_size=int(config.model_config.moe_intermediate_size),
+        )
+        for layer in layers:
+            layer.inferswarm_d2_graph_remote = executor
+        cache.inferswarm_d2_graph_remote = executor
+        self.inferswarm_d2_graph_remote = executor
+        logger.info_rank0(
+            "InferSwarm D2 graph remote attached: fixed batch-one cross-device "
+            f"fork/join to cuda:{secondary.secondary.visible_ordinal}"
         )
 
     def _resolve_hybrid_fetch(self, config: EngineConfig, cache) -> None:
@@ -1108,6 +1172,16 @@ class Engine:
             if remote_decode is not None
             else absent_remote_decode_report()
         )
+        from freetoken.moe.inferswarm_d2_graph_remote import (
+            absent_d2_graph_remote_report,
+        )
+
+        d2_remote = getattr(self, "inferswarm_d2_graph_remote", None)
+        payload["inferswarm_d2_graph_remote"] = (
+            d2_remote.snapshot()
+            if d2_remote is not None
+            else absent_d2_graph_remote_report()
+        )
         from freetoken.moe.layer_timing import absent_moe_layer_timing_report
 
         timing = getattr(self, "moe_layer_timing", None)
@@ -1136,6 +1210,8 @@ class Engine:
             cache.reset_instrumentation()
             if remote_decode is not None:
                 remote_decode.reset()
+            if d2_remote is not None:
+                d2_remote.reset_counters()
             if timing is not None:
                 timing.reset()
             if correctness is not None:
@@ -1302,6 +1378,10 @@ class Engine:
         )
         if self.moe_layer_timing is not None:
             self.moe_layer_timing.set_graph_state(list(self.graph_runner.graph_map))
+        if self.inferswarm_d2_graph_remote is not None:
+            self.inferswarm_d2_graph_remote.set_graph_state(
+                list(self.graph_runner.graph_map)
+            )
 
     def forward_batch(self, batch: Batch, args: BatchSamplingArgs) -> ForwardOutput:
         assert torch.cuda.current_stream() == self.stream

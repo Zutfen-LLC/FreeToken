@@ -97,6 +97,7 @@ class MoeLayerTiming:
         role: str,
         graph_requested: bool,
         remote_overlap_active: bool,
+        d2_graph_remote_active: bool = False,
     ) -> None:
         if max_steps < 1:
             raise ValueError("MoE layer timing capacity must be positive")
@@ -110,6 +111,7 @@ class MoeLayerTiming:
         self.graph_requested = bool(graph_requested)
         self.graph_captured_batch_sizes: list[int] = []
         self.remote_overlap_active = bool(remote_overlap_active)
+        self.d2_graph_remote_active = bool(d2_graph_remote_active)
         # Last slot is an overflow sink. Captured graphs always have a valid address even
         # after the retained trace fills; snapshots exclude it.
         self.timestamps = torch.full(
@@ -147,6 +149,7 @@ class MoeLayerTiming:
             "timer_unit_basis": "NVIDIA CUDA %globaltimer nanosecond counter",
             "host_sync_per_layer": False,
             "remote_overlap_active": self.remote_overlap_active,
+            "d2_graph_remote_active": self.d2_graph_remote_active,
         }
 
     def begin_decode_step(
@@ -234,7 +237,7 @@ class MoeLayerTiming:
     ) -> dict[str, Any]:
         annotation = self._annotations.get((step, layer_id), {})
         identity = annotation.get("identity")
-        remote_participated = bool(
+        remote_participated = self.d2_graph_remote_active or bool(
             identity and identity.get("gpu1_owned_selections", 0)
         )
         local_participated = (
@@ -248,10 +251,14 @@ class MoeLayerTiming:
                 "decode_step": step,
                 "layer_id": layer_id,
                 "total_route_selections": None if total < 0 else total,
-                "gpu0_owned_selections": None if total < 0 else total,
-                "gpu1_owned_selections": 0,
-                "unique_gpu1_expert_identities": 0,
-                "dispatch_count": 0,
+                "gpu0_owned_selections": (
+                    None if self.d2_graph_remote_active or total < 0 else total
+                ),
+                "gpu1_owned_selections": None if self.d2_graph_remote_active else 0,
+                "unique_gpu1_expert_identities": (
+                    None if self.d2_graph_remote_active else 0
+                ),
+                "dispatch_count": 1 if self.d2_graph_remote_active else 0,
             }
 
         local_start = "local_start"
@@ -281,7 +288,9 @@ class MoeLayerTiming:
                 applicable=local_participated,
             ),
         }
-        candidate = bool(annotation.get("candidate", False))
+        candidate = self.d2_graph_remote_active or bool(
+            annotation.get("candidate", False)
+        )
         remote_durations = {
             "classification_control_host_wait": self._annotation_duration(
                 annotation, "classification_control_host_wait", applicable=candidate
