@@ -450,6 +450,22 @@ def test_triton_decode_route_contributions_reproduce_ordinary_wrapper_exactly():
 
 
 @cuda
+def test_d5_count_aware_route_contributions_skip_and_zero_inactive_tail():
+    from freetoken.moe.fused_nvfp4 import fused_experts_decode_nvfp4_marlin_route_contributions
+    device = torch.device("cuda"); cache, _ = _triton_cache(device)
+    hidden = torch.randn(1, H, dtype=torch.bfloat16, device=device) / 4
+    weights = torch.rand(1, TOPK, dtype=torch.float32, device=device)
+    ids = torch.tensor([[1, 6]], dtype=torch.int32, device=device)
+    cache.ensure_experts(0, ids); cache.copy_missing(); banks = cache.bank_views()
+    full = fused_experts_decode_nvfp4_marlin_route_contributions(hidden, *banks, weights, ids)
+    count = torch.tensor(1, dtype=torch.int32, device=device)
+    compact = fused_experts_decode_nvfp4_marlin_route_contributions(
+        hidden, *banks, weights, ids, active_count=count)
+    assert torch.equal(compact[:, :1], full[:, :1])
+    assert torch.count_nonzero(compact[:, 1:]).item() == 0
+
+
+@cuda
 def test_offload_native_nvfp4_route_seam_accepts_canonical_none_alphas():
     from freetoken.layers.moe import OffloadMoELayer
     from freetoken.moe.fused_nvfp4 import (
