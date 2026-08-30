@@ -62,6 +62,9 @@ class ServerArgs(SchedulerConfig):
     # canonical P3 or the D2 single-worker flag/placement contract.
     inferswarm_experimental_d3_graph_multiworker: bool = False
     inferswarm_experimental_d4_capability_weighted: bool = False
+    # D5 startup-only loader experiment; independent of route execution semantics.
+    inferswarm_experimental_d5_resident_loader: bool = False
+    inferswarm_d5_loader_cpu_workers: int = 4
     # Fixed startup-only D3 execution shape; never selected on a decode token.
     inferswarm_d3_active_workers: str = "ab"
     inferswarm_d3_placement: str | None = None
@@ -334,6 +337,8 @@ def parse_args(
     )
     parser.add_argument("--inferswarm-experimental-d3-graph-multiworker", action="store_true", default=ServerArgs.inferswarm_experimental_d3_graph_multiworker, help="EXPERIMENTAL D3 captured GPU0/A/B fan-out; separate from canonical and D2 paths")
     parser.add_argument("--inferswarm-experimental-d4-capability-weighted", action="store_true", default=ServerArgs.inferswarm_experimental_d4_capability_weighted, help="EXPERIMENTAL D4 placement on the unchanged D3 executor")
+    parser.add_argument("--inferswarm-experimental-d5-resident-loader", action="store_true", default=ServerArgs.inferswarm_experimental_d5_resident_loader, help="EXPERIMENTAL D5 bulk pinned, concurrently verified resident loader")
+    parser.add_argument("--inferswarm-d5-loader-cpu-workers", type=int, choices=(1, 2, 4, 8), default=ServerArgs.inferswarm_d5_loader_cpu_workers, help="bounded CPU staging workers per D5 resident worker")
     parser.add_argument("--inferswarm-d3-active-workers", choices=("a", "b", "ab"), default=ServerArgs.inferswarm_d3_active_workers, help="EXPERIMENTAL D3 fixed captured worker shape (a, b, or ab)")
     parser.add_argument("--inferswarm-d3-placement", type=str, default=ServerArgs.inferswarm_d3_placement, help="SHA-pinned frozen D3 placement artifact")
     parser.add_argument("--inferswarm-d4-placement", type=str, default=ServerArgs.inferswarm_d4_placement, help="SHA-pinned frozen D4 placement artifact")
@@ -824,6 +829,7 @@ def parse_args(
     d2 = kwargs["inferswarm_experimental_d2_graph_remote"]
     d3 = kwargs["inferswarm_experimental_d3_graph_multiworker"]
     d4 = kwargs["inferswarm_experimental_d4_capability_weighted"]
+    d5_loader = kwargs["inferswarm_experimental_d5_resident_loader"]
     if d2 and kwargs["inferswarm_remote_decode"]:
         parser.error(
             "--inferswarm-experimental-d2-graph-remote is mutually exclusive with "
@@ -843,6 +849,10 @@ def parse_args(
     required_d3_workers = (("a", kwargs["inferswarm_d3_worker_a_gpu"]), ("b", kwargs["inferswarm_d3_worker_b_gpu"]))
     if d4 and not d3:
         parser.error("D4 capability weighting requires the unchanged D3 graph executor flag")
+    if d5_loader and not d3:
+        parser.error("D5 resident loader requires a D3/D4 worker configuration")
+    if not d5_loader and kwargs["inferswarm_d5_loader_cpu_workers"] != 4:
+        parser.error("--inferswarm-d5-loader-cpu-workers requires --inferswarm-experimental-d5-resident-loader")
     placement = kwargs["inferswarm_d4_placement"] if d4 else kwargs["inferswarm_d3_placement"]
     if d3 and (placement is None or any(selector is None for label, selector in required_d3_workers if label in d3_active)):
         parser.error(f"D3/D4 graph multiworker shape {d3_active!r} requires its placement and active worker selector(s)")

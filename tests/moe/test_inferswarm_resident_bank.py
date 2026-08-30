@@ -23,6 +23,7 @@ from freetoken.moe.inferswarm_resident_bank import (
     PlacementContract,
     ResolvedBankLayout,
     _construct_storage,
+    _bulk_stage_bank,
     load_frozen_placement,
     load_secondary_resident_bank,
     parse_frozen_placement_bytes,
@@ -125,6 +126,24 @@ def test_valid_synthetic_placement_and_deterministic_remote_slots():
         LayerPlacement(layer_id=0, expert_ids=(0,), remote_slots=(1,)),
         LayerPlacement(layer_id=1, expert_ids=(1, 2), remote_slots=(0, 2)),
     )
+
+
+def test_d5_bulk_pinned_staging_is_in_final_remote_slot_order():
+    placement = _parse()
+    layers = (
+        torch.tensor([[10], [11], [12]], dtype=torch.uint8),
+        torch.tensor([[20], [21], [22]], dtype=torch.uint8),
+    )
+    profile = {"allocation_s": 0.0, "cpu_source_gather_s": 0.0}
+    staging = _bulk_stage_bank(
+        source_rows_for_layer=lambda layer, ids: layers[layer].index_select(
+            0, torch.tensor(ids, dtype=torch.long)),
+        placement=placement, row_shape=(1,), dtype=torch.uint8,
+        cpu_workers=2, profile=profile,
+    )
+    assert staging.is_pinned()
+    # Frozen flat rank is [layer1/expert1, layer0/expert0, layer1/expert2].
+    assert staging[:, 0].tolist() == [21, 10, 22]
 
 
 def test_load_computes_the_hash_of_exact_file_bytes(tmp_path):

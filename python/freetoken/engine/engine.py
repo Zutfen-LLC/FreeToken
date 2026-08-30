@@ -942,6 +942,10 @@ class Engine:
             self.inferswarm_d3_workers[0], self.inferswarm_d3_workers[1],
             active_workers=tuple(getattr(config, "inferswarm_d3_active_workers", "ab")),
             primary_visible_ordinal=self.device.index,
+            loader_mode=("bulk" if bool(getattr(config, "inferswarm_experimental_d5_resident_loader", False))
+                         else "legacy-profile" if os.environ.get("FREETOKEN_D5_PROFILE_LEGACY_LOADER") == "1"
+                         else "legacy"),
+            cpu_workers=int(getattr(config, "inferswarm_d5_loader_cpu_workers", 4)),
         )
 
     def _init_inferswarm_remote_decode(
@@ -1255,6 +1259,10 @@ class Engine:
         d3_remote = getattr(self, "inferswarm_d3_graph_multiworker", None)
         payload["inferswarm_d3_graph_multiworker"] = (
             d3_remote.snapshot() if d3_remote is not None else absent_d3_graph_multiworker_report()
+        )
+        d3_banks = getattr(self, "inferswarm_d3_resident_banks", None)
+        payload["inferswarm_d5_resident_loader"] = (
+            d3_banks.loader_profile if d3_banks is not None else None
         )
         from freetoken.moe.layer_timing import absent_moe_layer_timing_report
 

@@ -90,3 +90,28 @@ def test_single_worker_shape_never_allocates_inactive_bank(monkeypatch, active, 
     assert pair.total_native_expert_bytes == 5_326_848_000
     assert (pair.worker_a is not None) == ("a" in active)
     assert (pair.worker_b is not None) == ("b" in active)
+
+
+def test_d5_bulk_loads_ab_concurrently_with_explicit_device_isolation(monkeypatch):
+    import threading
+    import time
+    import freetoken.moe.inferswarm_resident_bank as resident
+    placement = load_d3_placement(ARTIFACT)
+    barrier = threading.Barrier(2)
+    calls = []
+    class Cuda:
+        def set_device(self, ordinal): calls.append((threading.current_thread().name, ordinal))
+    def fake_bulk(worker_placement, _banks, _config, device, **kwargs):
+        barrier.wait(timeout=2); time.sleep(.01)
+        kwargs["profile"].update(device=device.secondary.visible_ordinal)
+        return _bank(worker_placement, device.secondary.visible_ordinal)
+    monkeypatch.setattr(resident, "load_secondary_resident_bank_bulk", fake_bulk)
+    pair = d3_banks.load_d3_resident_banks(
+        placement, object(), object(), _device(1, "A"), _device(2, "B"),
+        primary_visible_ordinal=0, cuda_module=Cuda(), loader_mode="bulk", cpu_workers=2)
+    assert pair.worker_a.report.secondary_visible_ordinal == 1
+    assert pair.worker_b.report.secondary_visible_ordinal == 2
+    assert pair.loader_profile["concurrent_ab"] is True
+    assert pair.loader_profile["workers"]["a"]["device"] == 1
+    assert pair.loader_profile["workers"]["b"]["device"] == 2
+    assert calls[-1][1] == 0

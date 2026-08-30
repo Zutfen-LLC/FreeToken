@@ -8,6 +8,8 @@ narrow executor, while all transport, partitioning, and execution remain elsewhe
 from __future__ import annotations
 
 import hashlib
+import time
+from concurrent.futures import ThreadPoolExecutor
 import json
 import math
 from dataclasses import dataclass
@@ -800,6 +802,7 @@ def _copy_and_verify_rows(
     placement: FrozenPlacement,
     device: torch.device,
     chunk_rows: int,
+    profile: dict[str, Any] | None = None,
 ) -> VerificationAccounting:
     source_hash = hashlib.sha256()
     resident_hash = hashlib.sha256()
@@ -811,10 +814,16 @@ def _copy_and_verify_rows(
             remote_slots = layer.remote_slots[start : start + chunk_rows]
             if not expert_ids:
                 continue
+            tick = time.perf_counter()
             source = source_rows_for_layer(layer.layer_id, expert_ids)
+            if profile is not None:
+                profile["cpu_source_gather_s"] += time.perf_counter() - tick
             if source.device.type != "cpu":
                 source = source.to("cpu")
+            tick = time.perf_counter()
             source = source.contiguous()
+            if profile is not None:
+                profile["contiguous_materialization_s"] += time.perf_counter() - tick
             if source.dtype != destination.dtype or tuple(source.shape[1:]) != tuple(
                 destination.shape[1:]
             ):
@@ -829,11 +838,26 @@ def _copy_and_verify_rows(
             # or layout adaptation occurs, and one primitive covers every bank dtype.
             destination_bytes = destination.view(placement.remote_slots, -1).view(torch.uint8)
             source_bytes = source.view(len(expert_ids), -1).view(torch.uint8)
+            tick = time.perf_counter()
             staged = source_bytes.to(device)
+            if profile is not None:
+                torch.cuda.synchronize(device)
+                profile["h2d_s"] += time.perf_counter() - tick
+                profile["h2d_bytes"] += source_bytes.numel()
+            tick = time.perf_counter()
             destination_bytes.index_copy_(0, slots_device, staged)
+            if profile is not None:
+                torch.cuda.synchronize(device)
+                profile["gpu_scatter_s"] += time.perf_counter() - tick
+            tick = time.perf_counter()
             observed_bytes = (
                 destination_bytes.index_select(0, slots_device).to("cpu").contiguous()
             )
+            if profile is not None:
+                torch.cuda.synchronize(device)
+                profile["d2h_verification_s"] += time.perf_counter() - tick
+                profile["d2h_bytes"] += observed_bytes.numel()
+            tick = time.perf_counter()
             if not torch.equal(source_bytes, observed_bytes):
                 unequal = source_bytes.ne(observed_bytes).any(dim=1)
                 row = int(unequal.nonzero()[0].item())
@@ -843,6 +867,9 @@ def _copy_and_verify_rows(
                 )
             source_hash.update(source_bytes.numpy())
             resident_hash.update(observed_bytes.numpy())
+            if profile is not None:
+                profile["cpu_equality_hash_s"] += time.perf_counter() - tick
+                profile["copy_chunks"] += 1
             rows = len(expert_ids)
             byte_count = source_bytes.numel()
             verified_rows += rows
@@ -895,6 +922,7 @@ def _construct_storage(
     cuda,
     *,
     chunk_rows: int,
+    profile: dict[str, Any] | None = None,
 ) -> tuple[
     dict[str, torch.Tensor],
     dict[str, torch.Tensor],
@@ -909,10 +937,16 @@ def _construct_storage(
     verification: list[VerificationAccounting] = []
     for name in layout.bank_schema:
         head = banks.sources[name][0]
+        tick = time.perf_counter()
         destination = torch.empty(
             (placement.remote_slots, *head.shape[1:]), dtype=head.dtype, device=device
         )
         resident_banks[name] = destination
+        if profile is not None:
+            profile["allocation_s"] += time.perf_counter() - tick
+            tensor_profile = {key: 0 for key in profile if key not in ("tensors", "mode")}
+            tensor_profile["name"] = name
+            tensor_profile["kind"] = "expert_bank"
         verification.append(
             _copy_and_verify_rows(
                 name=name,
@@ -924,8 +958,14 @@ def _construct_storage(
                 placement=placement,
                 device=device,
                 chunk_rows=chunk_rows,
+                profile=tensor_profile if profile is not None else None,
             )
         )
+        if profile is not None:
+            profile["tensors"].append(tensor_profile)
+            for key, value in tensor_profile.items():
+                if key in profile and isinstance(value, (int, float)):
+                    profile[key] += value
         row_bytes = _row_bytes(destination)
         bank_reports.append(
             BankAccounting(
@@ -947,8 +987,14 @@ def _construct_storage(
     ):
         if source is None:
             continue
+        tick = time.perf_counter()
         destination = torch.empty((placement.remote_slots,), dtype=source.dtype, device=device)
         resident_aux[name] = destination
+        if profile is not None:
+            profile["allocation_s"] += time.perf_counter() - tick
+            tensor_profile = {key: 0 for key in profile if key not in ("tensors", "mode")}
+            tensor_profile["name"] = name
+            tensor_profile["kind"] = "auxiliary"
         verification.append(
             _copy_and_verify_rows(
                 name=name,
@@ -960,8 +1006,14 @@ def _construct_storage(
                 placement=placement,
                 device=device,
                 chunk_rows=chunk_rows,
+                profile=tensor_profile if profile is not None else None,
             )
         )
+        if profile is not None:
+            profile["tensors"].append(tensor_profile)
+            for key, value in tensor_profile.items():
+                if key in profile and isinstance(value, (int, float)):
+                    profile[key] += value
         aux_reports.append(
             BankAccounting(
                 name=name,
@@ -982,6 +1034,183 @@ def _construct_storage(
     )
 
 
+def _sha256_tensor_bytes(tensor: torch.Tensor, *, chunk_bytes: int = 256 << 20) -> str:
+    """Hash exact CPU storage bytes without constructing a second bank-sized object."""
+    raw = tensor.contiguous().view(torch.uint8).reshape(-1)
+    digest = hashlib.sha256()
+    for start in range(0, raw.numel(), chunk_bytes):
+        digest.update(raw[start : start + chunk_bytes].numpy())
+    return digest.hexdigest()
+
+
+def _bulk_stage_bank(
+    *, source_rows_for_layer, placement: FrozenPlacement, row_shape: tuple[int, ...],
+    dtype: torch.dtype, cpu_workers: int, profile: dict[str, Any],
+) -> torch.Tensor:
+    tick = time.perf_counter()
+    staging = torch.empty(
+        (placement.remote_slots, *row_shape), dtype=dtype, device="cpu", pin_memory=True
+    )
+    profile["allocation_s"] += time.perf_counter() - tick
+
+    def gather(layer: LayerPlacement) -> None:
+        if not layer.expert_ids:
+            return
+        indices = torch.tensor(layer.expert_ids, dtype=torch.long)
+        slots = torch.tensor(layer.remote_slots, dtype=torch.long)
+        selected = source_rows_for_layer(layer.layer_id, layer.expert_ids)
+        if selected.device.type != "cpu":
+            selected = selected.to("cpu")
+        selected = selected.contiguous()
+        if selected.dtype != dtype or tuple(selected.shape[1:]) != row_shape:
+            raise RuntimeError("bulk resident source layout mismatch")
+        staging.index_copy_(0, slots, selected)
+
+    tick = time.perf_counter()
+    if cpu_workers == 1:
+        for layer in placement.per_layer:
+            gather(layer)
+    else:
+        with ThreadPoolExecutor(max_workers=cpu_workers, thread_name_prefix="d5-stage") as pool:
+            list(pool.map(gather, placement.per_layer))
+    profile["cpu_source_gather_s"] += time.perf_counter() - tick
+    return staging
+
+
+def _construct_storage_bulk(
+    placement: FrozenPlacement, banks: ExpertBanks, layout: ResolvedBankLayout,
+    device: torch.device, cuda, *, cpu_workers: int, profile: dict[str, Any],
+) -> tuple[dict[str, torch.Tensor], dict[str, torch.Tensor], tuple[BankAccounting, ...],
+           tuple[BankAccounting, ...], tuple[VerificationAccounting, ...]]:
+    if cpu_workers not in (1, 2, 4, 8):
+        raise ValueError("D5 bulk loader cpu_workers must be one of 1, 2, 4, 8")
+    resident_banks: dict[str, torch.Tensor] = {}
+    resident_aux: dict[str, torch.Tensor] = {}
+    bank_reports: list[BankAccounting] = []
+    aux_reports: list[BankAccounting] = []
+    verification: list[VerificationAccounting] = []
+
+    entries: list[tuple[str, str, torch.Tensor, Any]] = []
+    for name in layout.bank_schema:
+        head = banks.sources[name][0]
+        entries.append((name, "expert_bank", head,
+                        lambda layer_id, expert_ids, n=name: banks.sources[n][layer_id].index_select(
+                            0, torch.tensor(expert_ids, dtype=torch.long))))
+    for name, source in (("gate_up_alpha", banks.gate_up_alpha), ("down_alpha", banks.down_alpha)):
+        if source is not None:
+            entries.append((name, "auxiliary", source,
+                            lambda layer_id, expert_ids, s=source: _source_alpha_rows(
+                                s, layer_id, expert_ids, placement.num_experts, cuda)))
+
+    for name, kind, head, getter in entries:
+        row_shape = tuple(head.shape[1:]) if kind == "expert_bank" else ()
+        item = {"name": name, "kind": kind, "allocation_s": 0.0,
+                "cpu_source_gather_s": 0.0, "contiguous_materialization_s": 0.0,
+                "h2d_s": 0.0, "gpu_scatter_s": 0.0, "d2h_verification_s": 0.0,
+                "cpu_equality_hash_s": 0.0, "synchronization_s": 0.0,
+                "h2d_bytes": 0, "d2h_bytes": 0, "copy_chunks": 1}
+        staging = _bulk_stage_bank(source_rows_for_layer=getter, placement=placement,
+                                   row_shape=row_shape, dtype=head.dtype,
+                                   cpu_workers=cpu_workers, profile=item)
+        tick = time.perf_counter()
+        destination = torch.empty_like(staging, device=device)
+        item["allocation_s"] += time.perf_counter() - tick
+        tick = time.perf_counter()
+        destination.copy_(staging, non_blocking=True)
+        cuda.synchronize(device)
+        item["h2d_s"] += time.perf_counter() - tick
+        item["h2d_bytes"] = staging.numel() * staging.element_size()
+
+        tick = time.perf_counter()
+        observed = torch.empty_like(staging, pin_memory=True)
+        item["allocation_s"] += time.perf_counter() - tick
+        tick = time.perf_counter()
+        observed.copy_(destination, non_blocking=True)
+        cuda.synchronize(device)
+        item["d2h_verification_s"] += time.perf_counter() - tick
+        item["d2h_bytes"] = observed.numel() * observed.element_size()
+        tick = time.perf_counter()
+        if not torch.equal(staging.view(torch.uint8), observed.view(torch.uint8)):
+            unequal = staging.view(placement.remote_slots, -1).view(torch.uint8).ne(
+                observed.view(placement.remote_slots, -1).view(torch.uint8)).any(dim=1)
+            slot = int(unequal.nonzero()[0].item())
+            raise RuntimeError(f"bulk resident byte mismatch for {kind} {name!r}, remote_slot {slot}")
+        source_sha = _sha256_tensor_bytes(staging)
+        resident_sha = _sha256_tensor_bytes(observed)
+        item["cpu_equality_hash_s"] += time.perf_counter() - tick
+        if source_sha != resident_sha:
+            raise RuntimeError(f"bulk resident aggregate hash mismatch for {kind} {name!r}")
+        byte_count = staging.numel() * staging.element_size()
+        verification.append(VerificationAccounting(name, kind, placement.remote_slots,
+                                                     byte_count, source_sha, resident_sha))
+        accounting = BankAccounting(name, str(destination.dtype).removeprefix("torch."),
+                                    row_shape, _row_bytes(destination), placement.remote_slots,
+                                    byte_count, str(destination.device))
+        if kind == "expert_bank":
+            resident_banks[name] = destination
+            bank_reports.append(accounting)
+        else:
+            resident_aux[name] = destination
+            aux_reports.append(accounting)
+        profile["tensors"].append(item)
+        for key, value in item.items():
+            if key in profile and isinstance(value, (int, float)):
+                profile[key] += value
+        del staging, observed
+    return resident_banks, resident_aux, tuple(bank_reports), tuple(aux_reports), tuple(verification)
+
+
+def load_secondary_resident_bank_bulk(
+    placement: FrozenPlacement, banks: ExpertBanks, model_config: Any, secondary_device,
+    *, primary_visible_ordinal: int, cpu_workers: int = 4, torch_module=torch,
+    cuda_module=None, resident_device: torch.device | None = None,
+    contract: PlacementContract = CANONICAL_CONTRACT,
+    profile: dict[str, Any] | None = None,
+) -> SecondaryResidentExpertBank:
+    """D5-only bank-at-a-time pinned staging with exact final-slot verification."""
+    cuda = cuda_module or torch_module.cuda
+    secondary_ordinal = int(secondary_device.secondary.visible_ordinal)
+    device = resident_device or torch_module.device("cuda", secondary_ordinal)
+    result_profile = profile if profile is not None else {}
+    result_profile.clear()
+    result_profile.update(mode="bulk", cpu_workers=cpu_workers, tensors=[], allocation_s=0.0,
+                          cpu_source_gather_s=0.0, contiguous_materialization_s=0.0,
+                          h2d_s=0.0, gpu_scatter_s=0.0, d2h_verification_s=0.0,
+                          cpu_equality_hash_s=0.0, synchronization_s=0.0,
+                          h2d_bytes=0, d2h_bytes=0, copy_chunks=0)
+    started = time.perf_counter()
+    layout = before = built = after = None
+    try:
+        layout = validate_runtime_bank_layout(placement, banks, model_config, contract=contract)
+        before = _memory_snapshot(cuda, secondary_ordinal)
+        cuda.set_device(secondary_ordinal)
+        built = _construct_storage_bulk(placement, banks, layout, device, cuda,
+                                        cpu_workers=cpu_workers, profile=result_profile)
+        tick = time.perf_counter(); cuda.synchronize(secondary_ordinal)
+        result_profile["synchronization_s"] += time.perf_counter() - tick
+        after = _memory_snapshot(cuda, secondary_ordinal)
+    finally:
+        cuda.set_device(primary_visible_ordinal)
+    restored = int(cuda.current_device()) == primary_visible_ordinal
+    result_profile["total_s"] = time.perf_counter() - started
+    result_profile["average_chunk_bytes"] = (result_profile["h2d_bytes"] /
+                                               result_profile["copy_chunks"])
+    if not restored:
+        raise RuntimeError("D5 bulk resident initialization failed to restore primary CUDA device")
+    assert layout is not None and before is not None and built is not None and after is not None
+    resident_banks, resident_aux, bank_reports, aux_reports, verification = built
+    memory = CudaMemoryAccounting(before[0], after[0], after[0] - before[0], before[1],
+                                  after[1], after[1] - before[1], before[2], after[2],
+                                  after[2] - before[2], restored)
+    report = ResidentBankReport(placement, layout, secondary_device.secondary.uuid,
+                                secondary_ordinal, bank_reports, aux_reports, verification, memory)
+    if report.expert_bank_tensor_bytes != layout.bank_row_bytes * placement.remote_slots:
+        raise RuntimeError("D5 bulk resident expert-bank accounting does not reconcile")
+    if report.auxiliary_resident_bytes != layout.auxiliary_row_bytes * placement.remote_slots:
+        raise RuntimeError("D5 bulk resident auxiliary accounting does not reconcile")
+    return SecondaryResidentExpertBank(placement, report, resident_banks, resident_aux)
+
+
 def load_secondary_resident_bank(
     placement: FrozenPlacement,
     banks: ExpertBanks,
@@ -994,6 +1223,7 @@ def load_secondary_resident_bank(
     resident_device: torch.device | None = None,
     chunk_rows: int = 32,
     contract: PlacementContract = CANONICAL_CONTRACT,
+    profile: dict[str, Any] | None = None,
 ) -> SecondaryResidentExpertBank:
     """Allocate, copy, and exactly verify the frozen rows, restoring primary always."""
     cuda = cuda_module or torch_module.cuda
@@ -1003,6 +1233,14 @@ def load_secondary_resident_bank(
     before = None
     built = None
     after = None
+    started = time.perf_counter()
+    if profile is not None:
+        profile.clear()
+        profile.update(mode="legacy", tensors=[], allocation_s=0.0,
+                       cpu_source_gather_s=0.0, contiguous_materialization_s=0.0,
+                       h2d_s=0.0, gpu_scatter_s=0.0, d2h_verification_s=0.0,
+                       cpu_equality_hash_s=0.0, synchronization_s=0.0,
+                       h2d_bytes=0, d2h_bytes=0, copy_chunks=0)
     try:
         layout = validate_runtime_bank_layout(
             placement, banks, model_config, contract=contract
@@ -1010,13 +1248,21 @@ def load_secondary_resident_bank(
         before = _memory_snapshot(cuda, secondary_ordinal)
         cuda.set_device(secondary_ordinal)
         built = _construct_storage(
-            placement, banks, layout, device, cuda, chunk_rows=chunk_rows
+            placement, banks, layout, device, cuda, chunk_rows=chunk_rows,
+            profile=profile,
         )
+        tick = time.perf_counter()
         cuda.synchronize(secondary_ordinal)
+        if profile is not None:
+            profile["synchronization_s"] += time.perf_counter() - tick
         after = _memory_snapshot(cuda, secondary_ordinal)
     finally:
         cuda.set_device(primary_visible_ordinal)
     restored = int(cuda.current_device()) == primary_visible_ordinal
+    if profile is not None:
+        profile["total_s"] = time.perf_counter() - started
+        profile["average_chunk_bytes"] = (profile["h2d_bytes"] / profile["copy_chunks"]
+                                            if profile["copy_chunks"] else 0)
     if not restored:
         raise RuntimeError(
             "resident bank initialization failed to restore primary CUDA device "

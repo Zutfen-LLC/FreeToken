@@ -299,6 +299,7 @@ def build_runtime_report(engine) -> Dict[str, Any]:
         remote_decode = getattr(engine, "inferswarm_remote_decode", None)
         d2_remote = getattr(engine, "inferswarm_d2_graph_remote", None)
         d3_remote = getattr(engine, "inferswarm_d3_graph_multiworker", None)
+        d3_banks = getattr(engine, "inferswarm_d3_resident_banks", None)
         layer_timing = getattr(engine, "moe_layer_timing", None)
         report: Dict[str, Any] = {
             "schema": SCHEMA,
@@ -337,6 +338,9 @@ def build_runtime_report(engine) -> Dict[str, Any]:
             ),
             "inferswarm_d3_graph_multiworker": (
                 d3_remote.configuration_report() if d3_remote is not None else absent_d3_graph_multiworker_report()
+            ),
+            "inferswarm_d5_resident_loader": (
+                d3_banks.loader_profile if d3_banks is not None else None
             ),
             "moe_layer_timing": (
                 layer_timing.configuration_report()
