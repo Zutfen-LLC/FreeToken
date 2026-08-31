@@ -170,40 +170,53 @@ def _load_nvfp4_expert_source_banks_selected(
         placed = 0
         for shard in tqdm(sorted(weight_shards), desc=f"Loading {spec.desc}", disable=not primary):
             path = os.path.join(folder, shard)
-            with safetensors.safe_open(path, framework="pt", device="cpu") as f:
-                for name, match, bank_layer_id in weight_shards[shard]:
-                    layer = int(match.group("layer"))
-                    expert = int(match.group("expert"))
-                    proj = match.group("proj")
-                    role = spec.proj_to_role[proj]
-                    kind = match.group("kind")
-                    tensor = f.get_tensor(name)
-                    if on_fetch is not None:
-                        on_fetch(name, tensor)
-                    if kind == "weight":
-                        if role == "gate":
-                            gate_up_packed[bank_layer_id][expert, :I] = tensor
-                        elif role == "up":
-                            gate_up_packed[bank_layer_id][expert, I:] = tensor
-                        elif role == "down":
-                            down_packed[bank_layer_id][expert] = tensor
+            # N0 selective banks must not retain all touched pages of a multi-layer shard
+            # while the destination bank grows. One layer per mapping bounds file-backed
+            # staging to one expert layer; the legacy full path keeps its historical
+            # shard-sized mapping behavior.
+            groups = [weight_shards[shard]]
+            if global_layer_ids is not None:
+                by_layer: dict[int, list] = collections.defaultdict(list)
+                for item in weight_shards[shard]:
+                    by_layer[item[2]].append(item)
+                groups = [by_layer[layer] for layer in sorted(by_layer)]
+            for entries in groups:
+                with safetensors.safe_open(path, framework="pt", device="cpu") as f:
+                    for name, match, bank_layer_id in entries:
+                        layer = int(match.group("layer"))
+                        expert = int(match.group("expert"))
+                        proj = match.group("proj")
+                        role = spec.proj_to_role[proj]
+                        kind = match.group("kind")
+                        tensor = f.get_tensor(name)
+                        if on_fetch is not None:
+                            on_fetch(name, tensor)
+                        if kind == "weight":
+                            if role == "gate":
+                                gate_up_packed[bank_layer_id][expert, :I] = tensor
+                            elif role == "up":
+                                gate_up_packed[bank_layer_id][expert, I:] = tensor
+                            elif role == "down":
+                                down_packed[bank_layer_id][expert] = tensor
+                            else:
+                                raise ValueError(f"{spec.desc}: unknown projection role {role!r}")
                         else:
-                            raise ValueError(f"{spec.desc}: unknown projection role {role!r}")
-                    else:
-                        global_scale = globals_map[(layer, expert, proj)]
-                        if role == "gate":
-                            gate_up_scale[bank_layer_id][expert, :I] = tensor
-                            gate_up_global[bank_layer_id][expert, :I] = global_scale
-                        elif role == "up":
-                            gate_up_scale[bank_layer_id][expert, I:] = tensor
-                            gate_up_global[bank_layer_id][expert, I:] = global_scale
-                        elif role == "down":
-                            down_scale[bank_layer_id][expert] = tensor
-                            down_global[bank_layer_id][expert] = global_scale
-                        else:
-                            raise ValueError(f"{spec.desc}: unknown projection role {role!r}")
-                    tracker.note(bank_layer_id)
-                    placed += 1
+                            global_scale = globals_map[(layer, expert, proj)]
+                            if role == "gate":
+                                gate_up_scale[bank_layer_id][expert, :I] = tensor
+                                gate_up_global[bank_layer_id][expert, :I] = global_scale
+                            elif role == "up":
+                                gate_up_scale[bank_layer_id][expert, I:] = tensor
+                                gate_up_global[bank_layer_id][expert, I:] = global_scale
+                            elif role == "down":
+                                down_scale[bank_layer_id][expert] = tensor
+                                down_global[bank_layer_id][expert] = global_scale
+                            else:
+                                raise ValueError(f"{spec.desc}: unknown projection role {role!r}")
+                        tracker.note(bank_layer_id)
+                        placed += 1
+                if global_layer_ids is not None:
+                    drop_page_cache(path)
             drop_page_cache(path)
         return placed
 
