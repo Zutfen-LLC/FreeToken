@@ -62,7 +62,7 @@ def _alloc_nvfp4_host_banks(num_layers: int, E: int, H: int, I: int):
     }, num_layers)
 
 
-def load_nvfp4_expert_source_banks(
+def _load_nvfp4_expert_source_banks_selected(
     model_path: str,
     config,
     spec: Nvfp4ExpertSourceSpec,
@@ -70,6 +70,8 @@ def load_nvfp4_expert_source_banks(
     drop_page_cache: DropPageCache,
     primary: bool,
     layer_sink=None,
+    global_layer_ids: tuple[int, ...] | None = None,
+    on_fetch: Callable[[str, torch.Tensor], None] | None = None,
 ) -> dict[str, list[torch.Tensor]]:
     """Build the 6 native NVFP4 source banks by streaming checkpoint shards (serial per-shard read).
 
@@ -94,7 +96,19 @@ def load_nvfp4_expert_source_banks(
     E = config.num_experts
     H = config.hidden_size
     I = config.moe_intermediate_size
-    num_layers = _num_moe_layers(config)
+    if global_layer_ids is None:
+        num_layers = _num_moe_layers(config)
+        selected_bank_layers = None
+    else:
+        if tuple(sorted(set(global_layer_ids))) != global_layer_ids:
+            raise ValueError("selective expert layer IDs must be sorted and unique")
+        selected_bank_layers = {
+            _bank_layer(spec, layer, config): local
+            for local, layer in enumerate(global_layer_ids)
+        }
+        if None in selected_bank_layers:
+            raise ValueError("selected layer does not own routed experts")
+        num_layers = len(global_layer_ids)
 
     for shard in sorted(set(weight_map.values())):
         drop_page_cache(os.path.join(folder, shard))
@@ -106,7 +120,12 @@ def load_nvfp4_expert_source_banks(
         if match is None:
             continue
         layer = int(match.group("layer"))
-        bank_layer = _bank_layer(spec, layer, config)
+        global_bank_layer = _bank_layer(spec, layer, config)
+        bank_layer = (
+            global_bank_layer
+            if selected_bank_layers is None
+            else selected_bank_layers.get(global_bank_layer)
+        )
         if bank_layer is None:
             continue
         proj = match.group("proj")
@@ -130,7 +149,10 @@ def load_nvfp4_expert_source_banks(
                     int(match.group("expert")),
                     match.group("proj"),
                 )
-                globals_map[key] = f.get_tensor(name).to(torch.float16)
+                tensor = f.get_tensor(name)
+                if on_fetch is not None:
+                    on_fetch(name, tensor)
+                globals_map[key] = tensor.to(torch.float16)
         drop_page_cache(path)
 
     _hb = _alloc_nvfp4_host_banks(num_layers, E, H, I)  # unpinned; pinned after fill
@@ -156,6 +178,8 @@ def load_nvfp4_expert_source_banks(
                     role = spec.proj_to_role[proj]
                     kind = match.group("kind")
                     tensor = f.get_tensor(name)
+                    if on_fetch is not None:
+                        on_fetch(name, tensor)
                     if kind == "weight":
                         if role == "gate":
                             gate_up_packed[bank_layer_id][expert, :I] = tensor
@@ -199,6 +223,48 @@ def load_nvfp4_expert_source_banks(
         "down_scale": down_scale,
         "down_global": down_global,
     }
+
+
+def load_nvfp4_expert_source_banks(
+    model_path: str,
+    config,
+    spec: Nvfp4ExpertSourceSpec,
+    *,
+    drop_page_cache: DropPageCache,
+    primary: bool,
+    layer_sink=None,
+) -> dict[str, list[torch.Tensor]]:
+    """Legacy full-bank entrypoint; unchanged unless explicitly called."""
+    return _load_nvfp4_expert_source_banks_selected(
+        model_path, config, spec, drop_page_cache=drop_page_cache,
+        primary=primary, layer_sink=layer_sink,
+    )
+
+
+def load_nvfp4_expert_source_banks_for_layers(
+    model_path: str,
+    config,
+    spec: Nvfp4ExpertSourceSpec,
+    global_layer_ids: tuple[int, ...],
+    *,
+    drop_page_cache: DropPageCache,
+    primary: bool,
+    layer_sink=None,
+    on_fetch: Callable[[str, torch.Tensor], None] | None = None,
+) -> dict[str, list[torch.Tensor]]:
+    """N0 research path: allocate and fill banks for exactly ``global_layer_ids``.
+
+    The checkpoint index is filtered before any tensor fetch and returned list indices are
+    block-local. Logical identity is retained by the explicit global-layer tuple at the
+    caller boundary.
+    """
+    if not global_layer_ids:
+        raise ValueError("selective expert bank cannot be empty")
+    return _load_nvfp4_expert_source_banks_selected(
+        model_path, config, spec, drop_page_cache=drop_page_cache,
+        primary=primary, layer_sink=layer_sink, global_layer_ids=global_layer_ids,
+        on_fetch=on_fetch,
+    )
 
 
 def load_nvfp4_expert_source_banks_parallel(
@@ -323,5 +389,6 @@ def load_nvfp4_expert_source_banks_parallel(
 __all__ = [
     "Nvfp4ExpertSourceSpec",
     "load_nvfp4_expert_source_banks",
+    "load_nvfp4_expert_source_banks_for_layers",
     "load_nvfp4_expert_source_banks_parallel",
 ]

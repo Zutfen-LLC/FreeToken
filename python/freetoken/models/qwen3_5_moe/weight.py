@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from typing import Iterator
+from typing import Callable, Iterator
 
 import safetensors
 import torch
@@ -427,6 +427,8 @@ def _dense_nvfp4_emit(
 def _iter_weights_attn_fp8(
     model_path: str, device: torch.device, *, include_non_moe: bool, include_moe_experts: bool,
     dense_nvfp4: bool = False, lmhead_nvfp4: bool = False,
+    raw_key_filter: Callable[[str], bool] | None = None,
+    on_fetch: Callable[[str, torch.Tensor], None] | None = None,
 ) -> Iterator[tuple[str, torch.Tensor]]:
     """Dense pass for the modelopt MIXED_PRECISION Qwen3.5 checkpoint.
 
@@ -455,9 +457,20 @@ def _iter_weights_attn_fp8(
         desc="Loading mixed-fp8 weights",
         disable=not tp_info.is_primary(),
     ):
-        with safetensors.safe_open(file, framework="pt", device=str(device)) as f:
-            keyset = set(f.keys())
-            for raw_name in f.keys():
+        with safetensors.safe_open(file, framework="pt", device=str(device)) as raw_handle:
+            keyset = set(raw_handle.keys())
+
+            class _TrackedHandle:
+                def get_tensor(self, name):
+                    tensor = raw_handle.get_tensor(name)
+                    if on_fetch is not None:
+                        on_fetch(name, tensor)
+                    return tensor
+
+            f = _TrackedHandle()
+            for raw_name in raw_handle.keys():
+                if raw_key_filter is not None and not raw_key_filter(raw_name):
+                    continue
                 if _NVFP4_EXPERT_RE.search(raw_name):
                     continue  # routed experts -> offload cache
                 if raw_name.endswith(_SCALE_SUFFIXES):
@@ -529,6 +542,34 @@ def _iter_weights_attn_fp8(
     assert not bf16_buf, f"Incomplete bf16 fusions: {list(bf16_buf.keys())}"
     assert not shared_buf, f"Incomplete shared-expert merges: {list(shared_buf.keys())}"
     assert not nvfp4_shared_buf, f"Incomplete NVFP4 shared-expert merges: {list(nvfp4_shared_buf.keys())}"
+
+
+def iter_block_weights(
+    model_path: str,
+    device: torch.device,
+    *,
+    allowed_raw_keys: frozenset[str],
+    on_fetch: Callable[[str, torch.Tensor], None] | None = None,
+) -> Iterator[tuple[str, torch.Tensor]]:
+    """Experimental N0 dense-state iterator for the pinned Qwen3.6 NVFP4 layout.
+
+    The index-derived allow-set is tested before any ``get_tensor`` call. Routed expert
+    tensors remain the responsibility of the block-scoped bank loader.
+    """
+    hf_config = cached_load_hf_config(model_path)
+    config = parse_config(hf_config)
+    if config.attn_quant != "fp8_pertensor" or config.expert_quant != "nvfp4":
+        raise ValueError("N0 block loader supports only the pinned mixed FP8/NVFP4 Qwen3.6")
+    yield from _iter_weights_attn_fp8(
+        model_path,
+        device,
+        include_non_moe=True,
+        include_moe_experts=False,
+        dense_nvfp4=config.dense_quant == "nvfp4",
+        lmhead_nvfp4=config.lm_head_quant == "nvfp4",
+        raw_key_filter=allowed_raw_keys.__contains__,
+        on_fetch=on_fetch,
+    )
 
 
 # ======================================================================================
@@ -1088,6 +1129,7 @@ def load_nvfp4_expert_sources_parallel(
 
 __all__ = [
     "iter_weights",
+    "iter_block_weights",
     "iter_weights_parallel",
     "setup_offload_expert_banks",
     "load_nvfp4_expert_sources",
