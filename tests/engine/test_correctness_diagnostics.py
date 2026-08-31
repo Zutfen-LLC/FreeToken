@@ -12,10 +12,11 @@ def test_exact_step0_logits_and_accepted_tokens_are_captured_before_decoding():
     logits = torch.tensor([0.25, -1.0, 4.0, 3.0, 2.0, 1.0], dtype=torch.float32)
     diagnostics.capture_step0_logits(17, logits)
     diagnostics.record_accepted_token(17, 2)
-    diagnostics.record_accepted_token(17, 91)
 
-    # A later decode row for the same request must not replace step 0.
+    # A later decode row for the same request must not replace step 0 and is retained
+    # separately for the N1 selected-checkpoint comparison.
     diagnostics.capture_step0_logits(17, torch.arange(6, dtype=torch.float32))
+    diagnostics.record_accepted_token(17, 91)
     record = diagnostics.snapshot()["records"][0]
     assert record["uid"] == 17
     assert record["generated_token_ids"] == [2, 91]
@@ -24,6 +25,9 @@ def test_exact_step0_logits_and_accepted_tokens_are_captured_before_decoding():
     assert record["step0"]["full_logits"] == logits.tolist()
     assert record["step0"]["argmax"] == 2
     assert record["step0"]["top5_order"] == [2, 3, 4, 5, 0]
+    assert record["selected_logit_steps"]["1"]["full_logits"] == torch.arange(
+        6, dtype=torch.float32
+    ).tolist()
 
 
 def test_capture_clones_replay_buffer_and_reset_clears_only_diagnostics():

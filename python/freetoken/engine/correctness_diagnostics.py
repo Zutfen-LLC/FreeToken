@@ -1,7 +1,7 @@
 """Opt-in exact generation-state capture for the frozen InferSwarm C3 check.
 
 The recorder is allocated only when explicitly configured. It is intentionally bounded and
-correctness-only: capturing step-0 logits performs a device-to-host copy and therefore must
+correctness-only: capturing selected logits performs a device-to-host copy and therefore must
 never be enabled for performance measurements.
 """
 
@@ -14,6 +14,7 @@ from typing import Any
 import torch
 
 CORRECTNESS_DIAGNOSTICS_SCHEMA = "inferswarm.phase1.c3-generation-state/1"
+N1_SELECTED_LOGIT_STEPS = frozenset((0, 1, 15, 31))
 
 
 @dataclass
@@ -24,6 +25,8 @@ class _GenerationRecord:
     step0_source_dtype: str | None = None
     step0_argmax: int | None = None
     step0_top5: list[int] | None = None
+    selected_logits: dict[int, torch.Tensor] = field(default_factory=dict)
+    sampler_logit_rows_seen: int = 0
 
 
 class CorrectnessDiagnostics:
@@ -52,7 +55,11 @@ class CorrectnessDiagnostics:
         """Copy the actual first sampler-input row before text decoding or sampling changes."""
 
         record = self._record(uid)
-        if record is None or record.step0_logits is not None:
+        if record is None:
+            return
+        step = record.sampler_logit_rows_seen
+        record.sampler_logit_rows_seen += 1
+        if step not in N1_SELECTED_LOGIT_STEPS or step in record.selected_logits:
             return
         if logits.ndim != 1 or logits.numel() < 5:
             raise ValueError(
@@ -62,6 +69,9 @@ class CorrectnessDiagnostics:
         # Float32 preserves every value exactly when the model already emits float32 and is an
         # exact widening for fp16/bf16. The clone protects graph-output buffers from replay.
         cpu = source.to(device="cpu", dtype=torch.float32).clone()
+        record.selected_logits[step] = cpu
+        if step != 0:
+            return
         top5 = torch.topk(cpu, 5, dim=-1).indices.tolist()
         record.step0_logits = cpu
         record.step0_source_dtype = str(source.dtype)
@@ -93,6 +103,16 @@ class CorrectnessDiagnostics:
                         "argmax": record.step0_argmax,
                         "top5_order": record.step0_top5,
                         "full_logits": logits.tolist() if logits is not None else None,
+                    },
+                    "selected_logit_steps": {
+                        str(step): {
+                            "source": "actual model logits before greedy selection",
+                            "serialized_dtype": "float32",
+                            "vocab_size": int(values.numel()),
+                            "argmax": int(values.argmax().item()),
+                            "full_logits": values.tolist(),
+                        }
+                        for step, values in sorted(record.selected_logits.items())
                     },
                 }
             )
