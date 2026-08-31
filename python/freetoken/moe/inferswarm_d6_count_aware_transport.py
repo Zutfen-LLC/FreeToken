@@ -57,10 +57,16 @@ class InferSwarmD6CountAwareTransportExecutor(InferSwarmD5CompactRoutesExecutor)
         stream = getattr(self, f"worker_{x}_stream"); cuda.set_device(d)
         with cuda.stream(stream):
             self.ready_events[n].wait(stream)
+            if self._d6_diagnostic_enabled:
+                self._d6_mark_worker(x, "branch_start", n, stream)
+                self._d6_mark_worker(x, "inbound_start", n, stream)
             getattr(self, f"worker_{x}_activation").copy_(self.host_activation, non_blocking=True)
             getattr(self, f"worker_{x}_slots").copy_(getattr(self, f"host_{x}_slots"), non_blocking=True)
             getattr(self, f"worker_{x}_weights").copy_(getattr(self, f"host_{x}_weights"), non_blocking=True)
             getattr(self, f"worker_{x}_count").copy_(getattr(self, f"host_{x}_count"), non_blocking=True)
+            if self._d6_diagnostic_enabled:
+                self._d6_mark_worker(x, "inbound_end", n, stream)
+                self._d6_mark_worker(x, "compute_start", n, stream)
             bank = getattr(self.resident_banks, f"worker_{x}")
             layer._expert_route_contributions(
                 cache, getattr(self, f"worker_{x}_activation"), getattr(self, f"worker_{x}_weights"),
@@ -68,9 +74,15 @@ class InferSwarmD6CountAwareTransportExecutor(InferSwarmD5CompactRoutesExecutor)
                 out=getattr(self, f"worker_{x}_routes"), gate_up_out=getattr(self, f"worker_{x}_gate_up"),
                 activation_out=getattr(self, f"worker_{x}_activation_out"),
                 active_count=getattr(self, f"worker_{x}_count"))
+            if self._d6_diagnostic_enabled:
+                self._d6_mark_worker(x, "compute_end", n, stream)
+                self._d6_mark_worker(x, "outbound_start", n, stream)
             pack_active_routes(getattr(self, f"host_{x}_return"),
                                getattr(self, f"worker_{x}_routes"),
                                getattr(self, f"worker_{x}_count"))
+            if self._d6_diagnostic_enabled:
+                self._d6_mark_worker(x, "outbound_end", n, stream)
+                self._d6_mark_worker(x, "branch_end", n, stream)
             getattr(self, f"done_{x}_events")[n].record(stream)
 
     def _record_transport(self, n: int) -> None:
