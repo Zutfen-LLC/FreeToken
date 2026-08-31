@@ -201,7 +201,8 @@ def launch_server(
 
     if (server_args.gpu or server_args.inferswarm_secondary_gpu is not None
             or server_args.inferswarm_experimental_d3_graph_multiworker
-            or server_args.inferswarm_experimental_d5_compact_routes):
+            or server_args.inferswarm_experimental_d5_compact_routes
+            or server_args.inferswarm_experimental_d6_count_aware_transport):
         # Resolve here so a typo is one clear error before any worker spawns. CUDA visibility,
         # identity, and peer capability are verified again inside the bound engine worker.
         try:

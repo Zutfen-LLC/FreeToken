@@ -240,6 +240,7 @@ class OffloadMoELayer(MoELayer):
         self.inferswarm_d2_graph_remote = None
         self.inferswarm_d3_graph_multiworker = None
         self.inferswarm_d5_compact_routes = None
+        self.inferswarm_d6_count_aware_transport = None
 
     def forward(
         self,
@@ -334,6 +335,10 @@ class OffloadMoELayer(MoELayer):
             )
         if self.inferswarm_d2_graph_remote is not None:
             return self.inferswarm_d2_graph_remote.decode(
+                self, cache, hidden_states, topk_weights, topk_ids
+            )
+        if self.inferswarm_d6_count_aware_transport is not None:
+            return self.inferswarm_d6_count_aware_transport.decode(
                 self, cache, hidden_states, topk_weights, topk_ids
             )
         if self.inferswarm_d5_compact_routes is not None:

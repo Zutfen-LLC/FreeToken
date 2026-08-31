@@ -65,6 +65,7 @@ class ServerArgs(SchedulerConfig):
     # D5 startup-only loader experiment; independent of route execution semantics.
     inferswarm_experimental_d5_resident_loader: bool = False
     inferswarm_experimental_d5_compact_routes: bool = False
+    inferswarm_experimental_d6_count_aware_transport: bool = False
     inferswarm_d5_weighted_placement: bool = False
     inferswarm_d5_loader_cpu_workers: int = 4
     # Fixed startup-only D3 execution shape; never selected on a decode token.
@@ -341,6 +342,7 @@ def parse_args(
     parser.add_argument("--inferswarm-experimental-d4-capability-weighted", action="store_true", default=ServerArgs.inferswarm_experimental_d4_capability_weighted, help="EXPERIMENTAL D4 placement on the unchanged D3 executor")
     parser.add_argument("--inferswarm-experimental-d5-resident-loader", action="store_true", default=ServerArgs.inferswarm_experimental_d5_resident_loader, help="EXPERIMENTAL D5 bulk pinned, concurrently verified resident loader")
     parser.add_argument("--inferswarm-experimental-d5-compact-routes", action="store_true", default=ServerArgs.inferswarm_experimental_d5_compact_routes, help="EXPERIMENTAL D5 stable compact physical route execution")
+    parser.add_argument("--inferswarm-experimental-d6-count-aware-transport", action="store_true", default=ServerArgs.inferswarm_experimental_d6_count_aware_transport, help="EXPERIMENTAL D6 device-packed count-aware returned-route transport")
     parser.add_argument("--inferswarm-d5-weighted-placement", action="store_true", default=ServerArgs.inferswarm_d5_weighted_placement, help="select the frozen D4 weighted artifact parser for D5 compact execution")
     parser.add_argument("--inferswarm-d5-loader-cpu-workers", type=int, choices=(1, 2, 4, 8), default=ServerArgs.inferswarm_d5_loader_cpu_workers, help="bounded CPU staging workers per D5 resident worker")
     parser.add_argument("--inferswarm-d3-active-workers", choices=("a", "b", "ab"), default=ServerArgs.inferswarm_d3_active_workers, help="EXPERIMENTAL D3 fixed captured worker shape (a, b, or ab)")
@@ -835,8 +837,9 @@ def parse_args(
     d4 = kwargs["inferswarm_experimental_d4_capability_weighted"]
     d5_loader = kwargs["inferswarm_experimental_d5_resident_loader"]
     d5_compact = kwargs["inferswarm_experimental_d5_compact_routes"]
+    d6_transport = kwargs["inferswarm_experimental_d6_count_aware_transport"]
     d5_weighted = kwargs["inferswarm_d5_weighted_placement"]
-    multiworker = d3 or d5_compact
+    multiworker = d3 or d5_compact or d6_transport
     if d2 and kwargs["inferswarm_remote_decode"]:
         parser.error(
             "--inferswarm-experimental-d2-graph-remote is mutually exclusive with "
@@ -864,6 +867,10 @@ def parse_args(
         parser.error("D5 compact routes is a separate executor and cannot be combined with historical D3/D4/D2/canonical remote flags")
     if d5_compact and not d5_loader:
         parser.error("D5 compact routes requires the frozen D5 resident loader")
+    if d6_transport and (d5_compact or d3 or d4 or d2 or kwargs["inferswarm_remote_decode"]):
+        parser.error("D6 count-aware transport is a separate executor and cannot be combined with historical executors")
+    if d6_transport and not d5_loader:
+        parser.error("D6 count-aware transport requires the frozen D5 resident loader")
     if d5_weighted and not d5_compact:
         parser.error("D5 weighted placement requires D5 compact routes")
     placement = kwargs["inferswarm_d4_placement"] if (d4 or d5_weighted) else kwargs["inferswarm_d3_placement"]
