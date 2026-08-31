@@ -1,0 +1,673 @@
+{
+  "backend_execution": {
+    "cuda_graph": "structurally preserved and regression-tested; not physically captured by this evidence runner",
+    "hot_path_plan_lookups": 0,
+    "resident_device_mapping": true,
+    "setup_time_plan_interpretation_only": true
+  },
+  "correctness": {
+    "dead_staging_tensor_count": 114,
+    "decode_runs": [
+      {
+        "input": {
+          "atol": 0.002,
+          "bounded_equivalence": true,
+          "exact_equality": true,
+          "inf_count": 0,
+          "max_absolute_deviation": 0.0,
+          "max_relative_deviation": 0.0,
+          "nan_count": 0,
+          "passed": true,
+          "rtol": 0.002
+        },
+        "output": {
+          "atol": 0.002,
+          "bounded_equivalence": true,
+          "exact_equality": true,
+          "inf_count": 0,
+          "max_absolute_deviation": 0.0,
+          "max_relative_deviation": 0.0,
+          "nan_count": 0,
+          "passed": true,
+          "rtol": 0.002
+        },
+        "passed": true,
+        "repetition": 0
+      },
+      {
+        "input": {
+          "atol": 0.002,
+          "bounded_equivalence": true,
+          "exact_equality": true,
+          "inf_count": 0,
+          "max_absolute_deviation": 0.0,
+          "max_relative_deviation": 0.0,
+          "nan_count": 0,
+          "passed": true,
+          "rtol": 0.002
+        },
+        "output": {
+          "atol": 0.002,
+          "bounded_equivalence": true,
+          "exact_equality": true,
+          "inf_count": 0,
+          "max_absolute_deviation": 0.0,
+          "max_relative_deviation": 0.0,
+          "nan_count": 0,
+          "passed": true,
+          "rtol": 0.002
+        },
+        "passed": true,
+        "repetition": 1
+      },
+      {
+        "input": {
+          "atol": 0.002,
+          "bounded_equivalence": true,
+          "exact_equality": true,
+          "inf_count": 0,
+          "max_absolute_deviation": 0.0,
+          "max_relative_deviation": 0.0,
+          "nan_count": 0,
+          "passed": true,
+          "rtol": 0.002
+        },
+        "output": {
+          "atol": 0.002,
+          "bounded_equivalence": true,
+          "exact_equality": true,
+          "inf_count": 0,
+          "max_absolute_deviation": 0.0,
+          "max_relative_deviation": 0.0,
+          "nan_count": 0,
+          "passed": true,
+          "rtol": 0.002
+        },
+        "passed": true,
+        "repetition": 2
+      },
+      {
+        "input": {
+          "atol": 0.002,
+          "bounded_equivalence": true,
+          "exact_equality": true,
+          "inf_count": 0,
+          "max_absolute_deviation": 0.0,
+          "max_relative_deviation": 0.0,
+          "nan_count": 0,
+          "passed": true,
+          "rtol": 0.002
+        },
+        "output": {
+          "atol": 0.002,
+          "bounded_equivalence": true,
+          "exact_equality": true,
+          "inf_count": 0,
+          "max_absolute_deviation": 0.0,
+          "max_relative_deviation": 0.0,
+          "nan_count": 0,
+          "passed": true,
+          "rtol": 0.002
+        },
+        "passed": true,
+        "repetition": 3
+      }
+    ],
+    "passed": true,
+    "post_release_loader_sentinels": {
+      "internal_bank_rematerializer_calls": 0,
+      "legacy_full_bank_constructor_calls": 0,
+      "selective_bank_constructor_calls": 0,
+      "whole_shard_loader_calls": 0
+    },
+    "prefill": {
+      "input": {
+        "atol": 0.002,
+        "bounded_equivalence": true,
+        "exact_equality": true,
+        "inf_count": 0,
+        "max_absolute_deviation": 0.0,
+        "max_relative_deviation": 0.0,
+        "nan_count": 0,
+        "passed": true,
+        "rtol": 0.002
+      },
+      "output": {
+        "atol": 0.002,
+        "bounded_equivalence": true,
+        "exact_equality": true,
+        "inf_count": 0,
+        "max_absolute_deviation": 0.0,
+        "max_relative_deviation": 0.0,
+        "nan_count": 0,
+        "passed": true,
+        "rtol": 0.002
+      },
+      "passed": true
+    },
+    "resident_source_access_attempts": 0,
+    "staging_tensor_count": 114
+  },
+  "intended": {
+    "authorities": [
+      {
+        "lineage": "r1-block-a-epoch-1",
+        "logical_state_id": "state.block-a.mutable-runtime",
+        "materialization_id": "mat.runtime.vram"
+      }
+    ],
+    "execution": [
+      {
+        "compute_unit_id": "gpu0",
+        "id": "exec.block-a",
+        "required_state": [
+          {
+            "logical_state_id": "state.block-a.non-routed",
+            "memory_resources": [
+              "gpu0.vram"
+            ],
+            "representations": [
+              "freetoken-native-device"
+            ]
+          },
+          {
+            "logical_state_id": "state.block-a.routed",
+            "memory_resources": [
+              "gpu0.vram"
+            ],
+            "representations": [
+              "freetoken-nvfp4-slot-banks"
+            ]
+          },
+          {
+            "logical_state_id": "state.block-a.mutable-runtime",
+            "memory_resources": [
+              "gpu0.vram"
+            ],
+            "representations": [
+              "freetoken-block-runtime-device"
+            ]
+          }
+        ],
+        "strategy_unit": "qwen-block-a.same-backend-resident-decode-v1"
+      }
+    ],
+    "logical_state_units": [
+      {
+        "backing_source_id": "qwen-checkpoint",
+        "id": "state.block-a.non-routed",
+        "semantic_class": "immutable_source"
+      },
+      {
+        "backing_source_id": "qwen-checkpoint",
+        "id": "state.block-a.routed",
+        "semantic_class": "immutable_source"
+      },
+      {
+        "id": "state.block-a.mutable-runtime",
+        "semantic_class": "mutable_authoritative"
+      },
+      {
+        "id": "state.block-a.replay-baseline",
+        "reconstruction_inputs": [
+          "state.block-a.mutable-runtime"
+        ],
+        "semantic_class": "derived_reconstructible"
+      }
+    ],
+    "materializations": [
+      {
+        "expected_bytes": 8636596224,
+        "id": "mat.routed.ram-stage",
+        "logical_state_id": "state.block-a.routed",
+        "memory_resource_id": "node-a.ram",
+        "path_id": "checkpoint-to-ram",
+        "persistence": "transient",
+        "representation": "checkpoint-native-host",
+        "requirement": "required",
+        "role": "staging"
+      },
+      {
+        "expected_bytes": 1689347736,
+        "id": "mat.non-routed.vram",
+        "logical_state_id": "state.block-a.non-routed",
+        "memory_resource_id": "gpu0.vram",
+        "path_id": "ram-to-vram",
+        "persistence": "persistent",
+        "representation": "freetoken-native-device",
+        "requirement": "required",
+        "role": "required_residency"
+      },
+      {
+        "expected_bytes": 8636596224,
+        "id": "mat.routed.vram",
+        "logical_state_id": "state.block-a.routed",
+        "memory_resource_id": "gpu0.vram",
+        "path_id": "ram-to-vram",
+        "persistence": "persistent",
+        "representation": "freetoken-nvfp4-slot-banks",
+        "requirement": "required",
+        "role": "required_residency"
+      },
+      {
+        "expected_bytes": 32718848,
+        "id": "mat.runtime.vram",
+        "logical_state_id": "state.block-a.mutable-runtime",
+        "memory_resource_id": "gpu0.vram",
+        "persistence": "persistent",
+        "representation": "freetoken-block-runtime-device",
+        "requirement": "required",
+        "role": "mutable_authority"
+      },
+      {
+        "expected_bytes": 32718848,
+        "id": "mat.replay.vram",
+        "logical_state_id": "state.block-a.replay-baseline",
+        "memory_resource_id": "gpu0.vram",
+        "persistence": "persistent",
+        "representation": "freetoken-runtime-snapshot-device",
+        "requirement": "required",
+        "role": "required_test_state"
+      }
+    ]
+  },
+  "memory": {
+    "host_staging_bytes_after_repeated_execution": 0,
+    "host_staging_bytes_before_release": 8636596224,
+    "persistent_host_evidence_bytes": 327680,
+    "persistent_host_evidence_roles": {
+      "resident_cache_host_tensor_state": 0,
+      "runtime_context_host_tensors": 0,
+      "same_backend_correctness_reference_tensors": 327680,
+      "selective_block_host_model_tensors": 0
+    },
+    "persistent_optional_bytes": 0,
+    "persistent_required_bytes": 10391381656,
+    "transient_upper_bound_bytes": 18931555660,
+    "transient_upper_bound_status": "CALCULATED conservative upper bound; selective fetched bytes are cumulative",
+    "unexplained_persistent_host_mirror_bytes": 0,
+    "unplanned_persistent_bytes": 0
+  },
+  "observed": {
+    "authorities": [
+      {
+        "lineage": "r1-block-a-epoch-1",
+        "logical_state_id": "state.block-a.mutable-runtime",
+        "materialization_id": "mat.runtime.vram",
+        "memory_resource_id": "gpu0.vram"
+      }
+    ],
+    "execution": [
+      {
+        "compute_unit_id": "gpu0",
+        "execution_id": "exec.block-a",
+        "status": "ACTIVE_BACKEND_NATIVE",
+        "strategy_unit": "qwen-block-a.same-backend-resident-decode-v1"
+      }
+    ],
+    "materializations": [
+      {
+        "actual_memory_resource_id": "node-a.ram",
+        "actual_representation": "checkpoint-native-host",
+        "intended_memory_resource_id": "node-a.ram",
+        "intended_persistence": "transient",
+        "intended_representation": "checkpoint-native-host",
+        "intended_role": "staging",
+        "lifecycle_state": "released",
+        "logical_state_id": "state.block-a.routed",
+        "materialization_id": "mat.routed.ram-stage",
+        "observed_bytes": 8636596224,
+        "observed_bytes_after_release": 0,
+        "observed_bytes_before_release": 8636596224,
+        "persistence": "transient",
+        "release_qualifying_materialization_ids": [
+          "mat.routed.vram"
+        ],
+        "released_bytes": 8636596224,
+        "status": "TRANSIENT_RELEASED_AS_PLANNED"
+      },
+      {
+        "actual_memory_resource_id": "gpu0.vram",
+        "actual_representation": "freetoken-native-device",
+        "intended_memory_resource_id": "gpu0.vram",
+        "intended_persistence": "persistent",
+        "intended_representation": "freetoken-native-device",
+        "intended_role": "required_residency",
+        "lifecycle_state": "live",
+        "logical_state_id": "state.block-a.non-routed",
+        "materialization_id": "mat.non-routed.vram",
+        "observed_bytes": 1689347736,
+        "persistence": "persistent",
+        "status": "PLANNED_AND_REALIZED"
+      },
+      {
+        "actual_memory_resource_id": "gpu0.vram",
+        "actual_representation": "freetoken-nvfp4-slot-banks",
+        "intended_memory_resource_id": "gpu0.vram",
+        "intended_persistence": "persistent",
+        "intended_representation": "freetoken-nvfp4-slot-banks",
+        "intended_role": "required_residency",
+        "lifecycle_state": "live",
+        "logical_state_id": "state.block-a.routed",
+        "materialization_id": "mat.routed.vram",
+        "observed_bytes": 8636596224,
+        "persistence": "persistent",
+        "status": "PLANNED_AND_REALIZED"
+      },
+      {
+        "actual_memory_resource_id": "gpu0.vram",
+        "actual_representation": "freetoken-block-runtime-device",
+        "intended_memory_resource_id": "gpu0.vram",
+        "intended_persistence": "persistent",
+        "intended_representation": "freetoken-block-runtime-device",
+        "intended_role": "mutable_authority",
+        "lifecycle_state": "live",
+        "logical_state_id": "state.block-a.mutable-runtime",
+        "materialization_id": "mat.runtime.vram",
+        "observed_bytes": 32718848,
+        "persistence": "persistent",
+        "status": "PLANNED_AND_REALIZED"
+      },
+      {
+        "actual_memory_resource_id": "gpu0.vram",
+        "actual_representation": "freetoken-runtime-snapshot-device",
+        "intended_memory_resource_id": "gpu0.vram",
+        "intended_persistence": "persistent",
+        "intended_representation": "freetoken-runtime-snapshot-device",
+        "intended_role": "required_test_state",
+        "lifecycle_state": "live",
+        "logical_state_id": "state.block-a.replay-baseline",
+        "materialization_id": "mat.replay.vram",
+        "observed_bytes": 32718848,
+        "persistence": "persistent",
+        "status": "PLANNED_AND_REALIZED"
+      }
+    ],
+    "process_checkpoints": [
+      {
+        "cuda_allocated_bytes": 0,
+        "cuda_peak_allocated_bytes": 0,
+        "gpu_block_local_runtime_state_bytes": 0,
+        "gpu_expert_bank_cache_bytes": 0,
+        "gpu_selective_block_model_bytes": 0,
+        "host_expert_source_bank_bytes": 0,
+        "label": "process_baseline",
+        "measurement_status": "MEASURED",
+        "other_deliberate_gpu_bytes_by_role": {},
+        "other_deliberate_persistent_host_bytes_by_role": {},
+        "process": {
+          "RssAnon_kib": 334376,
+          "RssFile_kib": 294428,
+          "RssShmem_kib": 8192,
+          "VmHWM_kib": 636996,
+          "VmRSS_kib": 636996,
+          "VmSwap_kib": 0
+        },
+        "ru_maxrss_kib": 635796,
+        "vmstat": {
+          "pgfault": 1537099267,
+          "pgmajfault": 2055772,
+          "pswpin": 0,
+          "pswpout": 0
+        }
+      },
+      {
+        "cuda_allocated_bytes": 1756491264,
+        "cuda_peak_allocated_bytes": 1790111232,
+        "gpu_block_local_runtime_state_bytes": 0,
+        "gpu_expert_bank_cache_bytes": 0,
+        "gpu_selective_block_model_bytes": 1689347736,
+        "host_expert_source_bank_bytes": 8636596224,
+        "label": "after_selective_host_materialization",
+        "measurement_status": "MEASURED",
+        "other_deliberate_gpu_bytes_by_role": {},
+        "other_deliberate_persistent_host_bytes_by_role": {
+          "same_backend_correctness_reference_tensors": 327680
+        },
+        "process": {
+          "RssAnon_kib": 824740,
+          "RssFile_kib": 471252,
+          "RssShmem_kib": 9519620,
+          "VmHWM_kib": 11266884,
+          "VmRSS_kib": 10815612,
+          "VmSwap_kib": 0
+        },
+        "ru_maxrss_kib": 11266884,
+        "vmstat": {
+          "pgfault": 1539948355,
+          "pgmajfault": 2114412,
+          "pswpin": 0,
+          "pswpout": 0
+        }
+      },
+      {
+        "cuda_allocated_bytes": 10427068928,
+        "cuda_peak_allocated_bytes": 10427069440,
+        "gpu_block_local_runtime_state_bytes": 32718848,
+        "gpu_expert_bank_cache_bytes": 8636596224,
+        "gpu_selective_block_model_bytes": 1689347736,
+        "host_expert_source_bank_bytes": 8636596224,
+        "label": "after_accelerator_cache_allocation",
+        "measurement_status": "MEASURED",
+        "other_deliberate_gpu_bytes_by_role": {},
+        "other_deliberate_persistent_host_bytes_by_role": {
+          "same_backend_correctness_reference_tensors": 327680
+        },
+        "process": {
+          "RssAnon_kib": 832700,
+          "RssFile_kib": 472628,
+          "RssShmem_kib": 9519620,
+          "VmHWM_kib": 11266884,
+          "VmRSS_kib": 10824948,
+          "VmSwap_kib": 0
+        },
+        "ru_maxrss_kib": 11266884,
+        "vmstat": {
+          "pgfault": 1539949349,
+          "pgmajfault": 2114412,
+          "pswpin": 0,
+          "pswpout": 0
+        }
+      },
+      {
+        "cuda_allocated_bytes": 10468310528,
+        "cuda_peak_allocated_bytes": 10468329984,
+        "gpu_block_local_runtime_state_bytes": 32718848,
+        "gpu_expert_bank_cache_bytes": 8636596224,
+        "gpu_selective_block_model_bytes": 1689347736,
+        "host_expert_source_bank_bytes": 8636596224,
+        "label": "after_complete_accelerator_population",
+        "measurement_status": "MEASURED",
+        "other_deliberate_gpu_bytes_by_role": {},
+        "other_deliberate_persistent_host_bytes_by_role": {
+          "same_backend_correctness_reference_tensors": 327680
+        },
+        "process": {
+          "RssAnon_kib": 1193088,
+          "RssFile_kib": 567484,
+          "RssShmem_kib": 9519620,
+          "VmHWM_kib": 11280192,
+          "VmRSS_kib": 11280192,
+          "VmSwap_kib": 0
+        },
+        "ru_maxrss_kib": 11272460,
+        "vmstat": {
+          "pgfault": 1540005303,
+          "pgmajfault": 2114412,
+          "pswpin": 0,
+          "pswpout": 0
+        }
+      },
+      {
+        "cuda_allocated_bytes": 10468337664,
+        "cuda_peak_allocated_bytes": 10468349440,
+        "gpu_block_local_runtime_state_bytes": 32718848,
+        "gpu_expert_bank_cache_bytes": 8636596224,
+        "gpu_selective_block_model_bytes": 1689347736,
+        "host_expert_source_bank_bytes": 0,
+        "label": "after_plan_driven_staging_release",
+        "measurement_status": "MEASURED",
+        "other_deliberate_gpu_bytes_by_role": {
+          "correctness_replay_state_snapshot": 32718848
+        },
+        "other_deliberate_persistent_host_bytes_by_role": {
+          "resident_cache_host_tensor_state": 0,
+          "runtime_context_host_tensors": 0,
+          "same_backend_correctness_reference_tensors": 327680,
+          "selective_block_host_model_tensors": 0
+        },
+        "process": {
+          "RssAnon_kib": 1193100,
+          "RssFile_kib": 568756,
+          "RssShmem_kib": 9519620,
+          "VmHWM_kib": 11281476,
+          "VmRSS_kib": 11281476,
+          "VmSwap_kib": 0
+        },
+        "ru_maxrss_kib": 11273872,
+        "vmstat": {
+          "pgfault": 1540005333,
+          "pgmajfault": 2114412,
+          "pswpin": 0,
+          "pswpout": 0
+        }
+      },
+      {
+        "cuda_allocated_bytes": 10468338688,
+        "cuda_peak_allocated_bytes": 10468606976,
+        "gpu_block_local_runtime_state_bytes": 32718848,
+        "gpu_expert_bank_cache_bytes": 8636596224,
+        "gpu_selective_block_model_bytes": 1689347736,
+        "host_expert_source_bank_bytes": 0,
+        "label": "after_repeated_plan_realized_decode",
+        "measurement_status": "MEASURED",
+        "other_deliberate_gpu_bytes_by_role": {
+          "correctness_replay_state_snapshot": 32718848
+        },
+        "other_deliberate_persistent_host_bytes_by_role": {
+          "resident_cache_host_tensor_state": 0,
+          "runtime_context_host_tensors": 0,
+          "same_backend_correctness_reference_tensors": 327680,
+          "selective_block_host_model_tensors": 0
+        },
+        "process": {
+          "RssAnon_kib": 1214228,
+          "RssFile_kib": 570072,
+          "RssShmem_kib": 9519620,
+          "VmHWM_kib": 11303920,
+          "VmRSS_kib": 11303920,
+          "VmSwap_kib": 0
+        },
+        "ru_maxrss_kib": 11296432,
+        "vmstat": {
+          "pgfault": 1540008634,
+          "pgmajfault": 2114412,
+          "pswpin": 0,
+          "pswpout": 0
+        }
+      }
+    ]
+  },
+  "passed": true,
+  "plan": {
+    "digest": "sha256:430f84e406f51d037ab8ae2844865ff4d6b60d17a1d43d54180d509682ca2281",
+    "file_sha256": "11bebfc891d078eafafeddc78a36bc7aba3943b97a849e02a72a480e55115062",
+    "model": "nvidia/Qwen3.6-35B-A3B-NVFP4",
+    "revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
+    "schema": "inferswarm.r1.frozen-plan/1",
+    "version": "r1-block-a-v1"
+  },
+  "provenance": {
+    "freetoken_base_sha": "2d435c5b8addc4032fd1be3198d796e632648ac8",
+    "inferswarm_issue": "https://github.com/Zutfen-LLC/inferswarm/issues/50"
+  },
+  "reconciliation": {
+    "mismatches": [],
+    "passed": true,
+    "planned_not_realized": [],
+    "unplanned_persistent": []
+  },
+  "resources": {
+    "device": "cuda:0",
+    "model_repository": "nvidia/Qwen3.6-35B-A3B-NVFP4",
+    "model_revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
+    "physical": {
+      "cuda_runtime": "13.0",
+      "gpu_compute_capability": [
+        8,
+        6
+      ],
+      "gpu_name": "NVIDIA GeForce RTX 3060",
+      "gpu_total_memory_bytes": 12485525504,
+      "gpu_uuid": "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099",
+      "hostname": "inferswarm01",
+      "system_ram_bytes": 134984794112,
+      "torch_version": "2.11.0+cu130"
+    },
+    "resources": {
+      "backing_sources": [
+        {
+          "id": "qwen-checkpoint",
+          "kind": "checkpoint",
+          "repository": "nvidia/Qwen3.6-35B-A3B-NVFP4",
+          "revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce"
+        }
+      ],
+      "links": [
+        {
+          "id": "checkpoint-to-ram",
+          "kind": "bounded-read",
+          "source": "qwen-checkpoint",
+          "target": "node-a.ram"
+        },
+        {
+          "id": "ram-to-vram",
+          "kind": "host-to-device",
+          "source": "node-a.ram",
+          "target": "gpu0.vram"
+        }
+      ],
+      "nodes": [
+        {
+          "compute_units": [
+            {
+              "device_uuid": "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099",
+              "id": "gpu0",
+              "kind": "cuda-gpu",
+              "memory_resources": [
+                "gpu0.vram"
+              ]
+            }
+          ],
+          "id": "node-a",
+          "memory_resources": [
+            {
+              "capacity_bytes": 12485525504,
+              "id": "gpu0.vram",
+              "kind": "accelerator-vram"
+            },
+            {
+              "capacity_bytes": 134984794112,
+              "id": "node-a.ram",
+              "kind": "system-ram"
+            }
+          ]
+        }
+      ],
+      "swarm_id": "r1-test"
+    }
+  },
+  "schema": "inferswarm.r1.frozen-plan-realization/1",
+  "scope": {
+    "does_not_prove": "automatic planning, candidate comparison, R2 split execution, multi-GPU or multi-node execution, networking, elasticity, public planner/strategy APIs, discovery, or other model/vendor generality",
+    "proves": "one predeclared doctrine-shaped Block A plan caused exact validated resource/state/materialization realization and correct backend-native repeated decode"
+  },
+  "status": "R1_FROZEN_PLAN_REALIZATION_PASS",
+  "validation": {
+    "digest": "sha256:430f84e406f51d037ab8ae2844865ff4d6b60d17a1d43d54180d509682ca2281",
+    "passed": true,
+    "required_bytes_by_memory": {
+      "gpu0.vram": 10391381656
+    }
+  }
+}
