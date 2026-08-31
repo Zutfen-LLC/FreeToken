@@ -124,7 +124,10 @@ class GraphRunner:
         self._capture_graphs(max_seq_len, vocab_size, model)
 
     def _reset_moe_offload_cache(self) -> None:
-        if self.moe_offload_cache is not None:
+        if (
+            self.moe_offload_cache is not None
+            and not getattr(self.moe_offload_cache, "resident_only", False)
+        ):
             self.moe_offload_cache.reset()
 
     def _capture_graphs(self, max_seq_len: int, vocab_size: int, model: BaseLLMModel):
