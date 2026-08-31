@@ -18,9 +18,10 @@ def _tree(method):
 def test_d6_events_cover_frozen_component_boundaries():
     assert set(D6_GPU0_MARKERS) == {
         "complete_start", "classify_end", "payload_stage_start", "payload_stage_end",
-        "local_start", "local_end", "fanin_start", "fanin_end", "returned_h2d_start",
-        "returned_h2d_end", "scatter_start", "scatter_end", "reduce_start", "reduce_end",
-        "complete_end",
+        "local_start", "local_end", "fanin_start_a", "fanin_end_a", "fanin_start_b",
+        "fanin_end_b", "returned_h2d_start_a", "returned_h2d_end_a",
+        "returned_h2d_start_b", "returned_h2d_end_b", "scatter_start_a", "scatter_end_a",
+        "scatter_start_b", "scatter_end_b", "reduce_start", "reduce_end", "complete_end",
     }
     assert set(D6_WORKER_MARKERS) == {
         "branch_start", "inbound_start", "inbound_end", "compute_start", "compute_end",

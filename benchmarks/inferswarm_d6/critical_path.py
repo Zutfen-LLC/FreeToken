@@ -14,6 +14,7 @@ import torch
 from freetoken.engine.engine import Engine
 from freetoken.gpu_select import set_assigned_gpu
 from freetoken.moe.inferswarm_d3_placement import load_d3_placement
+from freetoken.moe.inferswarm_d5_compact_routes import D6_GPU0_INTERVALS, D6_WORKER_INTERVALS
 from freetoken.moe.offload_cache import iter_offload_moe_layers
 from freetoken.server.args import parse_args
 from freetoken.server.launch import _resolve_server_gpu_args
@@ -88,8 +89,9 @@ def _bytes(count: int, hidden_size: int, element_size: int) -> dict:
                            "transport_efficiency": total_useful / total_capacity}}
 
 
-def _capture(executor, layer, cache, stream, hidden, weights, ids, diagnostic: bool):
-    executor.set_d6_diagnostic(diagnostic)
+def _capture(executor, layer, cache, stream, hidden, weights, ids, diagnostic: bool,
+             *, gpu0_markers=(), worker_markers=()):
+    executor.set_d6_diagnostic(diagnostic, gpu0_markers=gpu0_markers, worker_markers=worker_markers)
     executor.decode(layer, cache, hidden, weights, ids); torch.cuda.synchronize(executor.primary_device)
     graph = torch.cuda.CUDAGraph()
     with torch.cuda.graph(graph, stream=stream): executor.decode(layer, cache, hidden, weights, ids)
@@ -123,22 +125,43 @@ def main() -> int:
         ids = torch.tensor([_route_ids(placement, layer_id, 4)], dtype=torch.int32, device=device)
         cache.reset(); uninstrumented = _capture(executor, layer, cache, engine.stream, hidden, weights, ids, False)
         uninstrumented_wall = _wall(uninstrumented, device, engine.stream, ns.replays)
-        diagnostic = _capture(executor, layer, cache, engine.stream, hidden, weights, ids, True)
-        diagnostic_wall = _wall(diagnostic, device, engine.stream, ns.replays)
-        perturbation = statistics.median(uninstrumented_wall) / statistics.median(diagnostic_wall)
+        graphs = {}; perturbation_rows = []
+        for metric, intervals in D6_GPU0_INTERVALS.items():
+            markers = {marker for pair in intervals for marker in pair
+                       if not marker.endswith(("_a", "_b"))
+                       or marker.endswith(tuple(f"_{x}" for x in executor.active_workers))}
+            graph = _capture(executor, layer, cache, engine.stream, hidden, weights, ids, True,
+                             gpu0_markers=markers)
+            wall = _wall(graph, device, engine.stream, ns.replays)
+            graphs[("gpu0", metric)] = graph
+            perturbation_rows.append({"domain": "gpu0", "metric": metric,
+                                      "wall": _dist(wall), "throughput_ratio":
+                                      statistics.median(uninstrumented_wall) / statistics.median(wall)})
+        for metric, pair in D6_WORKER_INTERVALS.items():
+            graph = _capture(executor, layer, cache, engine.stream, hidden, weights, ids, True,
+                             worker_markers=set(pair))
+            wall = _wall(graph, device, engine.stream, ns.replays)
+            graphs[("worker", metric)] = graph
+            perturbation_rows.append({"domain": "worker", "metric": metric,
+                                      "wall": _dist(wall), "throughput_ratio":
+                                      statistics.median(uninstrumented_wall) / statistics.median(wall)})
+        perturbation = min(row["throughput_ratio"] for row in perturbation_rows)
         cases = []
         for useful_b in COUNTS:
             ids.copy_(torch.tensor([_route_ids(placement, layer_id, useful_b)], dtype=torch.int32, device=device))
-            for _ in range(10): diagnostic.replay()
-            torch.cuda.synchronize(device); rows = []
-            for _ in range(ns.replays):
-                diagnostic.replay(); torch.cuda.synchronize(device)
-                snap = executor.d6_diagnostic_snapshot(layer_id)
-                rows.append(snap)
-            gpu0 = {name: _dist([r["gpu0_ms"][name] * 1000 for r in rows]) for name in rows[0]["gpu0_ms"]}
-            workers = {x: {name: _dist([r["workers_ms"][x][name] * 1000 for r in rows])
-                           for name in rows[0]["workers_ms"][x]} for x in executor.active_workers}
-            counts = rows[-1]["route_counts"]
+            samples = {}
+            for key, graph in graphs.items():
+                for _ in range(10): graph.replay()
+                torch.cuda.synchronize(device); values = {x: [] for x in (("gpu0",) if key[0] == "gpu0" else executor.active_workers)}
+                for _ in range(ns.replays):
+                    graph.replay(); torch.cuda.synchronize(device)
+                    snap = executor.d6_interval_snapshot(*key, layer_id)
+                    for x, value in snap.items(): values[x].append(value * 1000)
+                samples[key] = {x: _dist(v) for x, v in values.items()}
+            gpu0 = {metric: samples[("gpu0", metric)]["gpu0"] for metric in D6_GPU0_INTERVALS}
+            workers = {x: {metric: samples[("worker", metric)][x] for metric in D6_WORKER_INTERVALS}
+                       for x in executor.active_workers}
+            counts = {name: int(getattr(executor, f"gpu0_{name}_count").item()) for name in ("local", "a", "b")}
             cases.append({"requested_b_routes": useful_b, "route_counts": counts,
                           "gpu0": gpu0, "workers": workers,
                           "fixed_transport_bytes": {x: _bytes(counts[x], executor.hidden_size,
@@ -152,7 +175,7 @@ def main() -> int:
                   "same_device_elapsed_only": True, "events_preallocated_before_capture": True,
                   "host_reads_inside_replay": False, "diagnostic_mode_separate": True,
                   "instrumentation_perturbation": {"uninstrumented_wall": _dist(uninstrumented_wall),
-                                                   "instrumented_wall": _dist(diagnostic_wall),
+                                                   "narrow_interval_graphs": perturbation_rows,
                                                    "instrumented_over_uninstrumented_throughput": perturbation,
                                                    "threshold": .97, "trusted": perturbation >= .97},
                   "representative_case": cases[COUNTS.index(4)], "controlled_cases": cases,

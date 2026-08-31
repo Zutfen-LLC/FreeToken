@@ -12,14 +12,33 @@ D5_EXECUTOR_SCHEMA = "freetoken.inferswarm-d5-compact-routes/1"
 
 D6_GPU0_MARKERS = (
     "complete_start", "classify_end", "payload_stage_start", "payload_stage_end",
-    "local_start", "local_end", "fanin_start", "fanin_end", "returned_h2d_start",
-    "returned_h2d_end", "scatter_start", "scatter_end", "reduce_start", "reduce_end",
-    "complete_end",
+    "local_start", "local_end", "fanin_start_a", "fanin_end_a", "fanin_start_b",
+    "fanin_end_b", "returned_h2d_start_a", "returned_h2d_end_a",
+    "returned_h2d_start_b", "returned_h2d_end_b", "scatter_start_a", "scatter_end_a",
+    "scatter_start_b", "scatter_end_b", "reduce_start", "reduce_end", "complete_end",
 )
 D6_WORKER_MARKERS = (
     "branch_start", "inbound_start", "inbound_end", "compute_start", "compute_end",
     "outbound_start", "outbound_end", "branch_end",
 )
+D6_GPU0_INTERVALS = {
+    "classify_compact": (("complete_start", "classify_end"),),
+    "payload_stage_gpu0": (("payload_stage_start", "payload_stage_end"),),
+    "gpu0_local_complete": (("local_start", "local_end"),),
+    "fanin_wait": (("fanin_start_a", "fanin_end_a"), ("fanin_start_b", "fanin_end_b")),
+    "returned_routes_h2d": (("returned_h2d_start_a", "returned_h2d_end_a"),
+                            ("returned_h2d_start_b", "returned_h2d_end_b")),
+    "scatter_reconstruct": (("scatter_start_a", "scatter_end_a"),
+                            ("scatter_start_b", "scatter_end_b")),
+    "final_sum_reduce": (("reduce_start", "reduce_end"),),
+    "complete_layer": (("complete_start", "complete_end"),),
+}
+D6_WORKER_INTERVALS = {
+    "inbound_h2d": ("inbound_start", "inbound_end"),
+    "expert_compute": ("compute_start", "compute_end"),
+    "outbound_d2h": ("outbound_start", "outbound_end"),
+    "complete_worker_branch": ("branch_start", "branch_end"),
+}
 
 
 class InferSwarmD5CompactRoutesExecutor:
@@ -38,6 +57,8 @@ class InferSwarmD5CompactRoutesExecutor:
         self._failure_count = self._fallback_count = 0
         self._steady_state_host_sync_count = self._graph_recapture_count = 0
         self._d6_diagnostic_enabled = False
+        self._d6_gpu0_markers: frozenset[str] = frozenset()
+        self._d6_worker_markers: frozenset[str] = frozenset()
         cuda, primary = torch_module.cuda, int(primary_device.index)
         try:
             cuda.set_device(primary)
@@ -107,14 +128,15 @@ class InferSwarmD5CompactRoutesExecutor:
         with cuda.stream(stream):
             self.ready_events[n].wait(stream)
             if self._d6_diagnostic_enabled:
-                events = getattr(self, f"_d6_{x}_events")
-                events["branch_start"][n].record(stream); events["inbound_start"][n].record(stream)
+                self._d6_mark_worker(x, "branch_start", n, stream)
+                self._d6_mark_worker(x, "inbound_start", n, stream)
             getattr(self, f"worker_{x}_activation").copy_(self.host_activation, non_blocking=True)
             getattr(self, f"worker_{x}_slots").copy_(getattr(self, f"host_{x}_slots"), non_blocking=True)
             getattr(self, f"worker_{x}_weights").copy_(getattr(self, f"host_{x}_weights"), non_blocking=True)
             getattr(self, f"worker_{x}_count").copy_(getattr(self, f"host_{x}_count"), non_blocking=True)
             if self._d6_diagnostic_enabled:
-                events["inbound_end"][n].record(stream); events["compute_start"][n].record(stream)
+                self._d6_mark_worker(x, "inbound_end", n, stream)
+                self._d6_mark_worker(x, "compute_start", n, stream)
             bank = getattr(self.resident_banks, f"worker_{x}")
             layer._expert_route_contributions(
                 cache, getattr(self, f"worker_{x}_activation"), getattr(self, f"worker_{x}_weights"),
@@ -123,10 +145,12 @@ class InferSwarmD5CompactRoutesExecutor:
                 activation_out=getattr(self, f"worker_{x}_activation_out"),
                 active_count=getattr(self, f"worker_{x}_count"))
             if self._d6_diagnostic_enabled:
-                events["compute_end"][n].record(stream); events["outbound_start"][n].record(stream)
+                self._d6_mark_worker(x, "compute_end", n, stream)
+                self._d6_mark_worker(x, "outbound_start", n, stream)
             getattr(self, f"host_{x}_return").copy_(getattr(self, f"worker_{x}_routes"), non_blocking=True)
             if self._d6_diagnostic_enabled:
-                events["outbound_end"][n].record(stream); events["branch_end"][n].record(stream)
+                self._d6_mark_worker(x, "outbound_end", n, stream)
+                self._d6_mark_worker(x, "branch_end", n, stream)
             getattr(self, f"done_{x}_events")[n].record(stream)
 
     def decode(self, layer, cache, hidden, weights, ids):
@@ -134,7 +158,7 @@ class InferSwarmD5CompactRoutesExecutor:
         cuda, primary = self._torch.cuda, int(self.primary_device.index)
         try:
             cuda.set_device(primary); stream = cuda.current_stream(self.primary_device)
-            if self._d6_diagnostic_enabled: self._d6_gpu0_events["complete_start"][n].record(stream)
+            if self._d6_diagnostic_enabled: self._d6_mark_gpu0("complete_start", n, stream)
             compact_routes(ids, weights, self.worker_a_slot_lookup, self.worker_b_slot_lookup,
                            n, self._outputs(), has_a="a" in self.active_workers,
                            has_b="b" in self.active_workers)
@@ -148,18 +172,18 @@ class InferSwarmD5CompactRoutesExecutor:
             self.device_counts[n, 6].add_(skipped)
             self.device_counts[n, 7].add_(local_count)
             if self._d6_diagnostic_enabled:
-                self._d6_gpu0_events["classify_end"][n].record(stream)
-                self._d6_gpu0_events["payload_stage_start"][n].record(stream)
+                self._d6_mark_gpu0("classify_end", n, stream)
+                self._d6_mark_gpu0("payload_stage_start", n, stream)
             self.host_activation.copy_(hidden, non_blocking=True)
             for x in self.active_workers:
                 getattr(self, f"host_{x}_slots").copy_(getattr(self, f"gpu0_{x}_ids"), non_blocking=True)
                 getattr(self, f"host_{x}_weights").copy_(getattr(self, f"gpu0_{x}_weights"), non_blocking=True)
                 getattr(self, f"host_{x}_count").copy_(getattr(self, f"gpu0_{x}_count"), non_blocking=True)
             self.ready_events[n].record(stream)
-            if self._d6_diagnostic_enabled: self._d6_gpu0_events["payload_stage_end"][n].record(stream)
+            if self._d6_diagnostic_enabled: self._d6_mark_gpu0("payload_stage_end", n, stream)
             for x in self.active_workers: self._worker_branch(x, layer, cache, n)
             cuda.set_device(primary)
-            if self._d6_diagnostic_enabled: self._d6_gpu0_events["local_start"][n].record(stream)
+            if self._d6_diagnostic_enabled: self._d6_mark_gpu0("local_start", n, stream)
             # D5 currently leaves fixed-capacity dummy IDs visible to cache planning;
             # count-aware expert compute is the isolated mechanism under test.
             cache.ensure_experts(n, self.gpu0_local_ids); cache.copy_missing()
@@ -172,17 +196,20 @@ class InferSwarmD5CompactRoutesExecutor:
             scatter_compact(self.gpu0_local_routes, self.gpu0_local_positions,
                             local_count, self.gpu0_reconstruction)
             if self._d6_diagnostic_enabled:
-                ev = self._d6_gpu0_events; ev["local_end"][n].record(stream); ev["fanin_start"][n].record(stream)
-                for x in self.active_workers: getattr(self, f"done_{x}_events")[n].wait(stream)
-                ev["fanin_end"][n].record(stream); ev["returned_h2d_start"][n].record(stream)
+                self._d6_mark_gpu0("local_end", n, stream)
                 for x in self.active_workers:
+                    self._d6_mark_gpu0(f"fanin_start_{x}", n, stream)
+                    getattr(self, f"done_{x}_events")[n].wait(stream)
+                    self._d6_mark_gpu0(f"fanin_end_{x}", n, stream)
+                    self._d6_mark_gpu0(f"returned_h2d_start_{x}", n, stream)
                     getattr(self, f"gpu0_{x}_return_routes").copy_(getattr(self, f"host_{x}_return"), non_blocking=True)
-                ev["returned_h2d_end"][n].record(stream); ev["scatter_start"][n].record(stream)
-                for x in self.active_workers:
+                    self._d6_mark_gpu0(f"returned_h2d_end_{x}", n, stream)
+                    self._d6_mark_gpu0(f"scatter_start_{x}", n, stream)
                     scatter_compact(getattr(self, f"gpu0_{x}_return_routes"),
                                     getattr(self, f"gpu0_{x}_positions"),
                                     getattr(self, f"gpu0_{x}_count"), self.gpu0_reconstruction)
-                ev["scatter_end"][n].record(stream); ev["reduce_start"][n].record(stream)
+                    self._d6_mark_gpu0(f"scatter_end_{x}", n, stream)
+                self._d6_mark_gpu0("reduce_start", n, stream)
             else:
                 for x in self.active_workers:
                     getattr(self, f"done_{x}_events")[n].wait(stream)
@@ -192,7 +219,7 @@ class InferSwarmD5CompactRoutesExecutor:
                                     getattr(self, f"gpu0_{x}_count"), self.gpu0_reconstruction)
             moe_sum_reduce_triton(self.gpu0_reconstruction, self.gpu0_output)
             if self._d6_diagnostic_enabled:
-                ev["reduce_end"][n].record(stream); ev["complete_end"][n].record(stream)
+                self._d6_mark_gpu0("reduce_end", n, stream); self._d6_mark_gpu0("complete_end", n, stream)
             return self.gpu0_output
         except Exception:
             self._failure_count += 1
@@ -211,9 +238,19 @@ class InferSwarmD5CompactRoutesExecutor:
 
     def reset_counters(self): self.device_counts.zero_()
 
-    def set_d6_diagnostic(self, enabled: bool) -> None:
+    def _d6_mark_gpu0(self, marker: str, layer_id: int, stream) -> None:
+        if marker in self._d6_gpu0_markers:
+            self._d6_gpu0_events[marker][layer_id].record(stream)
+
+    def _d6_mark_worker(self, worker: str, marker: str, layer_id: int, stream) -> None:
+        if marker in self._d6_worker_markers:
+            getattr(self, f"_d6_{worker}_events")[marker][layer_id].record(stream)
+
+    def set_d6_diagnostic(self, enabled: bool, *, gpu0_markers=(), worker_markers=()) -> None:
         """Select capture-time-only D6 instrumentation; never mutate during replay."""
         self._d6_diagnostic_enabled = bool(enabled)
+        self._d6_gpu0_markers = frozenset(gpu0_markers)
+        self._d6_worker_markers = frozenset(worker_markers)
 
     @staticmethod
     def _elapsed(events, start: str, end: str, layer_id: int) -> float:
@@ -223,14 +260,9 @@ class InferSwarmD5CompactRoutesExecutor:
         """Read the most recently completed diagnostic replay (caller synchronizes)."""
         n = int(layer_id); gpu = self._d6_gpu0_events
         gpu0 = {
-            "classify_compact": self._elapsed(gpu, "complete_start", "classify_end", n),
-            "payload_stage_gpu0": self._elapsed(gpu, "payload_stage_start", "payload_stage_end", n),
-            "gpu0_local_complete": self._elapsed(gpu, "local_start", "local_end", n),
-            "fanin_wait": self._elapsed(gpu, "fanin_start", "fanin_end", n),
-            "returned_routes_h2d": self._elapsed(gpu, "returned_h2d_start", "returned_h2d_end", n),
-            "scatter_reconstruct": self._elapsed(gpu, "scatter_start", "scatter_end", n),
-            "final_sum_reduce": self._elapsed(gpu, "reduce_start", "reduce_end", n),
-            "complete_layer": self._elapsed(gpu, "complete_start", "complete_end", n),
+            metric: sum(self._elapsed(gpu, start, end, n) for start, end in intervals
+                        if start.removesuffix("_a").removesuffix("_b") == start or start.endswith(tuple(f"_{x}" for x in self.active_workers)))
+            for metric, intervals in D6_GPU0_INTERVALS.items()
         }
         workers = {}
         for x in self.active_workers:
@@ -243,6 +275,21 @@ class InferSwarmD5CompactRoutesExecutor:
             }
         counts = {name: int(getattr(self, f"gpu0_{name}_count").item()) for name in ("local", "a", "b")}
         return {"gpu0_ms": gpu0, "workers_ms": workers, "route_counts": counts}
+
+    def d6_interval_snapshot(self, domain: str, metric: str, layer_id: int) -> dict[str, float]:
+        """Read one narrow same-device interval after the caller completed replay."""
+        n = int(layer_id)
+        if domain == "gpu0":
+            intervals = D6_GPU0_INTERVALS[metric]
+            return {"gpu0": sum(self._elapsed(self._d6_gpu0_events, start, end, n)
+                                for start, end in intervals
+                                if not start.endswith(("_a", "_b"))
+                                or start.endswith(tuple(f"_{x}" for x in self.active_workers)))}
+        if domain == "worker":
+            start, end = D6_WORKER_INTERVALS[metric]
+            return {x: self._elapsed(getattr(self, f"_d6_{x}_events"), start, end, n)
+                    for x in self.active_workers}
+        raise ValueError(f"unknown D6 timing domain {domain!r}")
 
     def configuration_report(self) -> dict[str, Any]:
         a, b = self.resident_banks.worker_a, self.resident_banks.worker_b
