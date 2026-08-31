@@ -111,7 +111,7 @@ def _wall(graph, device, stream, repetitions: int) -> list[float]:
 def main() -> int:
     p = argparse.ArgumentParser(); p.add_argument("--model", required=True)
     p.add_argument("--revision", required=True); p.add_argument("--placement", required=True)
-    p.add_argument("--shape", choices=("b", "ab"), required=True)
+    p.add_argument("--shape", choices=("a", "b", "ab"), required=True)
     p.add_argument("--output", required=True); p.add_argument("--replays", type=int, default=200)
     ns = p.parse_args(); before = _vm(); started = time.monotonic(); args = _config(ns)
     set_assigned_gpu((args.gpu_assigned or args.gpu)[0]); engine = Engine(args)
