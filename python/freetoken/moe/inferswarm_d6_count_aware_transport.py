@@ -6,7 +6,9 @@ from typing import Any
 import torch
 
 from freetoken.kernel import moe_sum_reduce_triton
-from freetoken.kernel.count_aware_transport import pack_active_routes, scatter_active_routes
+from freetoken.kernel.count_aware_transport import (
+    pack_active_metadata, pack_active_routes, scatter_active_routes, unpack_active_metadata,
+)
 from freetoken.kernel.pinned import alloc_pinned_tensor
 from freetoken.kernel.triton.inferswarm_compact import compact_routes, scatter_compact
 from .inferswarm_d5_compact_routes import InferSwarmD5CompactRoutesExecutor
@@ -17,12 +19,14 @@ D6_EXECUTOR_SCHEMA = "freetoken.inferswarm-d6-count-aware-transport/1"
 def transport_byte_geometry(active_count: int, *, top_k: int, hidden_size: int,
                             element_size: int) -> dict[str, int | float]:
     if not 0 <= active_count <= top_k: raise ValueError("active_count outside transport capacity")
-    activation = hidden_size * element_size; metadata = top_k * 8 + 4
+    activation = hidden_size * element_size; d5_metadata = top_k * 8 + 4
+    d6_metadata = active_count * 8 + 4
     useful_return = active_count * hidden_size * element_size
     d5_return = top_k * hidden_size * element_size
-    d6_total = activation + metadata + 2 * useful_return
-    d5_total = activation + metadata + 2 * d5_return
-    return {"activation_h2d": activation, "metadata_h2d": metadata,
+    d6_total = activation + d6_metadata + 2 * useful_return
+    d5_total = activation + d5_metadata + 2 * d5_return
+    return {"activation_h2d": activation, "d5_metadata_h2d": d5_metadata,
+            "d6_metadata_h2d": d6_metadata,
             "useful_return_per_leg": useful_return, "d5_return_per_leg": d5_return,
             "d6_actual_return_per_leg": useful_return, "d5_total_path": d5_total,
             "d6_total_path": d6_total, "bytes_saved": d5_total - d6_total,
@@ -39,9 +43,11 @@ class InferSwarmD6CountAwareTransportExecutor(InferSwarmD5CompactRoutesExecutor)
             # generate no PCIe payload traffic and can remain stale safely.
             setattr(self, f"host_{x}_return", alloc_pinned_tensor(
                 1, self.top_k, self.hidden_size, dtype=self.hidden_dtype))
+            setattr(self, f"host_{x}_slots", alloc_pinned_tensor(1, self.top_k, dtype=torch.int32))
+            setattr(self, f"host_{x}_weights", alloc_pinned_tensor(1, self.top_k, dtype=torch.float32))
         primary = self.primary_device
         self.transport_counts = torch_module.zeros(
-            (self.num_layers, 2, 7), dtype=torch_module.int64, device=primary)
+            (self.num_layers, 2, 8), dtype=torch_module.int64, device=primary)
         self.active_route_histogram = torch_module.zeros(
             (self.num_layers, 2, self.top_k + 1), dtype=torch_module.int64, device=primary)
         self._histogram_values = torch_module.arange(
@@ -61,9 +67,12 @@ class InferSwarmD6CountAwareTransportExecutor(InferSwarmD5CompactRoutesExecutor)
                 self._d6_mark_worker(x, "branch_start", n, stream)
                 self._d6_mark_worker(x, "inbound_start", n, stream)
             getattr(self, f"worker_{x}_activation").copy_(self.host_activation, non_blocking=True)
-            getattr(self, f"worker_{x}_slots").copy_(getattr(self, f"host_{x}_slots"), non_blocking=True)
-            getattr(self, f"worker_{x}_weights").copy_(getattr(self, f"host_{x}_weights"), non_blocking=True)
             getattr(self, f"worker_{x}_count").copy_(getattr(self, f"host_{x}_count"), non_blocking=True)
+            unpack_active_metadata(getattr(self, f"worker_{x}_slots"),
+                                   getattr(self, f"worker_{x}_weights"),
+                                   getattr(self, f"host_{x}_slots"),
+                                   getattr(self, f"host_{x}_weights"),
+                                   getattr(self, f"worker_{x}_count"))
             if self._d6_diagnostic_enabled:
                 self._d6_mark_worker(x, "inbound_end", n, stream)
                 self._d6_mark_worker(x, "compute_start", n, stream)
@@ -91,11 +100,11 @@ class InferSwarmD6CountAwareTransportExecutor(InferSwarmD5CompactRoutesExecutor)
             count = getattr(self, f"gpu0_{x}_count")
             row = self.transport_counts[n, index]
             row[0].add_(self._activation_bytes)
-            row[1].add_(self._metadata_capacity_bytes)
+            row[1].add_(count * 8 + 4)
             row[2].add_(count * self._return_row_bytes)
             row[3].add_(count * self._return_row_bytes)
             row[4].add_(count * self._return_row_bytes)
-            row[5].add_(count == 0); row[6].add_(1)
+            row[5].add_(4); row[6].add_(count == 0); row[7].add_(1)
             self.active_route_histogram[n, index].add_(self._histogram_values == count)
 
     def decode(self, layer, cache, hidden, weights, ids):
@@ -117,8 +126,11 @@ class InferSwarmD6CountAwareTransportExecutor(InferSwarmD5CompactRoutesExecutor)
             self._record_transport(n)
             self.host_activation.copy_(hidden, non_blocking=True)
             for x in self.active_workers:
-                getattr(self, f"host_{x}_slots").copy_(getattr(self, f"gpu0_{x}_ids"), non_blocking=True)
-                getattr(self, f"host_{x}_weights").copy_(getattr(self, f"gpu0_{x}_weights"), non_blocking=True)
+                pack_active_metadata(getattr(self, f"host_{x}_slots"),
+                                     getattr(self, f"host_{x}_weights"),
+                                     getattr(self, f"gpu0_{x}_ids"),
+                                     getattr(self, f"gpu0_{x}_weights"),
+                                     getattr(self, f"gpu0_{x}_count"))
                 getattr(self, f"host_{x}_count").copy_(getattr(self, f"gpu0_{x}_count"), non_blocking=True)
             self.ready_events[n].record(stream)
             for x in self.active_workers: self._worker_branch(x, layer, cache, n)
@@ -159,7 +171,7 @@ class InferSwarmD6CountAwareTransportExecutor(InferSwarmD5CompactRoutesExecutor)
         return {**base, "schema": D6_EXECUTOR_SCHEMA,
                 "count_aware_return_transport": True,
                 "return_transport_mechanism": "device_packed_mapped_host_zero_copy",
-                "count_aware_inbound_metadata": False,
+                "count_aware_inbound_metadata": True,
                 "zero_route_return_payload_bytes": 0,
                 "d5_fixed_return_bytes_per_leg": self.top_k * self._return_row_bytes,
                 "steady_state_expert_weight_bytes_host_to_worker_a": 0,
@@ -171,13 +183,13 @@ class InferSwarmD6CountAwareTransportExecutor(InferSwarmD5CompactRoutesExecutor)
         workers = {}
         for index, x in enumerate(("a", "b")):
             if x not in self.active_workers: continue
-            row = [int(counts[:, index, field].sum().item()) for field in range(7)]
+            row = [int(counts[:, index, field].sum().item()) for field in range(8)]
             hist = [int(histogram[:, index, count].sum().item()) for count in range(self.top_k + 1)]
             workers[x] = {"activation_bytes_h2d": row[0], "route_metadata_bytes_h2d": row[1],
                           "useful_returned_contribution_bytes": row[2],
                           "actual_returned_bytes_d2h": row[3], "actual_returned_bytes_h2d_gpu0": row[4],
-                          "fixed_overhead_bytes": row[1], "zero_route_layers": row[5],
-                          "layer_calls": row[6], "active_route_histogram": hist}
+                          "fixed_overhead_bytes": row[5], "zero_route_layers": row[6],
+                          "layer_calls": row[7], "active_route_histogram": hist}
         d5_return = sum(v["layer_calls"] for v in workers.values()) * self.top_k * self._return_row_bytes * 2
         actual_return = sum(v["actual_returned_bytes_d2h"] + v["actual_returned_bytes_h2d_gpu0"]
                             for v in workers.values())

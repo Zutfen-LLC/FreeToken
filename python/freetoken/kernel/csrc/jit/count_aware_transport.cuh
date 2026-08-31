@@ -44,6 +44,32 @@ __global__ void scatter_active_bf16(const uint4* __restrict__ mapped_host,
     }
 }
 
+template <int K>
+__global__ void pack_active_metadata(const int32_t* __restrict__ slots,
+                                     const float* __restrict__ weights,
+                                     int32_t* __restrict__ mapped_slots,
+                                     float* __restrict__ mapped_weights,
+                                     const int32_t* __restrict__ active_count) {
+    const int route = threadIdx.x;
+    if (route < active_count[0]) {
+        mapped_slots[route] = slots[route];
+        mapped_weights[route] = weights[route];
+    }
+}
+
+template <int K>
+__global__ void unpack_active_metadata(int32_t* __restrict__ slots,
+                                       float* __restrict__ weights,
+                                       const int32_t* __restrict__ mapped_slots,
+                                       const float* __restrict__ mapped_weights,
+                                       const int32_t* __restrict__ active_count) {
+    const int route = threadIdx.x;
+    if (route < active_count[0]) {
+        slots[route] = mapped_slots[route];
+        weights[route] = mapped_weights[route];
+    }
+}
+
 template <int K, int H>
 struct CountAwareTransport {
     static void verify_payload(tvm::ffi::TensorView payload) {
@@ -86,6 +112,46 @@ struct CountAwareTransport {
             static_cast<const int32_t*>(positions.data_ptr()),
             static_cast<const int32_t*>(active_count.data_ptr()),
             static_cast<uint4*>(reconstruction.data_ptr()));
+    }
+
+    static void pack_metadata(tvm::ffi::TensorView mapped_slots,
+                              tvm::ffi::TensorView mapped_weights,
+                              tvm::ffi::TensorView slots,
+                              tvm::ffi::TensorView weights,
+                              tvm::ffi::TensorView active_count) {
+        using namespace host;
+        auto device = SymbolicDevice{};
+        TensorMatcher({1, K}).with_dtype<int32_t>().with_device<kDLCUDA>(device).verify(slots);
+        TensorMatcher({1, K}).with_dtype<float>().with_device<kDLCUDA>(device).verify(weights);
+        TensorMatcher({1, K}).with_dtype<int32_t>().with_device<kDLCUDAHost, kDLCPU>().verify(mapped_slots);
+        TensorMatcher({1, K}).with_dtype<float>().with_device<kDLCUDAHost, kDLCPU>().verify(mapped_weights);
+        TensorMatcher({}).with_dtype<int32_t>().with_device<kDLCUDA>(device).verify(active_count);
+        LaunchKernel(1, K, device.unwrap())(
+            pack_active_metadata<K>, static_cast<const int32_t*>(slots.data_ptr()),
+            static_cast<const float*>(weights.data_ptr()),
+            static_cast<int32_t*>(mapped_ptr(mapped_slots)),
+            static_cast<float*>(mapped_ptr(mapped_weights)),
+            static_cast<const int32_t*>(active_count.data_ptr()));
+    }
+
+    static void unpack_metadata(tvm::ffi::TensorView slots,
+                                tvm::ffi::TensorView weights,
+                                tvm::ffi::TensorView mapped_slots,
+                                tvm::ffi::TensorView mapped_weights,
+                                tvm::ffi::TensorView active_count) {
+        using namespace host;
+        auto device = SymbolicDevice{};
+        TensorMatcher({1, K}).with_dtype<int32_t>().with_device<kDLCUDA>(device).verify(slots);
+        TensorMatcher({1, K}).with_dtype<float>().with_device<kDLCUDA>(device).verify(weights);
+        TensorMatcher({1, K}).with_dtype<int32_t>().with_device<kDLCUDAHost, kDLCPU>().verify(mapped_slots);
+        TensorMatcher({1, K}).with_dtype<float>().with_device<kDLCUDAHost, kDLCPU>().verify(mapped_weights);
+        TensorMatcher({}).with_dtype<int32_t>().with_device<kDLCUDA>(device).verify(active_count);
+        LaunchKernel(1, K, device.unwrap())(
+            unpack_active_metadata<K>, static_cast<int32_t*>(slots.data_ptr()),
+            static_cast<float*>(weights.data_ptr()),
+            static_cast<const int32_t*>(mapped_ptr(mapped_slots)),
+            static_cast<const float*>(mapped_ptr(mapped_weights)),
+            static_cast<const int32_t*>(active_count.data_ptr()));
     }
 };
 
