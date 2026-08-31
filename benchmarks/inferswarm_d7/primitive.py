@@ -6,10 +6,13 @@ import json
 import math
 import statistics
 import subprocess
+import sys
 import time
 from pathlib import Path
 
 import torch
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from freetoken.engine.engine import Engine
 from freetoken.gpu_select import set_assigned_gpu
