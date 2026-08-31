@@ -389,7 +389,7 @@ def load_selective_qwen35_block(
     )
     from freetoken.models.nvfp4_banks import load_nvfp4_expert_source_banks_for_layers
     from freetoken.utils import cached_load_hf_config, torch_dtype
-    from freetoken.utils.torch_utils import set_rope_device
+    from freetoken.layers.rotary import set_rope_device
 
     config = replace(parse_config(cached_load_hf_config(model_path)), moe_backend="offload")
     block_spec.validate(config.num_layers)
