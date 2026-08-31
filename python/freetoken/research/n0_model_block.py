@@ -388,9 +388,12 @@ def load_selective_qwen35_block(
         iter_block_weights,
     )
     from freetoken.models.nvfp4_banks import load_nvfp4_expert_source_banks_for_layers
+    from freetoken.distributed import set_tp_info, try_get_tp_info
     from freetoken.utils import cached_load_hf_config, torch_dtype
     from freetoken.layers.rotary import set_rope_device
 
+    if try_get_tp_info() is None:
+        set_tp_info(rank=0, size=1)
     config = replace(parse_config(cached_load_hf_config(model_path)), moe_backend="offload")
     block_spec.validate(config.num_layers)
     set_rope_device(device)
