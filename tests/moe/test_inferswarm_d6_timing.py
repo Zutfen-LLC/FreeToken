@@ -30,7 +30,7 @@ def test_d6_events_cover_frozen_component_boundaries():
 
 def test_d6_events_are_constructed_only_during_executor_initialization():
     init = inspect.getsource(InferSwarmD5CompactRoutesExecutor.__init__)
-    assert "Event(enable_timing=True)" in init
+    assert "Event(enable_timing=True, external=True)" in init
     assert "Event(" not in inspect.getsource(InferSwarmD5CompactRoutesExecutor.decode)
     assert "Event(" not in inspect.getsource(InferSwarmD5CompactRoutesExecutor._worker_branch)
 

@@ -52,7 +52,7 @@ class InferSwarmD5CompactRoutesExecutor:
             self.device_counts = torch_module.zeros((self.num_layers, 8), dtype=torch_module.int64, device=primary_device)
             self.ready_events = [cuda.Event() for _ in range(self.num_layers)]
             self._d6_gpu0_events = {
-                marker: [cuda.Event(enable_timing=True) for _ in range(self.num_layers)]
+                marker: [cuda.Event(enable_timing=True, external=True) for _ in range(self.num_layers)]
                 for marker in D6_GPU0_MARKERS
             }
             for label in ("local", "a", "b"):
@@ -69,7 +69,7 @@ class InferSwarmD5CompactRoutesExecutor:
                 setattr(self, f"worker_{x}_stream", cuda.Stream(device=d))
                 setattr(self, f"done_{x}_events", [cuda.Event() for _ in range(self.num_layers)])
                 setattr(self, f"_d6_{x}_events", {
-                    marker: [cuda.Event(enable_timing=True) for _ in range(self.num_layers)]
+                    marker: [cuda.Event(enable_timing=True, external=True) for _ in range(self.num_layers)]
                     for marker in D6_WORKER_MARKERS
                 })
                 for name, shape, dtype in (("slots", (1, self.top_k), torch_module.int32),
