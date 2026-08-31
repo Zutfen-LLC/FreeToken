@@ -15,7 +15,8 @@ from dataclasses import dataclass
 
 MAGIC = b"ISN1"
 PROTOCOL_VERSION = 1
-HIDDEN_SIZE = 4096
+HIDDEN_SIZE = 2048
+BOUNDARY_PLANES = 2
 BF16_DTYPE_CODE = 1
 BF16_ELEMENT_BYTES = 2
 MAX_PAYLOAD_BYTES = 64 * 1024 * 1024
@@ -76,7 +77,7 @@ def _validate_frame(frame: Frame) -> None:
             raise BoundaryProtocolError(f"wrong hidden dtype code {frame.hidden_dtype_code}")
         if frame.token_count < 1:
             raise BoundaryProtocolError("hidden frame token_count must be positive")
-        expected = frame.token_count * HIDDEN_SIZE * BF16_ELEMENT_BYTES
+        expected = frame.token_count * BOUNDARY_PLANES * HIDDEN_SIZE * BF16_ELEMENT_BYTES
         if frame.payload_bytes != expected:
             raise BoundaryProtocolError(
                 f"hidden payload length {frame.payload_bytes} != implied {expected}"
@@ -362,7 +363,7 @@ def decode_token_result(payload: bytes) -> int:
 
 
 __all__ = [
-    "BF16_DTYPE_CODE", "BoundaryProtocolError", "FLAG_PREFILL_FINAL", "Frame",
+    "BF16_DTYPE_CODE", "BOUNDARY_PLANES", "BoundaryProtocolError", "FLAG_PREFILL_FINAL", "Frame",
     "Handshake", "HEADER", "HIDDEN_SIZE", "MessageType", "PROTOCOL_VERSION",
     "SessionPhase", "SessionStateMachine", "UnixSocketTransport", "decode_token_result",
     "encode_frame", "encode_token_result", "read_exact", "recv_frame", "write_all",
