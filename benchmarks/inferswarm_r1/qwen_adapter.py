@@ -53,6 +53,7 @@ class QwenBlockAResearchAdapter:
         self.detach_report = {}
         self.checkpoints = []
         self.plan = None
+        self.runtime_authorities = []
 
     def supports_representation(self, logical_state_id, representation):
         return representation in self._representations.get(logical_state_id, set())
@@ -70,6 +71,7 @@ class QwenBlockAResearchAdapter:
             raise ValueError("R1 requires repeated steady-state decode")
         self.plan = plan
         self.environment = environment
+        self.runtime_authorities = []
         self.device = torch.device(environment["device"])
         torch.cuda.set_device(self.device)
         torch.cuda.reset_peak_memory_stats(self.device)
@@ -214,13 +216,33 @@ class QwenBlockAResearchAdapter:
             actual_memory_resource_id = self._memory_resource_id("accelerator-vram")
         else:
             raise RuntimeError(f"adapter cannot realize state {state_id!r}")
-        return {
+        observation = {
             "actual_representation": actual_representation,
             "actual_memory_resource_id": actual_memory_resource_id,
             "observed_bytes": observed_bytes,
             "lifecycle_state": "live",
             "status": "PLANNED_AND_REALIZED",
         }
+        if item["role"] == "mutable_authority":
+            declarations = [
+                authority
+                for authority in self.plan["authorities"]
+                if authority["materialization_id"] == item["id"]
+                and authority["logical_state_id"] == state_id
+            ]
+            if len(declarations) != 1:
+                raise RuntimeError(
+                    f"realized mutable authority {item['id']!r} has no unique declared lineage"
+                )
+            self.runtime_authorities.append(
+                {
+                    "logical_state_id": state_id,
+                    "materialization_id": item["id"],
+                    "lineage": declarations[0]["lineage"],
+                    "memory_resource_id": actual_memory_resource_id,
+                }
+            )
+        return observation
 
     def release_materialization(self, item):
         if (
@@ -256,7 +278,10 @@ class QwenBlockAResearchAdapter:
                 state=self.block_state,
             )
         )
-        return {"observed_bytes": 0, "released_bytes": self.released_owner_bytes}
+        return {
+            "observed_bytes_after_release": 0,
+            "released_bytes": self.released_owner_bytes,
+        }
 
     def activate_execution(self, execution):
         if not self.cache.resident_only or self.cache.host_source_tensor_bytes():
@@ -271,7 +296,7 @@ class QwenBlockAResearchAdapter:
         }
 
     def observe_authorities(self):
-        return list(self.plan["authorities"])
+        return list(self.runtime_authorities)
 
     def run_repeated_decode_and_audit(self):
         runs = []

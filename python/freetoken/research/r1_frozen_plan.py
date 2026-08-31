@@ -302,6 +302,47 @@ class FrozenPlanRealization:
     adapter: ResearchPlanAdapter
 
 
+def _materialization_matches_intent(
+    intended: Mapping[str, Any],
+    actual: Mapping[str, Any],
+    *,
+    observed_bytes_key: str = "observed_bytes",
+) -> bool:
+    return (
+        actual.get("status") == "PLANNED_AND_REALIZED"
+        and actual.get("lifecycle_state") == "live"
+        and actual.get("logical_state_id") == intended.get("logical_state_id")
+        and actual.get("actual_representation") == intended.get("representation")
+        and actual.get("actual_memory_resource_id")
+        == intended.get("memory_resource_id")
+        and (
+            not isinstance(intended.get("expected_bytes"), int)
+            or actual.get(observed_bytes_key) == intended.get("expected_bytes")
+        )
+    )
+
+
+def final_realization_satisfies_staging_release(
+    staging: Mapping[str, Any],
+    planned: Mapping[str, Mapping[str, Any]],
+    observed: Mapping[str, Mapping[str, Any]],
+) -> list[str]:
+    """Return exact distinct final materializations that authorize release."""
+    qualifying: list[str] = []
+    for materialization_id, candidate in planned.items():
+        if (
+            materialization_id == staging.get("id")
+            or candidate.get("logical_state_id") != staging.get("logical_state_id")
+            or candidate.get("requirement") != "required"
+            or candidate.get("persistence") != "persistent"
+        ):
+            continue
+        actual = observed.get(materialization_id)
+        if actual is not None and _materialization_matches_intent(candidate, actual):
+            qualifying.append(materialization_id)
+    return sorted(qualifying)
+
+
 def reconcile_realization(
     plan: Mapping[str, Any],
     observed_materializations: list[Mapping[str, Any]],
@@ -326,13 +367,14 @@ def reconcile_realization(
             and actual.get("status") == "OPTIONAL_NOT_REALIZED"
         ):
             continue
-        if (
+        released_transient = (
             intended.get("persistence") == "transient"
             and actual.get("status") == "TRANSIENT_RELEASED_AS_PLANNED"
-        ):
-            continue
-        if actual.get("status") != "PLANNED_AND_REALIZED":
+        )
+        if not released_transient and actual.get("status") != "PLANNED_AND_REALIZED":
             mismatches.append(f"{mid}: unexpected status {actual.get('status')!r}")
+            if intended.get("requirement") == "required":
+                planned_not_realized.append(mid)
         for intended_key, actual_key in (
             ("logical_state_id", "logical_state_id"),
             ("representation", "actual_representation"),
@@ -342,14 +384,50 @@ def reconcile_realization(
                 mismatches.append(
                     f"{mid}: {actual_key} {actual.get(actual_key)!r} != planned {intended.get(intended_key)!r}"
                 )
-        expected_bytes = intended.get("expected_bytes")
-        if (
-            isinstance(expected_bytes, int)
-            and actual.get("observed_bytes") != expected_bytes
+        if actual.get("persistence") != intended.get("persistence"):
+            mismatches.append(
+                f"{mid}: persistence {actual.get('persistence')!r} != planned {intended.get('persistence')!r}"
+            )
+        if "intended_role" in actual and actual.get("intended_role") != intended.get(
+            "role"
         ):
             mismatches.append(
-                f"{mid}: observed_bytes {actual.get('observed_bytes')!r} != expected {expected_bytes}"
+                f"{mid}: intended_role {actual.get('intended_role')!r} != planned {intended.get('role')!r}"
             )
+        expected_bytes = intended.get("expected_bytes")
+        observed_bytes_key = (
+            "observed_bytes_before_release" if released_transient else "observed_bytes"
+        )
+        if (
+            isinstance(expected_bytes, int)
+            and actual.get(observed_bytes_key) != expected_bytes
+        ):
+            mismatches.append(
+                f"{mid}: {observed_bytes_key} {actual.get(observed_bytes_key)!r} != expected {expected_bytes}"
+            )
+        if released_transient:
+            if actual.get("lifecycle_state") != "released":
+                mismatches.append(
+                    f"{mid}: released transient lifecycle_state {actual.get('lifecycle_state')!r} != 'released'"
+                )
+            if actual.get("observed_bytes_after_release") != 0:
+                mismatches.append(
+                    f"{mid}: observed_bytes_after_release {actual.get('observed_bytes_after_release')!r} != 0"
+                )
+            if actual.get("released_bytes") != actual.get(
+                "observed_bytes_before_release"
+            ):
+                mismatches.append(
+                    f"{mid}: released_bytes {actual.get('released_bytes')!r} != observed_bytes_before_release {actual.get('observed_bytes_before_release')!r}"
+                )
+            qualifying = final_realization_satisfies_staging_release(
+                intended, planned, observed
+            )
+            declared_qualifying = actual.get("release_qualifying_materialization_ids")
+            if declared_qualifying != qualifying or not qualifying:
+                mismatches.append(
+                    f"{mid}: release qualifying materializations {declared_qualifying!r} != observed qualifying finals {qualifying!r}"
+                )
     for item in observed_materializations:
         mid = item.get("materialization_id")
         if (
@@ -384,6 +462,23 @@ def reconcile_realization(
         mismatches.append(
             f"mutable authority mismatch: observed {sorted(actual_authority)!r}, planned {sorted(expected_authority)!r}"
         )
+    for authority in observed_authorities:
+        materialization_id = authority.get("materialization_id")
+        owner = observed.get(materialization_id)
+        if owner is None or not (
+            owner.get("status") == "PLANNED_AND_REALIZED"
+            and owner.get("lifecycle_state") == "live"
+            and owner.get("logical_state_id") == authority.get("logical_state_id")
+        ):
+            mismatches.append(
+                f"observed authority for {authority.get('logical_state_id')!r} is not owned by a live realized materialization {materialization_id!r}"
+            )
+        elif authority.get("memory_resource_id") is not None and authority.get(
+            "memory_resource_id"
+        ) != owner.get("actual_memory_resource_id"):
+            mismatches.append(
+                f"observed authority {materialization_id!r} resource {authority.get('memory_resource_id')!r} != realized resource {owner.get('actual_memory_resource_id')!r}"
+            )
     result = {
         "planned_not_realized": planned_not_realized,
         "unplanned_persistent": unplanned_persistent,
@@ -429,31 +524,38 @@ def realize_frozen_plan(
         record.setdefault("persistence", materialization["persistence"])
         observed.append(record)
 
-    realized_required_ids = {
-        item.get("logical_state_id")
-        for item in observed
-        if item.get("status") == "PLANNED_AND_REALIZED"
-    }
-    for materialization, record in zip(
-        plan.get("materializations", []), observed, strict=True
-    ):
+    planned = {item["id"]: item for item in plan.get("materializations", [])}
+    observed_by_id = {item["materialization_id"]: item for item in observed}
+    for materialization in plan.get("materializations", []):
         if (
             materialization.get("role") != "staging"
             or materialization.get("persistence") != "transient"
         ):
             continue
-        final_exists = any(
-            candidate.get("logical_state_id") == materialization.get("logical_state_id")
-            and candidate.get("requirement") == "required"
-            and candidate.get("persistence") == "persistent"
-            and candidate.get("logical_state_id") in realized_required_ids
-            for candidate in plan.get("materializations", [])
+        record = observed_by_id[materialization["id"]]
+        qualifying = final_realization_satisfies_staging_release(
+            materialization, planned, observed_by_id
         )
-        if final_exists:
+        stage_was_realized = _materialization_matches_intent(materialization, record)
+        record["release_qualifying_materialization_ids"] = qualifying
+        if stage_was_realized and qualifying:
+            observed_bytes_before_release = record.get("observed_bytes")
             released = dict(adapter.release_materialization(materialization))
+            if "observed_bytes_after_release" not in released:
+                released["observed_bytes_after_release"] = released.pop(
+                    "observed_bytes", None
+                )
+            else:
+                released.pop("observed_bytes", None)
+            released.pop("observed_bytes_before_release", None)
             record.update(released)
+            record["observed_bytes_before_release"] = observed_bytes_before_release
+            record["observed_bytes"] = observed_bytes_before_release
             record["status"] = "TRANSIENT_RELEASED_AS_PLANNED"
             record["lifecycle_state"] = "released"
+        else:
+            record["realization_status_before_finalization"] = record.get("status")
+            record["status"] = "TRANSIENT_RELEASE_NOT_AUTHORIZED"
 
     execution = [
         dict(adapter.activate_execution(item)) for item in plan.get("execution", [])

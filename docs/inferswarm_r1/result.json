@@ -293,7 +293,8 @@
       {
         "lineage": "r1-block-a-epoch-1",
         "logical_state_id": "state.block-a.mutable-runtime",
-        "materialization_id": "mat.runtime.vram"
+        "materialization_id": "mat.runtime.vram",
+        "memory_resource_id": "gpu0.vram"
       }
     ],
     "execution": [
@@ -315,8 +316,13 @@
         "lifecycle_state": "released",
         "logical_state_id": "state.block-a.routed",
         "materialization_id": "mat.routed.ram-stage",
-        "observed_bytes": 0,
+        "observed_bytes": 8636596224,
+        "observed_bytes_after_release": 0,
+        "observed_bytes_before_release": 8636596224,
         "persistence": "transient",
+        "release_qualifying_materialization_ids": [
+          "mat.routed.vram"
+        ],
         "released_bytes": 8636596224,
         "status": "TRANSIENT_RELEASED_AS_PLANNED"
       },
@@ -390,17 +396,17 @@
         "other_deliberate_gpu_bytes_by_role": {},
         "other_deliberate_persistent_host_bytes_by_role": {},
         "process": {
-          "RssAnon_kib": 334468,
-          "RssFile_kib": 294464,
+          "RssAnon_kib": 334376,
+          "RssFile_kib": 294428,
           "RssShmem_kib": 8192,
-          "VmHWM_kib": 637124,
-          "VmRSS_kib": 637124,
+          "VmHWM_kib": 636996,
+          "VmRSS_kib": 636996,
           "VmSwap_kib": 0
         },
-        "ru_maxrss_kib": 635920,
+        "ru_maxrss_kib": 635796,
         "vmstat": {
-          "pgfault": 1503569727,
-          "pgmajfault": 1991203,
+          "pgfault": 1537099267,
+          "pgmajfault": 2055772,
           "pswpin": 0,
           "pswpout": 0
         }
@@ -419,17 +425,17 @@
           "same_backend_correctness_reference_tensors": 327680
         },
         "process": {
-          "RssAnon_kib": 824484,
+          "RssAnon_kib": 824740,
           "RssFile_kib": 471252,
           "RssShmem_kib": 9519620,
-          "VmHWM_kib": 11265992,
-          "VmRSS_kib": 10815356,
+          "VmHWM_kib": 11266884,
+          "VmRSS_kib": 10815612,
           "VmSwap_kib": 0
         },
-        "ru_maxrss_kib": 11265992,
+        "ru_maxrss_kib": 11266884,
         "vmstat": {
-          "pgfault": 1506595188,
-          "pgmajfault": 2055770,
+          "pgfault": 1539948355,
+          "pgmajfault": 2114412,
           "pswpin": 0,
           "pswpout": 0
         }
@@ -448,17 +454,17 @@
           "same_backend_correctness_reference_tensors": 327680
         },
         "process": {
-          "RssAnon_kib": 834484,
+          "RssAnon_kib": 832700,
           "RssFile_kib": 472628,
           "RssShmem_kib": 9519620,
-          "VmHWM_kib": 11265992,
-          "VmRSS_kib": 10826732,
+          "VmHWM_kib": 11266884,
+          "VmRSS_kib": 10824948,
           "VmSwap_kib": 0
         },
-        "ru_maxrss_kib": 11265992,
+        "ru_maxrss_kib": 11266884,
         "vmstat": {
-          "pgfault": 1506596180,
-          "pgmajfault": 2055770,
+          "pgfault": 1539949349,
+          "pgmajfault": 2114412,
           "pswpin": 0,
           "pswpout": 0
         }
@@ -477,17 +483,17 @@
           "same_backend_correctness_reference_tensors": 327680
         },
         "process": {
-          "RssAnon_kib": 1194756,
-          "RssFile_kib": 567424,
+          "RssAnon_kib": 1193088,
+          "RssFile_kib": 567484,
           "RssShmem_kib": 9519620,
-          "VmHWM_kib": 11281800,
-          "VmRSS_kib": 11281800,
+          "VmHWM_kib": 11280192,
+          "VmRSS_kib": 11280192,
           "VmSwap_kib": 0
         },
-        "ru_maxrss_kib": 11274708,
+        "ru_maxrss_kib": 11272460,
         "vmstat": {
-          "pgfault": 1506677722,
-          "pgmajfault": 2055770,
+          "pgfault": 1540005303,
+          "pgmajfault": 2114412,
           "pswpin": 0,
           "pswpout": 0
         }
@@ -511,17 +517,17 @@
           "selective_block_host_model_tensors": 0
         },
         "process": {
-          "RssAnon_kib": 1194768,
-          "RssFile_kib": 568696,
+          "RssAnon_kib": 1193100,
+          "RssFile_kib": 568756,
           "RssShmem_kib": 9519620,
-          "VmHWM_kib": 11283084,
-          "VmRSS_kib": 11283084,
+          "VmHWM_kib": 11281476,
+          "VmRSS_kib": 11281476,
           "VmSwap_kib": 0
         },
-        "ru_maxrss_kib": 11275916,
+        "ru_maxrss_kib": 11273872,
         "vmstat": {
-          "pgfault": 1506677749,
-          "pgmajfault": 2055770,
+          "pgfault": 1540005333,
+          "pgmajfault": 2114412,
           "pswpin": 0,
           "pswpout": 0
         }
@@ -545,17 +551,17 @@
           "selective_block_host_model_tensors": 0
         },
         "process": {
-          "RssAnon_kib": 1215876,
-          "RssFile_kib": 570012,
+          "RssAnon_kib": 1214228,
+          "RssFile_kib": 570072,
           "RssShmem_kib": 9519620,
-          "VmHWM_kib": 11305508,
-          "VmRSS_kib": 11305508,
+          "VmHWM_kib": 11303920,
+          "VmRSS_kib": 11303920,
           "VmSwap_kib": 0
         },
-        "ru_maxrss_kib": 11298336,
+        "ru_maxrss_kib": 11296432,
         "vmstat": {
-          "pgfault": 1506683539,
-          "pgmajfault": 2055770,
+          "pgfault": 1540008634,
+          "pgmajfault": 2114412,
           "pswpin": 0,
           "pswpout": 0
         }
