@@ -376,7 +376,9 @@ class Engine:
         d3_multiworker = bool(getattr(config, "inferswarm_experimental_d3_graph_multiworker", False)) or d5_compact or d6_transport
         d4_weighted = bool(getattr(config, "inferswarm_experimental_d4_capability_weighted", False))
         d5_weighted = bool(getattr(config, "inferswarm_d5_weighted_placement", False))
-        d3_placement_path = (getattr(config, "inferswarm_d4_placement", None) if (d4_weighted or d5_weighted)
+        d7_sparse = bool(getattr(config, "inferswarm_d7_fanin_sparse_placement", False))
+        d3_placement_path = (getattr(config, "inferswarm_d7_placement", None) if d7_sparse else
+                             getattr(config, "inferswarm_d4_placement", None) if (d4_weighted or d5_weighted)
                              else getattr(config, "inferswarm_d3_placement", None))
         if getattr(config, "inferswarm_correctness_diagnostics", False):
             from .correctness_diagnostics import CorrectnessDiagnostics
@@ -416,7 +418,9 @@ class Engine:
             d3_active = tuple(getattr(config, "inferswarm_d3_active_workers", "ab"))
             if d3_placement_path is None or any(getattr(config, f"inferswarm_d3_worker_{label}_gpu", None) is None for label in d3_active):
                 raise ValueError("D3 multiworker requires frozen placement and its active worker selector(s)")
-            if d4_weighted or d5_weighted:
+            if d7_sparse:
+                from freetoken.moe.inferswarm_d7_placement import load_d7_placement as load_architecture_placement
+            elif d4_weighted or d5_weighted:
                 from freetoken.moe.inferswarm_d4_placement import load_d4_placement as load_architecture_placement
             else:
                 from freetoken.moe.inferswarm_d3_placement import load_d3_placement as load_architecture_placement
@@ -1125,7 +1129,8 @@ class Engine:
             active_workers=active_workers, hidden_size=int(config.model_config.hidden_size),
             top_k=int(config.model_config.num_experts_per_tok), hidden_dtype=config.dtype,
             num_layers=int(config.model_config.num_moe_layers),
-            intermediate_size=int(config.model_config.moe_intermediate_size))
+            intermediate_size=int(config.model_config.moe_intermediate_size),
+            d7_participation_diagnostics=bool(getattr(config, "inferswarm_d7_participation_diagnostics", False)))
         for layer in layers: layer.inferswarm_d6_count_aware_transport = executor
         cache.inferswarm_d6_count_aware_transport = executor
         self.inferswarm_d6_count_aware_transport = executor

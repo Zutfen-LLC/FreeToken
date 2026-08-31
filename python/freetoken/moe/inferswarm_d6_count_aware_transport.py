@@ -34,9 +34,10 @@ def transport_byte_geometry(active_count: int, *, top_k: int, hidden_size: int,
 
 
 class InferSwarmD6CountAwareTransportExecutor(InferSwarmD5CompactRoutesExecutor):
-    def __init__(self, **kwargs):
+    def __init__(self, *, d7_participation_diagnostics: bool = False, **kwargs):
         super().__init__(**kwargs)
         torch_module = self._torch
+        self.d7_participation_diagnostics = bool(d7_participation_diagnostics)
         for x in self.active_workers:
             # cudaHostAllocMapped storage is directly written by the worker and read by
             # GPU0. Kernels gate every row with the device active count, so tail rows
@@ -52,6 +53,13 @@ class InferSwarmD6CountAwareTransportExecutor(InferSwarmD5CompactRoutesExecutor)
             (self.num_layers, 2, self.top_k + 1), dtype=torch_module.int64, device=primary)
         self._histogram_values = torch_module.arange(
             self.top_k + 1, dtype=torch_module.int32, device=primary)
+        if self.d7_participation_diagnostics:
+            # Joint state is 0=zero, 1=A-only, 2=B-only, 3=A+B.  D6's marginal
+            # per-worker histograms cannot reconstruct the A/B intersection.
+            self.d7_participation_histogram = torch_module.zeros(
+                (self.num_layers, 4), dtype=torch_module.int64, device=primary)
+            self._d7_participation_values = torch_module.arange(
+                4, dtype=torch_module.int32, device=primary)
         self._return_row_bytes = self.hidden_size * torch_module.empty(
             (), dtype=self.hidden_dtype).element_size()
         self._activation_bytes = self.hidden_size * torch_module.empty(
@@ -124,6 +132,9 @@ class InferSwarmD6CountAwareTransportExecutor(InferSwarmD5CompactRoutesExecutor)
             for x in self.active_workers: skipped.add_(self.top_k - getattr(self, f"gpu0_{x}_count"))
             self.device_counts[n, 6].add_(skipped); self.device_counts[n, 7].add_(local_count)
             self._record_transport(n)
+            if self.d7_participation_diagnostics:
+                state = (a_count > 0).to(self._torch.int32) + 2 * (b_count > 0).to(self._torch.int32)
+                self.d7_participation_histogram[n].add_(self._d7_participation_values == state)
             self.host_activation.copy_(hidden, non_blocking=True)
             for x in self.active_workers:
                 pack_active_metadata(getattr(self, f"host_{x}_slots"),
@@ -165,6 +176,7 @@ class InferSwarmD6CountAwareTransportExecutor(InferSwarmD5CompactRoutesExecutor)
         super().reset_counters()
         if hasattr(self, "transport_counts"): self.transport_counts.zero_()
         if hasattr(self, "active_route_histogram"): self.active_route_histogram.zero_()
+        if hasattr(self, "d7_participation_histogram"): self.d7_participation_histogram.zero_()
 
     def configuration_report(self) -> dict[str, Any]:
         base = super().configuration_report()
@@ -172,6 +184,7 @@ class InferSwarmD6CountAwareTransportExecutor(InferSwarmD5CompactRoutesExecutor)
                 "count_aware_return_transport": True,
                 "return_transport_mechanism": "device_packed_mapped_host_zero_copy",
                 "count_aware_inbound_metadata": True,
+                "d7_participation_diagnostics": self.d7_participation_diagnostics,
                 "zero_route_return_payload_bytes": 0,
                 "d5_fixed_return_bytes_per_leg": self.top_k * self._return_row_bytes,
                 "steady_state_expert_weight_bytes_host_to_worker_a": 0,
@@ -193,7 +206,15 @@ class InferSwarmD6CountAwareTransportExecutor(InferSwarmD5CompactRoutesExecutor)
         d5_return = sum(v["layer_calls"] for v in workers.values()) * self.top_k * self._return_row_bytes * 2
         actual_return = sum(v["actual_returned_bytes_d2h"] + v["actual_returned_bytes_h2d_gpu0"]
                             for v in workers.values())
-        return {**base, "transport": {"workers": workers,
+        participation = None
+        if self.d7_participation_diagnostics:
+            joint = self.d7_participation_histogram.detach().cpu()
+            values = [int(joint[:, state].sum().item()) for state in range(4)]
+            participation = {"state_order": ["zero", "a_only", "b_only", "both"],
+                             "counts": dict(zip(("zero", "a_only", "b_only", "both"), values, strict=True)),
+                             "total_layer_events": sum(values),
+                             "mean_remote_workers_active": (values[1] + values[2] + 2 * values[3]) / sum(values) if sum(values) else 0.0}
+        return {**base, "d7_participation": participation, "transport": {"workers": workers,
                 "total_worker_transport_bytes": sum(v["activation_bytes_h2d"] + v["route_metadata_bytes_h2d"]
                                                      + v["actual_returned_bytes_d2h"]
                                                      + v["actual_returned_bytes_h2d_gpu0"] for v in workers.values()),

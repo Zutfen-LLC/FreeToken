@@ -66,12 +66,16 @@ class ServerArgs(SchedulerConfig):
     inferswarm_experimental_d5_resident_loader: bool = False
     inferswarm_experimental_d5_compact_routes: bool = False
     inferswarm_experimental_d6_count_aware_transport: bool = False
+    # D7 changes only ownership topology; execution remains the D6 executor.
+    inferswarm_d7_fanin_sparse_placement: bool = False
+    inferswarm_d7_participation_diagnostics: bool = False
     inferswarm_d5_weighted_placement: bool = False
     inferswarm_d5_loader_cpu_workers: int = 4
     # Fixed startup-only D3 execution shape; never selected on a decode token.
     inferswarm_d3_active_workers: str = "ab"
     inferswarm_d3_placement: str | None = None
     inferswarm_d4_placement: str | None = None
+    inferswarm_d7_placement: str | None = None
     inferswarm_d3_worker_a_gpu: str | None = None
     inferswarm_d3_worker_b_gpu: str | None = None
     inferswarm_d3_worker_a_gpu_assigned: str | None = None
@@ -343,11 +347,14 @@ def parse_args(
     parser.add_argument("--inferswarm-experimental-d5-resident-loader", action="store_true", default=ServerArgs.inferswarm_experimental_d5_resident_loader, help="EXPERIMENTAL D5 bulk pinned, concurrently verified resident loader")
     parser.add_argument("--inferswarm-experimental-d5-compact-routes", action="store_true", default=ServerArgs.inferswarm_experimental_d5_compact_routes, help="EXPERIMENTAL D5 stable compact physical route execution")
     parser.add_argument("--inferswarm-experimental-d6-count-aware-transport", action="store_true", default=ServerArgs.inferswarm_experimental_d6_count_aware_transport, help="EXPERIMENTAL D6 device-packed count-aware returned-route transport")
+    parser.add_argument("--inferswarm-d7-fanin-sparse-placement", action="store_true", default=ServerArgs.inferswarm_d7_fanin_sparse_placement, help="select the frozen D7 fan-in-sparse ownership with the unchanged D6 executor")
+    parser.add_argument("--inferswarm-d7-participation-diagnostics", action="store_true", default=ServerArgs.inferswarm_d7_participation_diagnostics, help="record the D7 joint zero/A/B/AB layer-event histogram in D6 graph replay")
     parser.add_argument("--inferswarm-d5-weighted-placement", action="store_true", default=ServerArgs.inferswarm_d5_weighted_placement, help="select the frozen D4 weighted artifact parser for D5 compact execution")
     parser.add_argument("--inferswarm-d5-loader-cpu-workers", type=int, choices=(1, 2, 4, 8), default=ServerArgs.inferswarm_d5_loader_cpu_workers, help="bounded CPU staging workers per D5 resident worker")
     parser.add_argument("--inferswarm-d3-active-workers", choices=("a", "b", "ab"), default=ServerArgs.inferswarm_d3_active_workers, help="EXPERIMENTAL D3 fixed captured worker shape (a, b, or ab)")
     parser.add_argument("--inferswarm-d3-placement", type=str, default=ServerArgs.inferswarm_d3_placement, help="SHA-pinned frozen D3 placement artifact")
     parser.add_argument("--inferswarm-d4-placement", type=str, default=ServerArgs.inferswarm_d4_placement, help="SHA-pinned frozen D4 placement artifact")
+    parser.add_argument("--inferswarm-d7-placement", type=str, default=ServerArgs.inferswarm_d7_placement, help="SHA-pinned frozen D7 placement artifact")
     parser.add_argument("--inferswarm-d3-worker-a-gpu", type=_lazy_single_gpu_arg, default=ServerArgs.inferswarm_d3_worker_a_gpu, help="D3 worker A GPU UUID or visible selector")
     parser.add_argument("--inferswarm-d3-worker-b-gpu", type=_lazy_single_gpu_arg, default=ServerArgs.inferswarm_d3_worker_b_gpu, help="D3 worker B GPU UUID or visible selector")
 
@@ -838,6 +845,8 @@ def parse_args(
     d5_loader = kwargs["inferswarm_experimental_d5_resident_loader"]
     d5_compact = kwargs["inferswarm_experimental_d5_compact_routes"]
     d6_transport = kwargs["inferswarm_experimental_d6_count_aware_transport"]
+    d7_sparse = kwargs["inferswarm_d7_fanin_sparse_placement"]
+    d7_diagnostics = kwargs["inferswarm_d7_participation_diagnostics"]
     d5_weighted = kwargs["inferswarm_d5_weighted_placement"]
     multiworker = d3 or d5_compact or d6_transport
     if d2 and kwargs["inferswarm_remote_decode"]:
@@ -871,16 +880,25 @@ def parse_args(
         parser.error("D6 count-aware transport is a separate executor and cannot be combined with historical executors")
     if d6_transport and not d5_loader:
         parser.error("D6 count-aware transport requires the frozen D5 resident loader")
+    if d7_sparse and not d6_transport:
+        parser.error("D7 fan-in-sparse placement requires the unchanged D6 count-aware executor")
+    if d7_diagnostics and not d6_transport:
+        parser.error("D7 participation diagnostics require the D6 count-aware executor")
     if d5_weighted and not d5_compact:
         parser.error("D5 weighted placement requires D5 compact routes")
-    placement = kwargs["inferswarm_d4_placement"] if (d4 or d5_weighted) else kwargs["inferswarm_d3_placement"]
+    placement = (kwargs["inferswarm_d7_placement"] if d7_sparse else
+                 kwargs["inferswarm_d4_placement"] if (d4 or d5_weighted) else kwargs["inferswarm_d3_placement"])
     if multiworker and (placement is None or any(selector is None for label, selector in required_d3_workers if label in d3_active)):
         parser.error(f"D3/D4 graph multiworker shape {d3_active!r} requires its placement and active worker selector(s)")
     if (d4 or d5_weighted) and kwargs["inferswarm_d3_placement"] is not None:
         parser.error("D4 must use --inferswarm-d4-placement")
     if not (d4 or d5_weighted) and kwargs["inferswarm_d4_placement"] is not None:
         parser.error("--inferswarm-d4-placement requires the D4 or D5-weighted experimental flag")
-    if not multiworker and (kwargs["inferswarm_d3_active_workers"] != "ab" or any(kwargs[name] is not None for name in ("inferswarm_d3_placement", "inferswarm_d4_placement", "inferswarm_d3_worker_a_gpu", "inferswarm_d3_worker_b_gpu"))):
+    if d7_sparse and any(kwargs[name] is not None for name in ("inferswarm_d3_placement", "inferswarm_d4_placement")):
+        parser.error("D7 must use only --inferswarm-d7-placement")
+    if not d7_sparse and kwargs["inferswarm_d7_placement"] is not None:
+        parser.error("--inferswarm-d7-placement requires --inferswarm-d7-fanin-sparse-placement")
+    if not multiworker and (kwargs["inferswarm_d3_active_workers"] != "ab" or any(kwargs[name] is not None for name in ("inferswarm_d3_placement", "inferswarm_d4_placement", "inferswarm_d7_placement", "inferswarm_d3_worker_a_gpu", "inferswarm_d3_worker_b_gpu"))):
         parser.error("D3 placement and worker selectors require --inferswarm-experimental-d3-graph-multiworker")
 
     # resolve some arguments
