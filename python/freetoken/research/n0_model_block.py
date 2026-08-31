@@ -299,6 +299,20 @@ class SelectiveBlockLoadResult:
     fetched_keys: list[str]
     fetched_bytes: int
 
+    def release_expert_banks_after_residency(self, cache) -> int:
+        """Explicitly release this loader's second owner of transient host banks."""
+        if not cache.resident_only or cache.host_source_tensor_bytes() != 0:
+            raise RuntimeError(
+                "expert banks may be released only after cache resident-only finalization"
+            )
+        released = sum(
+            tensor.numel() * tensor.element_size()
+            for per_layer in self.expert_banks.values()
+            for tensor in per_layer
+        )
+        self.expert_banks = {}
+        return released
+
 
 class SelectiveQwen35Block:
     """Only the real modules owned by one N0 block; layer IDs remain global."""

@@ -329,6 +329,25 @@ class OffloadMoELayer(MoELayer):
         timing = cache.layer_timing
         if timing is not None:
             timing.mark(self.layer_id, "complete_start", begin_layer=True)
+        if cache.resident_only:
+            if timing is not None:
+                timing.mark(self.layer_id, "local_start")
+            cache.map_resident_experts_to_slots(self.layer_id, topk_ids)
+            out = self._expert_gemm(
+                cache,
+                hidden_states,
+                topk_weights,
+                topk_ids,
+                views=cache.bank_views(),
+                n=None,
+                alphas=cache.alphas_for_slots(self.layer_id),
+                is_prefill=False,
+            )
+            if timing is not None:
+                timing.mark(self.layer_id, "local_expert_end")
+                timing.mark(self.layer_id, "local_branch_end")
+                timing.mark(self.layer_id, "complete_end")
+            return out
         if self.inferswarm_remote_decode is not None:
             return self.inferswarm_remote_decode.decode(
                 self, cache, hidden_states, topk_weights, topk_ids
@@ -451,6 +470,8 @@ class OffloadMoELayer(MoELayer):
         pass through unmapped."""
         cache = self.offload_cache
         assert cache is not None
+        if cache.resident_only:
+            cache._reject_if_resident_only("prefill")
         if cache.prefill_overlap:
             views = self._wait_prefill_overlap(cache)
             out = self._expert_gemm(
