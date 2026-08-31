@@ -1593,7 +1593,11 @@ class Engine:
                 # ChunkedReq forwards are never accepted as generated tokens. The final
                 # prefill and every decode Req have can_decode=True; the recorder keeps only
                 # the first sampler-input row for each uid.
-                if req.can_decode:
+                # The last decode forward still produced and sampled a real logit row even
+                # though complete_one() just made can_decode false. Intermediate chunked
+                # prefills remain excluded because they are prefill batches with can_decode
+                # false.
+                if batch.is_decode or req.can_decode:
                     correctness.capture_step0_logits(req.uid, batch_logits[index])
         next_tokens_gpu = self.sampler.sample(batch_logits, args).to(torch.int32)
         next_tokens_cpu = next_tokens_gpu.to("cpu", non_blocking=True)
