@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 
 from freetoken.research.n0_model_block import write_json_with_sha
@@ -16,6 +17,15 @@ from .correctness_support import (
     NONCANONICAL_LABEL,
     reference_provenance,
     validate_diagnostic_output,
+)
+from .v2_support import (
+    CANDIDATE_GPU_UUIDS,
+    FROZEN_PLAN_DIGEST,
+    methodology_record,
+    sha256_file,
+    validate_candidate_pass,
+    validate_reference_artifact,
+    validate_v2_output_path,
 )
 
 
@@ -80,6 +90,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--diagnostic-prefill-chunk", type=int)
     parser.add_argument("--allow-legacy-reference-diagnostic", action="store_true")
     parser.add_argument("--capture-prefill-state", action="store_true")
+    parser.add_argument("--v2-selection", type=Path)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
 
@@ -93,6 +104,31 @@ def main(argv: list[str] | None = None) -> int:
     tokenizer = AutoTokenizer.from_pretrained(args.model, local_files_only=True)
     selected = [value.strip() for value in args.classes.split(",") if value.strip()]
     diagnostic_override = args.diagnostic_prefill_chunk is not None
+    v2_mode = args.v2_selection is not None
+    if v2_mode and diagnostic_override:
+        raise ValueError("v2 candidate evaluation cannot be a diagnostic override")
+    if v2_mode:
+        validate_v2_output_path(args.out)
+        if args.out.name != "correctness-v2.json":
+            raise ValueError("v2 candidate evaluation must write correctness-v2.json")
+        if args.reference.name != "reference-v2-session-a.json":
+            raise ValueError("v2 canonical reference must be session A")
+        validate_reference_artifact(reference)
+        selection = json.loads(args.v2_selection.read_text())
+        if not selection.get("self_consistency_passed") or not selection.get(
+            "candidate_evaluation_authorized"
+        ):
+            raise ValueError("failed self-consistency forbids candidate evaluation")
+        if selection.get("canonical_reference") != args.reference.name:
+            raise ValueError("selection does not name session A as canonical")
+        if selection.get("selection_rule") != "session-a-predeclared":
+            raise ValueError("reference selection rule mismatch")
+        if selection.get("session_a", {}).get("sha256") != sha256_file(args.reference):
+            raise ValueError("canonical session A hash disagrees with selection")
+        if plan.get("digest") != FROZEN_PLAN_DIGEST:
+            raise ValueError("v2 candidate plan digest differs from frozen R2 plan")
+    else:
+        selection = None
     if args.allow_legacy_reference_diagnostic and not diagnostic_override:
         raise ValueError("legacy reference allowance requires a diagnostic override")
     validate_diagnostic_output(args.out, diagnostic_override=diagnostic_override)
@@ -107,15 +143,25 @@ def main(argv: list[str] | None = None) -> int:
         class_id: _prompt_ids(tokenizer, manifest.by_class()[class_id])
         for class_id in selected
     }
-    reference_record = reference_provenance(
-        reference,
-        args.reference,
-        required_model=plan["model"]["repository"],
-        required_revision=plan["model"]["revision"],
-        required_classes=selected,
-        required_prompt_ids=prompt_ids_by_class,
-        allow_legacy_diagnostic=args.allow_legacy_reference_diagnostic,
-    )
+    if v2_mode:
+        reference_record = {
+            "canonical_artifact": args.reference.name,
+            "canonical_artifact_sha256": sha256_file(args.reference),
+            "corroborating_artifact_sha256": selection["session_b"]["sha256"],
+            "selection_artifact": args.v2_selection.name,
+            "selection_artifact_sha256": sha256_file(args.v2_selection),
+            "selection_rule": selection["selection_rule"],
+        }
+    else:
+        reference_record = reference_provenance(
+            reference,
+            args.reference,
+            required_model=plan["model"]["repository"],
+            required_revision=plan["model"]["revision"],
+            required_classes=selected,
+            required_prompt_ids=prompt_ids_by_class,
+            allow_legacy_diagnostic=args.allow_legacy_reference_diagnostic,
+        )
     rows = []
     with LocalSplitCoordinator(
         plan_path=str(args.plan),
@@ -206,8 +252,75 @@ def main(argv: list[str] | None = None) -> int:
         and reports[role]["runtime"]["host_staging_current_bytes"] == 0
         for role in ("a", "b")
     )
+    resource_identity_pass = all(
+        startup[role]["gpu"]["uuid"] == CANDIDATE_GPU_UUIDS[role] for role in ("a", "b")
+    )
+    plan_pass = plan["digest"] == FROZEN_PLAN_DIGEST and [
+        block["ordinary_layer_ids"] for block in plan["strategy"]["blocks"]
+    ] == [list(range(19)), list(range(19, 40))]
+    tokens_pass = len(rows) == 4 and all(
+        row["generated_token_count"] == 32 and row["exact_generated_sequence"]
+        for row in rows
+    )
+    logits_pass = all(
+        len(row["logit_checkpoints"]) == 4
+        and all(item["within_canonical_threshold"] for item in row["logit_checkpoints"])
+        for row in rows
+    )
+    numerical_health_pass = all(
+        item["nan_count"] == 0 and item["inf_count"] == 0
+        for row in rows
+        for item in row["logit_checkpoints"]
+    )
+    session_isolation_pass = all(session_isolation.values())
+    boundary_pass = all(
+        item.get("producer_sha256") == item.get("consumer_sha256")
+        for row in rows
+        for item in row["boundaries"]
+    )
+    ownership_pass = (
+        all(
+            startup[role]["realization"]["reconciliation"]["passed"]
+            for role in ("a", "b")
+        )
+        and set(reports["a"]["runtime"]["global_layer_ids"]).isdisjoint(
+            reports["b"]["runtime"]["global_layer_ids"]
+        )
+        and sorted(
+            reports["a"]["runtime"]["global_layer_ids"]
+            + reports["b"]["runtime"]["global_layer_ids"]
+        )
+        == list(range(40))
+    )
+    movement_pass = all(
+        reports[role]["runtime"]["steady_model_state_movement_bytes"] == 0
+        for role in ("a", "b")
+    )
+    acceptance_gates = {
+        "resource_identity": resource_identity_pass,
+        "plan": plan_pass,
+        "tokens": tokens_pass,
+        "selected_logits": logits_pass,
+        "numerical_health": numerical_health_pass,
+        "session_isolation": session_isolation_pass,
+        "boundary": boundary_pass,
+        "backend_native": graph_pass,
+        "host_mirror": host_mirror_pass,
+        "ownership": ownership_pass,
+        "model_state_movement": movement_pass,
+    }
     payload = {
-        "schema": RESULT_SCHEMA,
+        "schema": "inferswarm.r2.correctness-v2/1" if v2_mode else RESULT_SCHEMA,
+        **({"methodology": methodology_record()} if v2_mode else {}),
+        **(
+            {
+                "producer_commit": subprocess.check_output(
+                    ["git", "rev-parse", "HEAD"], text=True
+                ).strip()
+            }
+            if v2_mode
+            else {}
+        ),
         "result_kind": "correctness",
         "evidence_label": NONCANONICAL_LABEL
         if diagnostic_override
@@ -279,24 +392,15 @@ def main(argv: list[str] | None = None) -> int:
             "prefill_chunk_payload_bytes": plan["boundary"]["contract"][
                 "prefill_chunk_payload_bytes"
             ],
-            "all_checksums_matched": all(
-                item.get("producer_sha256") == item.get("consumer_sha256")
-                for row in rows
-                for item in row["boundaries"]
-            ),
+            "all_checksums_matched": boundary_pass,
         },
         "participants": reports,
         "startup": startup,
-        "passed": all(row["exact_generated_sequence"] for row in rows)
-        and all(
-            item["within_canonical_threshold"]
-            for row in rows
-            for item in row["logit_checkpoints"]
-        )
-        and all(session_isolation.values())
-        and graph_pass
-        and host_mirror_pass,
+        **({"acceptance_gates": acceptance_gates} if v2_mode else {}),
+        "passed": all(acceptance_gates.values()),
     }
+    if v2_mode and payload["passed"]:
+        validate_candidate_pass(payload)
     write_json_with_sha(args.out, payload)
     print(
         json.dumps(

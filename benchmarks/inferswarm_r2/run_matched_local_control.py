@@ -241,6 +241,30 @@ class MatchedLocalRuntime:
         return int(logits.argmax(dim=-1).item()), logits.detach(), diagnostic
 
     @torch.inference_mode()
+    def prefill_reference(
+        self, ids: list[int], start: int, *, capture_seam: bool
+    ) -> tuple[int, torch.Tensor, dict | None]:
+        """Prefill without the diagnostic's enormous all-layer state snapshot."""
+
+        batch = self._prepare(start, len(ids), "prefill")
+        batch.input_ids.copy_(torch.tensor(ids, dtype=torch.int32, device=self.device))
+        seam = None
+        with self.ctx.forward_batch(batch):
+            hidden = self.model.model.embed_tokens.forward(batch.input_ids)
+            residual = None
+            for layer_id, layer in enumerate(self.model.model.layers.op_list):
+                hidden, residual = layer.forward(hidden, residual)
+                if layer_id == 18 and capture_seam:
+                    seam = {
+                        "hidden": tensor_record(hidden),
+                        "residual": tensor_record(residual),
+                        "pair": tensor_record(torch.stack((hidden, residual))),
+                    }
+            final, _ = self.model.model.norm.forward_add_residual(hidden, residual)
+            logits = self.model.lm_head.forward(final)
+        return int(logits.argmax(dim=-1).item()), logits.detach(), seam
+
+    @torch.inference_mode()
     def decode(self, token_id: int, position: int) -> tuple[int, torch.Tensor]:
         graph = self.graph
         graph.input_ids.fill_(token_id)
