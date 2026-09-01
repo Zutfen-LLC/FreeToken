@@ -1,0 +1,10 @@
+===NODE-A
+inferswarm01
+f11f9fddbcd25a082e810688de9427b5bef7e20e
+0
+f11f9fd research: implement R4 two-node 1-GbE boundary seam
+===NODE-B
+inferswarm03
+f11f9fddbcd25a082e810688de9427b5bef7e20e
+0
+f11f9fd research: implement R4 two-node 1-GbE boundary seam

@@ -1,0 +1,22 @@
+{
+  "sizes": {
+    "524288": {
+      "effective_mbps_p50": 433.7,
+      "payload_bytes_total": 104857600,
+      "repetitions": 200,
+      "rtt_ns_mean": 9672656,
+      "rtt_ns_p50": 9671052.0,
+      "rtt_ns_p95": 9869309
+    },
+    "8192": {
+      "effective_mbps_p50": 124.12,
+      "payload_bytes_total": 1638400,
+      "repetitions": 200,
+      "rtt_ns_mean": 524025,
+      "rtt_ns_p50": 528023.0,
+      "rtt_ns_p95": 659093
+    }
+  },
+  "tcp_nodelay": true,
+  "total_payload_bytes": 106496000
+}

@@ -1,0 +1,102 @@
+{
+  "base_r3_merge": "2ac72d547b2a24a3672d1b83268865db5490084d",
+  "clean_measurement_summary": {
+    "W2": {
+      "boundary_semantic_bytes": 696320,
+      "decode_tok_s": 32.85081230124099,
+      "inter_token_p50_ns": 29710718
+    },
+    "W4": {
+      "boundary_semantic_bytes": 1245184,
+      "decode_tok_s": 33.37538057085165,
+      "inter_token_p50_ns": 29827691
+    }
+  },
+  "correctness": {
+    "all_boundary_checksums_match": true,
+    "all_generated_exact": true,
+    "all_selected_logits_within_threshold": true
+  },
+  "implementation_producer_sha": "f8e743bf05f1766336f17fb8243c531633efce65",
+  "network": {
+    "canonical": "1GbE full-duplex MTU1500 direct LAN",
+    "iperf_a_to_b_mbps": 933.9,
+    "iperf_b_to_a_mbps": 941.5,
+    "node_a_interface": "eno1",
+    "node_b_interface": "enp5s0",
+    "retransmits_total": 0
+  },
+  "nodes": {
+    "node_a": {
+      "gpu_bdf": "00000000:02:00.0",
+      "gpu_uuid": "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099",
+      "hostname": "inferswarm01"
+    },
+    "node_b": {
+      "gpu_bdf": "00000000:01:00.0",
+      "gpu_uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176",
+      "hostname": "inferswarm03"
+    }
+  },
+  "one_gbe_disposition": {
+    "criterion": {
+      "applicable_demand_limit_mbps": 747.12,
+      "capacity_margin": 0.8,
+      "lower_measured_tcp_throughput_mbps": 933.9
+    },
+    "disposition": "R4_1GBE_PRIMITIVE_CAPACITY_VIABLE",
+    "sustained_application_wire_demand": {
+      "mbps_decode_8192": 124.12,
+      "mbps_prefill_524288": 433.7,
+      "method": "transport-only framed request/response sustained rate"
+    },
+    "transport_only": {
+      "decode_8192_rtt_p50_ns": 528023.0,
+      "prefill_524288_rtt_p50_ns": 9671052.0
+    }
+  },
+  "planner_authorization": {
+    "applicable_evidence_ids": [],
+    "authorization": "evidence-collection-only",
+    "candidate_id": "s1r4.two-node-network-split[opaque-slot-a=gpu-a,opaque-slot-b=gpu-b]",
+    "integrity_eligible": true,
+    "policy_eligible": true,
+    "r4_plan_digest": "sha256:2caf58f2e7a01da757ec11e2578c7575cd25e30486d20a6a3f8e486d58f25b3a",
+    "state": "FEASIBLE_UNRANKED"
+  },
+  "r4_plan_digest": "sha256:2caf58f2e7a01da757ec11e2578c7575cd25e30486d20a6a3f8e486d58f25b3a",
+  "runtime_invariants": {
+    "clean": {
+      "node_a_captures": 1,
+      "node_a_fallbacks": 0,
+      "node_a_host_expert_fetches": 0,
+      "node_a_recaptures": 0,
+      "node_a_replays": 62,
+      "node_a_resident_source_accesses": 0,
+      "node_a_steady_model_state_movement_bytes": 0,
+      "node_a_unexplained_persistent_host_mirror_bytes": 0
+    },
+    "diagnostic": {
+      "node_a_captures": 1,
+      "node_a_fallbacks": 0,
+      "node_a_host_expert_fetches": 0,
+      "node_a_recaptures": 0,
+      "node_a_replays": 62,
+      "node_a_resident_source_accesses": 0,
+      "node_a_steady_model_state_movement_bytes": 0,
+      "node_a_unexplained_persistent_host_mirror_bytes": 0
+    }
+  },
+  "schema": "inferswarm.r4.result/1",
+  "wire_accounting_clean": {
+    "experiment_id": "sha256:2caf58f2e7a01da757ec11e2578c7575cd25e30486d20a6a3f8e486d58f25b3a",
+    "frames_rx": 69,
+    "frames_tx": 69,
+    "framing_control_bytes_tx": 24866,
+    "result_control_bytes_rx": 20583,
+    "semantic_payload_bytes_tx": 1941504,
+    "tcp_nodelay": true,
+    "wire_bytes_rx": 20583,
+    "wire_bytes_tx": 1966370
+  }
+}

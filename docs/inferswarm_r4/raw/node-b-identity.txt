@@ -1,0 +1,13 @@
+inferswarm03
+fatal: detected dubious ownership in repository at '/home/zutfen/FreeToken-r4'
+To add an exception for this directory, call:
+
+	git config --global --add safe.directory /home/zutfen/FreeToken-r4
+GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176, 00000000:01:00.0
+GPU-a57bd3fb-c072-67ed-166c-ce52cf504ac0, 00000000:03:00.0
+fatal: detected dubious ownership in repository at '/home/zutfen/FreeToken-r4'
+To add an exception for this directory, call:
+
+	git config --global --add safe.directory /home/zutfen/FreeToken-r4
+f8e743bf05f1766336f17fb8243c531633efce65
+0

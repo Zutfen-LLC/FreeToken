@@ -34,25 +34,23 @@ def classify_one_gbe(
     """
 
     lower_throughput_mbps = min(
-        iperf["a_to_b_mbps"], iperf["b_to_a_mbps"]
+        iperf["iperf_a_to_b_mbps"], iperf["iperf_b_to_a_mbps"]
     )
-    # Per-boundary A->B demand: payload + framing at the prefill peak.
-    worst = None
-    for session in clean_arm["sessions"]:
-        for boundary in session["session"]["boundaries"]:
-            demand_bits = boundary["payload_bytes"] * 8
-            seconds = max(
-                boundary["sender_send_ns"] / 1e9, 1e-9
-            )
-            mbps = demand_bits / seconds / 1e6
-            if worst is None or mbps > worst[0]:
-                worst = (mbps, boundary["operation"], boundary["payload_bytes"])
-    peak_demand_mbps, peak_op, peak_bytes = worst or (0.0, "none", 0)
+    # Peak sustained application wire demand: the transport-only
+    # microbenchmark drives the exact largest framed boundary payload
+    # (524,288 B) request/response cycle with zero compute, which bounds
+    # the model workload's offered load from above (model boundaries add
+    # compute between requests).  Socket send() duration is NOT used:
+    # it returns when the kernel buffer accepts the bytes, not when the
+    # wire transmits them, so it is not a physical wire-rate measure.
+    prefill = microbench["sizes"]["524288"]
+    decode = microbench["sizes"]["8192"]
+    sustained_demand_mbps = prefill["effective_mbps_p50"]
     limit = CAPACITY_MARGIN * lower_throughput_mbps
     retransmits = iperf.get("retransmits_total", 0)
-    if peak_demand_mbps <= limit and retransmits == 0:
+    if sustained_demand_mbps <= limit and retransmits == 0:
         disposition = "R4_1GBE_PRIMITIVE_CAPACITY_VIABLE"
-    elif retransmits and peak_demand_mbps > limit:
+    elif sustained_demand_mbps > limit:
         disposition = "R4_1GBE_PRIMITIVE_CAPACITY_NEGATIVE"
     else:
         disposition = "R4_1GBE_PRIMITIVE_CAPACITY_INCONCLUSIVE"
@@ -63,10 +61,10 @@ def classify_one_gbe(
             "lower_measured_tcp_throughput_mbps": lower_throughput_mbps,
             "applicable_demand_limit_mbps": round(limit, 2),
         },
-        "peak_boundary_wire_demand": {
-            "mbps": round(peak_demand_mbps, 2),
-            "operation": peak_op,
-            "payload_bytes": peak_bytes,
+        "sustained_application_wire_demand": {
+            "mbps_prefill_524288": sustained_demand_mbps,
+            "mbps_decode_8192": decode["effective_mbps_p50"],
+            "method": "transport-only framed request/response sustained rate",
         },
         "transport_only": {
             "decode_8192_rtt_p50_ns": microbench["sizes"]["8192"]["rtt_ns_p50"],
@@ -83,6 +81,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--iperf-a-to-b", type=float, required=True)
     parser.add_argument("--iperf-b-to-a", type=float, required=True)
     parser.add_argument("--retransmits-total", type=int, default=0)
+    parser.add_argument("--producer-sha", required=True)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
     evidence = args.evidence_dir
@@ -97,7 +96,7 @@ def main(argv: list[str] | None = None) -> int:
     def gpu_uuid(profile: dict, uuid: str) -> str:
         for gpu in profile["gpus"]:
             if gpu["uuid"] == uuid:
-                return gpu["pci_bus_id"]
+                return gpu["pci.bus_id"]
         raise KeyError(uuid)
 
     from benchmarks.inferswarm_r4.r4_plan import GPU_A_UUID, GPU_B_UUID
@@ -122,9 +121,7 @@ def main(argv: list[str] | None = None) -> int:
     result = {
         "schema": "inferswarm.r4.result/1",
         "r4_plan_digest": plan["digest"],
-        "implementation_producer_sha": plan["provenance"]["r4"].get(
-            "implementation_commit"
-        ),
+        "implementation_producer_sha": args.producer_sha,
         "base_r3_merge": "2ac72d547b2a24a3672d1b83268865db5490084d",
         "planner_authorization": authorization,
         "nodes": {
