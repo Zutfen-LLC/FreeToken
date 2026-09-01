@@ -433,3 +433,28 @@ def test_read_exact_negative() -> None:
     finally:
         parent.close()
         child.close()
+
+
+# 19. wire responses never carry unbounded logit values -----------------------
+
+
+def test_diagnostic_response_never_carries_full_logits() -> None:
+    # The Node B service builds the bounded record only; assert the
+    # response builder code does not reference full_logits at all.
+    import inspect
+
+    from benchmarks.inferswarm_r4 import node_b_service
+
+    source = inspect.getsource(node_b_service)
+    assert "full_logits" not in source, (
+        "diagnostic responses must carry hash records, not full logit values"
+    )
+
+
+def test_clean_arm_run_experiment_has_no_diagnostic_payload() -> None:
+    import inspect
+
+    from benchmarks.inferswarm_r4 import run_experiment
+
+    source = inspect.getsource(run_experiment)
+    assert "full_logits" not in source

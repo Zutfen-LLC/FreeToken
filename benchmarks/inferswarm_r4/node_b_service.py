@@ -310,14 +310,17 @@ def serve(
                 "service_ns": receive_done - service_markers["last"],
             }
             if diagnostic and header.get("capture_logits"):
-                values = logits.detach().float() if logits is not None else None
+                # Frozen R2-v2 comparator is float32 hash identity; the wire
+                # carries only the bounded record, never full logit values.
+                if logits is None:
+                    raise WireError("logit evidence requested but not produced")
+                values = logits.detach().float()
                 response["logits"] = {
                     "shape": list(values.shape),
                     "float32_sha256": tensor_sha256(values),
                     "argmax": int(values.argmax(dim=-1).item()),
                     "nan_count": int(torch.isnan(values).sum().item()),
                     "inf_count": int(torch.isinf(values).sum().item()),
-                    "full_logits": values.cpu().tolist(),
                 }
             if diagnostic and header.get("capture_state"):
                 response["consumer_tensors"] = {

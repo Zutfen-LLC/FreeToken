@@ -38,9 +38,14 @@ def load_workloads(reference_path: Path) -> dict[str, dict[str, Any]]:
 def compare_selected_logits(
     observed: dict[str, Any], expected: dict[str, Any]
 ) -> dict[str, Any]:
-    """Frozen R2-v2 comparator over the retained boundary logit records."""
+    """Frozen R2-v2 comparator: float32 hash identity per selected step.
 
-    from benchmarks.inferswarm_r2.correctness_support import compare_tensor_records
+    The retained reference stores full logits as evidence, but the frozen
+    comparison is exact float32 byte identity (max absolute/relative
+    deviation 0.0 when hashes match).  Deviation is reported as 0.0 only
+    on hash identity and None otherwise (numeric deviation is not
+    computable from the bounded wire record).
+    """
 
     comparisons = []
     for step in SELECTED_STEPS:
@@ -48,30 +53,28 @@ def compare_selected_logits(
         if got is None:
             raise ValueError(f"selected logit evidence missing at step {step}")
         want = expected["selected_logit_steps"][str(step)]
-        record = compare_tensor_records(got, want)
+        exact = got["float32_sha256"] == want["float32_sha256"]
+        argmax_ok = got.get("argmax") == want.get("argmax")
         comparisons.append(
             {
                 "generated_step": step,
-                "exact": record.get("exact"),
-                "max_absolute_deviation": record.get("max_absolute_deviation"),
-                "max_relative_deviation": record.get("max_relative_deviation"),
-                "within_threshold": (
-                    record.get("max_absolute_deviation", 1.0) <= ATOL
-                    and record.get("max_relative_deviation", 1.0) <= RTOL
-                ),
+                "exact": exact and argmax_ok,
+                "left_float32_sha256": got["float32_sha256"],
+                "right_float32_sha256": want["float32_sha256"],
+                "argmax": got.get("argmax"),
+                "reference_argmax": want.get("argmax"),
+                "max_absolute_deviation": 0.0 if exact else None,
+                "max_relative_deviation": 0.0 if exact else None,
+                "nan_count": got.get("nan_count"),
+                "inf_count": got.get("inf_count"),
+                "within_threshold": exact,
             }
         )
     return {
         "comparisons": comparisons,
         "all_exact": all(item["exact"] for item in comparisons),
-        "nan_count": sum(
-            int(item.get("nan_count", 0)) for item in observed.values()
-            if isinstance(item, dict)
-        ),
-        "inf_count": sum(
-            int(item.get("inf_count", 0)) for item in observed.values()
-            if isinstance(item, dict)
-        ),
+        "nan_count": sum(int(item["nan_count"] or 0) for item in comparisons),
+        "inf_count": sum(int(item["inf_count"] or 0) for item in comparisons),
     }
 
 
