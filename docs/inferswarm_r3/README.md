@@ -4,7 +4,7 @@ This directory is the canonical retained campaign for InferSwarm issue #55. It
 was regenerated only after the implementation tree was clean and committed.
 
 - Accepted R3 base: `2fc64ae7c79bdc494a52468da329ddafd0adb8ba`
-- Exact implementation commit: `012a37d3bb7dde2e53a42aedadab06364dba8a9a`
+- Exact implementation commit: `f2ea03738a0162f1f26c57a90e548e2d22119a3b`
 - Model: `nvidia/Qwen3.6-35B-A3B-NVFP4`
 - Revision: `491c2f1ea524c639598bf8fa787a93fed5a6fbce`
 - Disposition: `R3_MINIMUM_AUTOMATIC_PLANNING_PASS`
@@ -20,6 +20,13 @@ The decision and all input digests exist before heavyweight materialization.
 Resource, evidence, policy, objective, implementation, or R2-plan identity drift
 fails closed rather than repairing a selection.
 
+Technical feasibility, integrity eligibility, operator policy eligibility,
+evidence applicability, and ranking are separate planner axes. A quarantined
+resource remains technically evaluated but is classified `INTEGRITY_EXCLUDED`;
+it is never relabeled as operator-excluded when policy still allows it. Evidence
+unit and statistic must match the objective, and each candidate's evidence audit
+is self-describing with class, freshness, confidence, and metric metadata.
+
 The standalone `synthetic-planner-proof.json` uses the same generic planner with
 arbitrary `violet-shape`, `amber-slot`, and `copper-unit` names. It is CPU-testable
 and passes; no second simplified planner is involved.
@@ -30,6 +37,9 @@ Scenario A maximizes applicable measured median warm decode throughput. It selec
 S0 on GPU-A (`73.61368231952689 tok/s`). The accepted GPU-A to GPU-B S1 mapping is
 technically feasible and ranked second (`67.01495086043339 tok/s`), not unsupported.
 GPU-B is available but unused because the highest-ranked candidate does not need it.
+S1 has exactly one legal R3 mapping: slot A on GPU-A and slot B on GPU-B, matching
+the physically proven R2 implementation. S0 still enumerates both GPU-A and GPU-B;
+S0 on GPU-B remains the principal technically feasible unranked real alternative.
 
 Scenario B minimizes applicable measured median W4 warm-request TTFT. It selects S1
 on GPU-A to GPU-B (`466.800324 ms`). S0 remains technically feasible and ranked
@@ -48,6 +58,11 @@ above through the decision/compile seam for W2 and W4. S0 used GPU-A
 `GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099`; S1 used that GPU-A for slot A and
 GPU-B `GPU-d5c05739-96c1-7e49-89b6-bf54c2121c55` for slot B. Live identities,
 capacity, driver, and the S1 R2-plan identities were validated before materialization.
+For S1, the loaded plan was also validated with the existing R2 machinery; its
+recomputed canonical digest matched both its own frozen digest and the compiled
+digest, while `opaque-slot-a`/`opaque-slot-b` matched
+`exec.block-a`/`exec.block-b` on GPU-A/GPU-B. Compiled input digests also matched
+the frozen decision inputs exactly.
 
 For both shapes, W2 and W4 generated the exact frozen token sequences and all
 selected logits were byte-exact against the frozen R2-v2 corrected reference:
@@ -67,19 +82,19 @@ source backing remains persistent.
 
 ## Frozen digest identities
 
-- Resource snapshot: `sha256:648e1098a72a4b714af6dc347cdcc97bffb467a331e5937f53cf02a5cbc56f58`
-- Strategy problem: `sha256:00061ee5d11115b31df178f0ef013c36508b078688aea0be68fa4b4d99910231`
-- Evidence catalog: `sha256:0401eef4f967cfa2f5314be8fa64e80dd1c211e7b61878f9200249fe39bd2ea7`
-- Policies A/B/C: `sha256:3558ba98a260124c681549e0cb093bb5ed4d81e30ace179643c7e30a34a6153c`, `sha256:64e85fccab2b26aa7f989bd85870bb6cd4f49d7fe1d7afe57210583942aae2ca`, `sha256:c59e6acb44b65fcafc61f613339665544268af5eebf7268fd0aa3af319ce564b`
-- Objectives A/B/C: `sha256:79162ce197bd379d20183c038693423e8da4a6d524f721bf1e114a448bd1c52d`, `sha256:d09950f44bafb3698b305b0c966f4028b538584aa1bee829cb6f4e3737bae0ce`, `sha256:79162ce197bd379d20183c038693423e8da4a6d524f721bf1e114a448bd1c52d`
-- Decisions A/B/C: `sha256:bbc82f52ab26ccba14d943ed393cdb4c87f92e4b2442b69a8001f9c4108abd85`, `sha256:5726a3ce4b8993b9dbca7906ca2b8985eca7fdc4774a6f7805b24222335799ed`, `sha256:b3c6a6e4bf6536f0b351e42a027fa4a5947a8fe6c405bd31c623ffa528111296`
-- Compiled plans A/B: `sha256:4718ceca0a59b0908d55a99cdf4007874ff36360fa37a82e76c564b0b8142ac4`, `sha256:b9a3fc1226f436b54eb5f3af5bcc23d8f7c5d522f3de9b2a083143145cf7a8bd`
-- Physical file SHA-256 A/B: `a4d9c9c63f8cf1b3d9b9c2265c0d66c3a35058076b843f684adcd282f71d1036`, `d7b064d5af950602813bd8c33b0adc7b8a96f80c9500d8d9c57e0d8ef6dc243d`
+- Resource snapshot: `sha256:188a619d7cc2363ac7217d037bdfdc3a2ee8b3868dcfc32b3f8d536db7119946`
+- Strategy problem: `sha256:193ba70caffa4ec42e58ab9e62274e460a8e62668c305fb94a776392cd8f9c02`
+- Evidence catalog: `sha256:ab504a3fdca223b79645fbf80be17f826811933d12a3d82460d78fda5a3d0c92`
+- Policies A/B/C: `sha256:f79a770d1124ae5d69fc4aa32bb305f775ef77c8fdb5b85d74a700c487dc53f2`, `sha256:4b17c1541df0160ab0232d69ed83f040be0c8cc7d9effb8e2ec0d68cc3b94759`, `sha256:49144f9050aa017b1f7fc2feab72b153acd998b2cf7b9fc4f5485bd29217be4e`
+- Objectives A/B/C: `sha256:4c049d14be818479c2660cc01d0d7f1907ac868e48b5e6c03c70aafb68641a27`, `sha256:b349b411f9f93c4a6d2fbe21c108eb766ed751a86448965b22cf66ec279ce5b5`, `sha256:4c049d14be818479c2660cc01d0d7f1907ac868e48b5e6c03c70aafb68641a27`
+- Decisions A/B/C: `sha256:9698ac95fb70cd54f843302ef8b9da6d4e57bae58d2005221ae506182d790218`, `sha256:3b1da297de13bd55f2252e18c231eb6eac4cc3ee61cfd9e712260db95d8c433d`, `sha256:eded345c2244da16648665d51b7dd0229fe835613373858182f3ca177b47cad7`
+- Compiled plans A/B: `sha256:717ec95c76162c200e6927a2cc607e13de628c43ab0c5a62e2cf79ebac25374d`, `sha256:c6648b5118bc8ebc8a0e5ce42f2b3b3bc32d2c837ff1a98b21a5d686b161226a`
+- Physical file SHA-256 A/B: `9a089277a4b4f87cc710b080cc9c10509504ba603a48509fa5a12ba9789c089f`, `0ccc527a84f2847b20f32dd01e320297bf45878eebe601b78e355b8a0d5bf9c1`
 
 ## Tests and environmental limitation
 
-The retained focused/predecessor command passed `178` tests. The pinned-memory file
-passed `7` tests with exactly one deselection, for `185 passed, 0 failed, 1
+The retained focused/predecessor command passed `186` tests. The pinned-memory file
+passed `7` tests with exactly one deselection, for `193 passed, 0 failed, 1
 deselected` overall. The deselected node is
 `tests/kernels/test_pinned_tensor.py::test_host_device_ptr_is_identity_under_uva`.
 Run separately on Linux 6.12.105, Python 3.13.5, PyTorch 2.11.0+cu130/CUDA 13.0,

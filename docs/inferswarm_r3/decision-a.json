@@ -1,5 +1,5 @@
 {
-  "digest": "sha256:bbc82f52ab26ccba14d943ed393cdb4c87f92e4b2442b69a8001f9c4108abd85",
+  "digest": "sha256:9698ac95fb70cd54f843302ef8b9da6d4e57bae58d2005221ae506182d790218",
   "evaluations": [
     {
       "applicable_evidence_ids": [
@@ -8,12 +8,30 @@
       "evidence": [
         {
           "applicable": true,
+          "confidence": "EXACT_CONTEXT",
+          "evidence_class": "MEASURED_ACCEPTED_R2_MATCHED_AB",
           "evidence_id": "r2-w4-baseline-decode",
+          "freshness": "ACCEPTED_COMPATIBLE",
+          "metric": {
+            "name": "warm_decode_tok_s",
+            "statistic": "median",
+            "unit": "tok/s",
+            "value": 73.61368231952689
+          },
           "reasons": []
         },
         {
           "applicable": false,
+          "confidence": "EXACT_CONTEXT",
+          "evidence_class": "MEASURED_ACCEPTED_R2_MATCHED_AB",
           "evidence_id": "r2-w4-split-decode",
+          "freshness": "ACCEPTED_COMPATIBLE",
+          "metric": {
+            "name": "warm_decode_tok_s",
+            "statistic": "median",
+            "unit": "tok/s",
+            "value": 67.01495086043339
+          },
           "reasons": [
             "candidate shape mismatch",
             "resource mapping mismatch"
@@ -21,6 +39,8 @@
         }
       ],
       "id": "s0.source-backed-single-offload[whole-model-slot=gpu-a]",
+      "integrity_eligible": true,
+      "integrity_reasons": [],
       "mapping": {
         "whole-model-slot": "gpu-a"
       },
@@ -66,14 +86,32 @@
       "evidence": [
         {
           "applicable": false,
+          "confidence": "EXACT_CONTEXT",
+          "evidence_class": "MEASURED_ACCEPTED_R2_MATCHED_AB",
           "evidence_id": "r2-w4-baseline-decode",
+          "freshness": "ACCEPTED_COMPATIBLE",
+          "metric": {
+            "name": "warm_decode_tok_s",
+            "statistic": "median",
+            "unit": "tok/s",
+            "value": 73.61368231952689
+          },
           "reasons": [
             "resource mapping mismatch"
           ]
         },
         {
           "applicable": false,
+          "confidence": "EXACT_CONTEXT",
+          "evidence_class": "MEASURED_ACCEPTED_R2_MATCHED_AB",
           "evidence_id": "r2-w4-split-decode",
+          "freshness": "ACCEPTED_COMPATIBLE",
+          "metric": {
+            "name": "warm_decode_tok_s",
+            "statistic": "median",
+            "unit": "tok/s",
+            "value": 67.01495086043339
+          },
           "reasons": [
             "candidate shape mismatch",
             "resource mapping mismatch"
@@ -81,6 +119,8 @@
         }
       ],
       "id": "s0.source-backed-single-offload[whole-model-slot=gpu-b]",
+      "integrity_eligible": true,
+      "integrity_reasons": [],
       "mapping": {
         "whole-model-slot": "gpu-b"
       },
@@ -116,74 +156,22 @@
       "technically_feasible": true
     },
     {
-      "applicable_evidence_ids": [],
-      "evidence": [
-        {
-          "applicable": false,
-          "evidence_id": "r2-w4-baseline-decode",
-          "reasons": [
-            "candidate shape mismatch",
-            "resource mapping mismatch"
-          ]
-        },
-        {
-          "applicable": false,
-          "evidence_id": "r2-w4-split-decode",
-          "reasons": [
-            "resource mapping mismatch"
-          ]
-        }
-      ],
-      "id": "s1.resident-two-slot-split[opaque-slot-a=gpu-a,opaque-slot-b=gpu-a]",
-      "mapping": {
-        "opaque-slot-a": "gpu-a",
-        "opaque-slot-b": "gpu-a"
-      },
-      "memory_accounting": {
-        "gpu-a.vram": {
-          "available_after_reservation_bytes": 12348030976,
-          "persistent_optional_bytes": 0,
-          "persistent_required_bytes": 22031481344,
-          "realization_peak_occupied_bytes": 22031481344,
-          "released_after_lifecycle_boundary_bytes": 0,
-          "steady_occupied_bytes": 22031481344,
-          "transient_realization_peak_bytes": 0
-        },
-        "node-a.ram": {
-          "available_after_reservation_bytes": 126394859520,
-          "persistent_optional_bytes": 0,
-          "persistent_required_bytes": 524288,
-          "realization_peak_occupied_bytes": 18182832128,
-          "released_after_lifecycle_boundary_bytes": 18182307840,
-          "steady_occupied_bytes": 524288,
-          "transient_realization_peak_bytes": 18182307840
-        }
-      },
-      "objective_metric": null,
-      "policy_eligible": true,
-      "policy_reasons": [],
-      "selected_paths": [],
-      "shape_id": "s1.resident-two-slot-split",
-      "state": "TECHNICALLY_INFEASIBLE",
-      "strategy_legal": false,
-      "strategy_legality_reasons": [
-        "slots ['opaque-slot-a', 'opaque-slot-b'] require distinct resources"
-      ],
-      "technical_reasons": [
-        "slots ['opaque-slot-a', 'opaque-slot-b'] require distinct resources",
-        "Memory Resource 'gpu-a.vram' requires peak 22031481344 bytes but only 12348030976 are available",
-        "no supported Link/path from 'gpu-a.vram' to 'gpu-a.vram' for 'activation-boundary'"
-      ],
-      "technically_feasible": false
-    },
-    {
       "applicable_evidence_ids": [
         "r2-w4-split-decode"
       ],
       "evidence": [
         {
           "applicable": false,
+          "confidence": "EXACT_CONTEXT",
+          "evidence_class": "MEASURED_ACCEPTED_R2_MATCHED_AB",
           "evidence_id": "r2-w4-baseline-decode",
+          "freshness": "ACCEPTED_COMPATIBLE",
+          "metric": {
+            "name": "warm_decode_tok_s",
+            "statistic": "median",
+            "unit": "tok/s",
+            "value": 73.61368231952689
+          },
           "reasons": [
             "candidate shape mismatch",
             "resource mapping mismatch"
@@ -191,11 +179,22 @@
         },
         {
           "applicable": true,
+          "confidence": "EXACT_CONTEXT",
+          "evidence_class": "MEASURED_ACCEPTED_R2_MATCHED_AB",
           "evidence_id": "r2-w4-split-decode",
+          "freshness": "ACCEPTED_COMPATIBLE",
+          "metric": {
+            "name": "warm_decode_tok_s",
+            "statistic": "median",
+            "unit": "tok/s",
+            "value": 67.01495086043339
+          },
           "reasons": []
         }
       ],
       "id": "s1.resident-two-slot-split[opaque-slot-a=gpu-a,opaque-slot-b=gpu-b]",
+      "integrity_eligible": true,
+      "integrity_reasons": [],
       "mapping": {
         "opaque-slot-a": "gpu-a",
         "opaque-slot-b": "gpu-b"
@@ -250,145 +249,15 @@
       "strategy_legality_reasons": [],
       "technical_reasons": [],
       "technically_feasible": true
-    },
-    {
-      "applicable_evidence_ids": [],
-      "evidence": [
-        {
-          "applicable": false,
-          "evidence_id": "r2-w4-baseline-decode",
-          "reasons": [
-            "candidate shape mismatch",
-            "resource mapping mismatch"
-          ]
-        },
-        {
-          "applicable": false,
-          "evidence_id": "r2-w4-split-decode",
-          "reasons": [
-            "resource mapping mismatch"
-          ]
-        }
-      ],
-      "id": "s1.resident-two-slot-split[opaque-slot-a=gpu-b,opaque-slot-b=gpu-a]",
-      "mapping": {
-        "opaque-slot-a": "gpu-b",
-        "opaque-slot-b": "gpu-a"
-      },
-      "memory_accounting": {
-        "gpu-a.vram": {
-          "available_after_reservation_bytes": 12348030976,
-          "persistent_optional_bytes": 0,
-          "persistent_required_bytes": 11170278912,
-          "realization_peak_occupied_bytes": 11170278912,
-          "released_after_lifecycle_boundary_bytes": 0,
-          "steady_occupied_bytes": 11170278912,
-          "transient_realization_peak_bytes": 0
-        },
-        "gpu-b.vram": {
-          "available_after_reservation_bytes": 12348030976,
-          "persistent_optional_bytes": 0,
-          "persistent_required_bytes": 10861202432,
-          "realization_peak_occupied_bytes": 10861202432,
-          "released_after_lifecycle_boundary_bytes": 0,
-          "steady_occupied_bytes": 10861202432,
-          "transient_realization_peak_bytes": 0
-        },
-        "node-a.ram": {
-          "available_after_reservation_bytes": 126394859520,
-          "persistent_optional_bytes": 0,
-          "persistent_required_bytes": 524288,
-          "realization_peak_occupied_bytes": 18182832128,
-          "released_after_lifecycle_boundary_bytes": 18182307840,
-          "steady_occupied_bytes": 524288,
-          "transient_realization_peak_bytes": 18182307840
-        }
-      },
-      "objective_metric": null,
-      "policy_eligible": true,
-      "policy_reasons": [],
-      "selected_paths": [
-        {
-          "link_id": "link.gpu-a-host-gpu-b",
-          "requirement_id": "activation-boundary"
-        }
-      ],
-      "shape_id": "s1.resident-two-slot-split",
-      "state": "FEASIBLE_UNRANKED",
-      "strategy_legal": true,
-      "strategy_legality_reasons": [],
-      "technical_reasons": [],
-      "technically_feasible": true
-    },
-    {
-      "applicable_evidence_ids": [],
-      "evidence": [
-        {
-          "applicable": false,
-          "evidence_id": "r2-w4-baseline-decode",
-          "reasons": [
-            "candidate shape mismatch",
-            "resource mapping mismatch"
-          ]
-        },
-        {
-          "applicable": false,
-          "evidence_id": "r2-w4-split-decode",
-          "reasons": [
-            "resource mapping mismatch"
-          ]
-        }
-      ],
-      "id": "s1.resident-two-slot-split[opaque-slot-a=gpu-b,opaque-slot-b=gpu-b]",
-      "mapping": {
-        "opaque-slot-a": "gpu-b",
-        "opaque-slot-b": "gpu-b"
-      },
-      "memory_accounting": {
-        "gpu-b.vram": {
-          "available_after_reservation_bytes": 12348030976,
-          "persistent_optional_bytes": 0,
-          "persistent_required_bytes": 22031481344,
-          "realization_peak_occupied_bytes": 22031481344,
-          "released_after_lifecycle_boundary_bytes": 0,
-          "steady_occupied_bytes": 22031481344,
-          "transient_realization_peak_bytes": 0
-        },
-        "node-a.ram": {
-          "available_after_reservation_bytes": 126394859520,
-          "persistent_optional_bytes": 0,
-          "persistent_required_bytes": 524288,
-          "realization_peak_occupied_bytes": 18182832128,
-          "released_after_lifecycle_boundary_bytes": 18182307840,
-          "steady_occupied_bytes": 524288,
-          "transient_realization_peak_bytes": 18182307840
-        }
-      },
-      "objective_metric": null,
-      "policy_eligible": true,
-      "policy_reasons": [],
-      "selected_paths": [],
-      "shape_id": "s1.resident-two-slot-split",
-      "state": "TECHNICALLY_INFEASIBLE",
-      "strategy_legal": false,
-      "strategy_legality_reasons": [
-        "slots ['opaque-slot-a', 'opaque-slot-b'] require distinct resources"
-      ],
-      "technical_reasons": [
-        "slots ['opaque-slot-a', 'opaque-slot-b'] require distinct resources",
-        "Memory Resource 'gpu-b.vram' requires peak 22031481344 bytes but only 12348030976 are available",
-        "no supported Link/path from 'gpu-b.vram' to 'gpu-b.vram' for 'activation-boundary'"
-      ],
-      "technically_feasible": false
     }
   ],
-  "implementation_commit": "012a37d3bb7dde2e53a42aedadab06364dba8a9a",
+  "implementation_commit": "f2ea03738a0162f1f26c57a90e548e2d22119a3b",
   "inputs": {
-    "evidence_catalog_digest": "sha256:0401eef4f967cfa2f5314be8fa64e80dd1c211e7b61878f9200249fe39bd2ea7",
-    "objective_digest": "sha256:79162ce197bd379d20183c038693423e8da4a6d524f721bf1e114a448bd1c52d",
-    "policy_digest": "sha256:3558ba98a260124c681549e0cb093bb5ed4d81e30ace179643c7e30a34a6153c",
-    "resource_snapshot_digest": "sha256:648e1098a72a4b714af6dc347cdcc97bffb467a331e5937f53cf02a5cbc56f58",
-    "strategy_problem_digest": "sha256:00061ee5d11115b31df178f0ef013c36508b078688aea0be68fa4b4d99910231"
+    "evidence_catalog_digest": "sha256:ab504a3fdca223b79645fbf80be17f826811933d12a3d82460d78fda5a3d0c92",
+    "objective_digest": "sha256:4c049d14be818479c2660cc01d0d7f1907ac868e48b5e6c03c70aafb68641a27",
+    "policy_digest": "sha256:f79a770d1124ae5d69fc4aa32bb305f775ef77c8fdb5b85d74a700c487dc53f2",
+    "resource_snapshot_digest": "sha256:188a619d7cc2363ac7217d037bdfdc3a2ee8b3868dcfc32b3f8d536db7119946",
+    "strategy_problem_digest": "sha256:193ba70caffa4ec42e58ab9e62274e460a8e62668c305fb94a776392cd8f9c02"
   },
   "planning_phase": "SETUP_ONLY",
   "schema": "inferswarm.r3.planner-decision/1",

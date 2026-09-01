@@ -1,11 +1,11 @@
 {
   "captured_from": "accepted R2 physical resource graph",
-  "digest": "sha256:648e1098a72a4b714af6dc347cdcc97bffb467a331e5937f53cf02a5cbc56f58",
+  "digest": "sha256:188a619d7cc2363ac7217d037bdfdc3a2ee8b3868dcfc32b3f8d536db7119946",
   "evidence_context": {
     "runtime_context": "accepted-r2-runtime-compatible-with-2fc64ae",
     "topology_context": "gpu-a--registered-host-staging--gpu-b"
   },
-  "implementation_commit": "012a37d3bb7dde2e53a42aedadab06364dba8a9a",
+  "implementation_commit": "f2ea03738a0162f1f26c57a90e548e2d22119a3b",
   "links": [
     {
       "available": true,

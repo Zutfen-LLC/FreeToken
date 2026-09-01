@@ -1,10 +1,10 @@
 {
   "schema": "inferswarm.r3.test-summary/1",
-  "implementation_commit": "012a37d3bb7dde2e53a42aedadab06364dba8a9a",
+  "implementation_commit": "f2ea03738a0162f1f26c57a90e548e2d22119a3b",
   "commands": [
     {
       "command": "PYTHONPATH=python:benchmarks /home/zutfen/FreeToken-r2/.venv/bin/python -m pytest -q tests/research tests/moe/test_offload.py tests/moe/test_resident_only_cache.py tests/engine/test_runtime_report.py",
-      "passed": 178,
+      "passed": 186,
       "failed": 0,
       "deselected": 0
     },
@@ -15,7 +15,7 @@
       "deselected": 1
     }
   ],
-  "total_passed": 185,
+  "total_passed": 193,
   "total_failed": 0,
   "total_deselected": 1,
   "excluded_test": {

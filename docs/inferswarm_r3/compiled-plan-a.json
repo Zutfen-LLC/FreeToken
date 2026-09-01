@@ -1,19 +1,19 @@
 {
   "candidate_id": "s0.source-backed-single-offload[whole-model-slot=gpu-a]",
   "compute_unit_id": "gpu-a",
-  "digest": "sha256:4718ceca0a59b0908d55a99cdf4007874ff36360fa37a82e76c564b0b8142ac4",
-  "implementation_commit": "012a37d3bb7dde2e53a42aedadab06364dba8a9a",
+  "digest": "sha256:717ec95c76162c200e6927a2cc607e13de628c43ab0c5a62e2cf79ebac25374d",
+  "implementation_commit": "f2ea03738a0162f1f26c57a90e548e2d22119a3b",
   "input_digests": {
-    "evidence_catalog_digest": "sha256:0401eef4f967cfa2f5314be8fa64e80dd1c211e7b61878f9200249fe39bd2ea7",
-    "objective_digest": "sha256:79162ce197bd379d20183c038693423e8da4a6d524f721bf1e114a448bd1c52d",
-    "policy_digest": "sha256:3558ba98a260124c681549e0cb093bb5ed4d81e30ace179643c7e30a34a6153c",
-    "resource_snapshot_digest": "sha256:648e1098a72a4b714af6dc347cdcc97bffb467a331e5937f53cf02a5cbc56f58",
-    "strategy_problem_digest": "sha256:00061ee5d11115b31df178f0ef013c36508b078688aea0be68fa4b4d99910231"
+    "evidence_catalog_digest": "sha256:ab504a3fdca223b79645fbf80be17f826811933d12a3d82460d78fda5a3d0c92",
+    "objective_digest": "sha256:4c049d14be818479c2660cc01d0d7f1907ac868e48b5e6c03c70aafb68641a27",
+    "policy_digest": "sha256:f79a770d1124ae5d69fc4aa32bb305f775ef77c8fdb5b85d74a700c487dc53f2",
+    "resource_snapshot_digest": "sha256:188a619d7cc2363ac7217d037bdfdc3a2ee8b3868dcfc32b3f8d536db7119946",
+    "strategy_problem_digest": "sha256:193ba70caffa4ec42e58ab9e62274e460a8e62668c305fb94a776392cd8f9c02"
   },
   "mapping": {
     "whole-model-slot": "gpu-a"
   },
-  "planner_decision_digest": "sha256:bbc82f52ab26ccba14d943ed393cdb4c87f92e4b2442b69a8001f9c4108abd85",
+  "planner_decision_digest": "sha256:9698ac95fb70cd54f843302ef8b9da6d4e57bae58d2005221ae506182d790218",
   "realization_path": "freetoken-supported-single-resource-offload",
   "runtime_config_ref": "docs/inferswarm_r2/baseline-config.json",
   "schema": "inferswarm.r3.compiled-selected-plan/1",

@@ -1,14 +1,14 @@
 {
   "cpu_testable": true,
-  "decision_digest": "sha256:1162b391314088eb020bf044a89b1a3c35a02fa4b54279766ef120ee31f855ab",
+  "decision_digest": "sha256:ddb2800e135ae714226fd0c8ceed179b8342f6b6f2d405c3d753ed76952fa858",
   "expected_candidate_id": "violet-shape[amber-slot=copper-unit]",
-  "implementation_commit": "012a37d3bb7dde2e53a42aedadab06364dba8a9a",
+  "implementation_commit": "f2ea03738a0162f1f26c57a90e548e2d22119a3b",
   "input_digests": {
-    "evidence_catalog_digest": "sha256:2af072e1db6dfc926ee9372a5b387b23d1dcc7902db83b4b0056320d11daebbd",
-    "objective_digest": "sha256:68c2f5c2bd552961ff3c15c4b10aeb0e6189f3e0225d44de8c79cbd4ff37f6bc",
-    "policy_digest": "sha256:96df5ad54094e09f90c054810f75922a4a87a5a62f8bcaa6472d807239886035",
-    "resource_snapshot_digest": "sha256:9cfecdaa763734b5ac7396dc79c02d6ecda92a6142dbc0a5f8a6381051fc36a9",
-    "strategy_problem_digest": "sha256:21ae1aba1512809eaa57d4b8eba9e5c6e5e0527c9de5e4984695953383cea0ba"
+    "evidence_catalog_digest": "sha256:adca7ca9ca56ceb950de7ea36fd93ec901ced8d8cd0efee65db0af5acbefdc12",
+    "objective_digest": "sha256:1fdf62ad7bb72a959a2af1ea671b0dca8a2a6ff48be6c890ac37e1a7c81c6cbe",
+    "policy_digest": "sha256:95448f9e45b9ea6bd9edb215340461b9586650f4cbc50fbc88773eca08563fa1",
+    "resource_snapshot_digest": "sha256:b8c25fd06a8c9e8f10c2be5ac9b3e1eb00f4a34c4a60d866613bcbbc0ed32313",
+    "strategy_problem_digest": "sha256:1737b5a8517475f5d84838a6e1b699429a3d244530f5722cc46c4b7cd6796d16"
   },
   "passed": true,
   "same_generic_planner": "freetoken.research.r3_planner.plan",

@@ -1,5 +1,5 @@
 {
-  "compiled_plan_digest": "sha256:4718ceca0a59b0908d55a99cdf4007874ff36360fa37a82e76c564b0b8142ac4",
+  "compiled_plan_digest": "sha256:717ec95c76162c200e6927a2cc607e13de628c43ab0c5a62e2cf79ebac25374d",
   "correctness": {
     "exact_generated_sequences": true,
     "graph": {
@@ -14,7 +14,7 @@
     "selected_logits_within_r2_v2_threshold": true,
     "source_fetch_zero_not_required": true,
     "source_lifecycle": "RETAIN_REQUIRED_SOURCE_BACKING",
-    "startup_materialization_seconds": 71.01837044299464,
+    "startup_materialization_seconds": 70.90867533101118,
     "workloads": [
       {
         "class_id": "W2",
@@ -306,10 +306,11 @@
       }
     ]
   },
-  "decision_digest": "sha256:bbc82f52ab26ccba14d943ed393cdb4c87f92e4b2442b69a8001f9c4108abd85",
+  "decision_digest": "sha256:9698ac95fb70cd54f843302ef8b9da6d4e57bae58d2005221ae506182d790218",
   "decision_frozen_and_environment_validated_before_materialization": true,
-  "implementation_commit": "012a37d3bb7dde2e53a42aedadab06364dba8a9a",
+  "implementation_commit": "f2ea03738a0162f1f26c57a90e548e2d22119a3b",
   "passed": true,
+  "r2_plan_validation": null,
   "scenario": "A",
   "schema": "inferswarm.r3.physical-selected-execution/1",
   "selected_candidate_id": "s0.source-backed-single-offload[whole-model-slot=gpu-a]",

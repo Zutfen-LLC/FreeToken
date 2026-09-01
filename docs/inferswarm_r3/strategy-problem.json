@@ -1,9 +1,9 @@
 {
-  "digest": "sha256:00061ee5d11115b31df178f0ef013c36508b078688aea0be68fa4b4d99910231",
+  "digest": "sha256:193ba70caffa4ec42e58ab9e62274e460a8e62668c305fb94a776392cd8f9c02",
   "evidence_context": {
     "model_revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce"
   },
-  "implementation_commit": "012a37d3bb7dde2e53a42aedadab06364dba8a9a",
+  "implementation_commit": "f2ea03738a0162f1f26c57a90e548e2d22119a3b",
   "model": {
     "repository": "nvidia/Qwen3.6-35B-A3B-NVFP4",
     "revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce"
@@ -78,6 +78,9 @@
       ],
       "slots": [
         {
+          "allowed_compute_unit_ids": [
+            "gpu-a"
+          ],
           "id": "opaque-slot-a",
           "memory": {
             "persistent_optional_bytes": 0,
@@ -89,6 +92,9 @@
           ]
         },
         {
+          "allowed_compute_unit_ids": [
+            "gpu-b"
+          ],
           "id": "opaque-slot-b",
           "memory": {
             "persistent_optional_bytes": 0,

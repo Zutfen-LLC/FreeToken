@@ -1,7 +1,7 @@
 {
   "candidate_shape": "s0.source-backed-single-offload",
-  "digest": "sha256:c53e38aac54a8806aa987568c7e111f5f21fe63f0cffc4995907be5d26a1ff04",
-  "implementation_commit": "012a37d3bb7dde2e53a42aedadab06364dba8a9a",
+  "digest": "sha256:6caed9ab67a2948cc817ee568f4ab7cbe42452d9a5c08965021a450ae8f817f5",
+  "implementation_commit": "f2ea03738a0162f1f26c57a90e548e2d22119a3b",
   "mechanical_sources": [
     "docs/inferswarm_r2/benchmark.json",
     "docs/inferswarm_r2/baseline-config.json"

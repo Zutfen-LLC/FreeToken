@@ -7,13 +7,21 @@
   "candidate_objective_behavior": {
     "A": {
       "reason": "highest applicable measured median warm decode throughput",
+      "s0_rank": 1,
+      "s1_rank": 2,
       "s1_technically_feasible_but_lower_ranked": true,
       "selected": "s0.source-backed-single-offload[whole-model-slot=gpu-a]",
+      "unused_gpu_b": {
+        "compute_unit_id": "gpu-b",
+        "reason": "not needed by the highest-ranked candidate"
+      },
       "unused_gpu_b_explained": true
     },
     "B": {
       "reason": "lowest applicable measured median matched warm-request TTFT",
+      "s0_rank": 2,
       "s0_technically_feasible_but_lower_ranked": true,
+      "s1_rank": 1,
       "selected": "s1.resident-two-slot-split[opaque-slot-a=gpu-a,opaque-slot-b=gpu-b]"
     },
     "C": {
@@ -52,9 +60,9 @@
     }
   },
   "decision_digests": {
-    "A": "sha256:bbc82f52ab26ccba14d943ed393cdb4c87f92e4b2442b69a8001f9c4108abd85",
-    "B": "sha256:5726a3ce4b8993b9dbca7906ca2b8985eca7fdc4774a6f7805b24222335799ed",
-    "C": "sha256:b3c6a6e4bf6536f0b351e42a027fa4a5947a8fe6c405bd31c623ffa528111296"
+    "A": "sha256:9698ac95fb70cd54f843302ef8b9da6d4e57bae58d2005221ae506182d790218",
+    "B": "sha256:3b1da297de13bd55f2252e18c231eb6eac4cc3ee61cfd9e712260db95d8c433d",
+    "C": "sha256:eded345c2244da16648665d51b7dd0229fe835613373858182f3ca177b47cad7"
   },
   "gates": {
     "automatic_objective_relative_selection": true,
@@ -63,10 +71,13 @@
     "ordinary_offload_source_semantics_preserved": true,
     "policy_separate_from_technical_feasibility": true,
     "resident_release_and_steady_invariants_preserved": true,
+    "scenario_a_s1_ranked_lower_than_selected_s0": true,
+    "scenario_a_unused_gpu_b_truthfully_explained": true,
+    "scenario_b_s0_ranked_lower_than_selected_s1": true,
     "synthetic_non_qwen_strategy_uses_generic_planner": true,
     "unknown_evidence_preserved_as_feasible_unranked": true
   },
-  "implementation_commit": "012a37d3bb7dde2e53a42aedadab06364dba8a9a",
+  "implementation_commit": "f2ea03738a0162f1f26c57a90e548e2d22119a3b",
   "issue": "https://github.com/Zutfen-LLC/inferswarm/issues/55",
   "limitations": [
     "Research-internal schemas and strategy seam are not public APIs.",
@@ -104,8 +115,8 @@
     "scenario_b_startup_reconciliation_passed": true
   },
   "physical_execution_digests": {
-    "A": "sha256:a4d9c9c63f8cf1b3d9b9c2265c0d66c3a35058076b843f684adcd282f71d1036",
-    "B": "sha256:d7b064d5af950602813bd8c33b0adc7b8a96f80c9500d8d9c57e0d8ef6dc243d"
+    "A": "sha256:9a089277a4b4f87cc710b080cc9c10509504ba603a48509fa5a12ba9789c089f",
+    "B": "sha256:0ccc527a84f2847b20f32dd01e320297bf45878eebe601b78e355b8a0d5bf9c1"
   },
   "result": "R3_MINIMUM_AUTOMATIC_PLANNING_PASS",
   "revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
@@ -131,6 +142,6 @@
     "artifact": "test-summary.json",
     "deselected": 1,
     "failed": 0,
-    "passed": 185
+    "passed": 193
   }
 }
