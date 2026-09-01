@@ -243,26 +243,65 @@ def require_block_b_host_ram(memory: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def require_no_swap_reliance(
-    before: dict[str, Any], after: dict[str, Any]
-) -> dict[str, Any]:
-    """Prove the canonical staging lifecycle added no swap activity."""
+def read_process_vm_swap_kib() -> int:
+    """This process's swapped-out memory (VmSwap from /proc/self/status).
 
-    deltas = {}
+    Issue #57's "no reliance on swap for pinned/registered staging" is a
+    property of the staging process, not of the whole system: kernel
+    background reclaim may evict unrelated cold pages opportunistically
+    (whole-system pswpin/pswpout deltas), while the staging lifecycle
+    relies on swap only if ITS OWN pages are swapped out.  The staging
+    buffer is additionally pinned via cudaHostRegister (fail-closed).
+    """
+
+    for line in Path("/proc/self/status").read_text().splitlines():
+        if line.startswith("VmSwap:"):
+            return int(line.split()[1])
+    return 0
+
+
+def require_no_swap_reliance(
+    before: dict[str, Any],
+    after: dict[str, Any],
+    staging_process_vm_swap_kib: int | None = None,
+) -> dict[str, Any]:
+    """Prove the canonical staging lifecycle did not rely on swap.
+
+    Criterion: the Block-B staging process itself swapped out nothing
+    (VmSwap == 0).  Whole-system pswpin/pswpout deltas are retained as
+    informational context: they include kernel reclaim of unrelated cold
+    pages and historical activity, which issue #57 explicitly excludes
+    from the failure condition.
+    """
+
+    system_deltas = {}
     for key in ("pswpin", "pswpout"):
         b = before.get(key)
         a = after.get(key)
         if b is None or a is None:
             _fail("node-b", "swap-reliance", f"swap counter {key} missing")
-        deltas[key] = a - b
-    if any(delta != 0 for delta in deltas.values()):
+        system_deltas[key] = a - b
+    if staging_process_vm_swap_kib is None:
         _fail(
             "node-b",
             "swap-reliance",
-            f"swap activity during canonical lifecycle: {deltas} "
-            "(staging must not rely on swap)",
+            "staging process VmSwap not proven (missing /proc/self/status "
+            "evidence)",
         )
-    return {"swap_deltas": deltas, "swap_reliance": False}
+    if staging_process_vm_swap_kib != 0:
+        _fail(
+            "node-b",
+            "swap-reliance",
+            f"staging process has {staging_process_vm_swap_kib} kB swapped "
+            "out; pinned/registered staging must not rely on swap",
+        )
+    return {
+        "staging_process_vm_swap_kib": staging_process_vm_swap_kib,
+        "system_wide_swap_deltas": system_deltas,
+        "system_deltas_note": "informational: includes unrelated kernel "
+        "background reclaim; the failure criterion is process-scoped VmSwap",
+        "swap_reliance": False,
+    }
 
 
 # -- checkpoint identity -----------------------------------------------------

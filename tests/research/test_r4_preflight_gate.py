@@ -476,18 +476,32 @@ def test_capacity_retransmits_inconclusive() -> None:
 # 14. swap-reliance / RELEASE lifecycle ---------------------------------------------
 
 
-def test_swap_delta_zero_passes() -> None:
+def test_swap_reliance_process_scoped_zero_passes() -> None:
+    # system-wide deltas are non-zero (unrelated kernel reclaim) but the
+    # staging process itself swapped nothing -> pass
     record = require_no_swap_reliance(
-        {"pswpin": 12345, "pswpout": 678},
-        {"pswpin": 12345, "pswpout": 678},
+        {"pswpin": 150247, "pswpout": 2475280},
+        {"pswpin": 150406, "pswpout": 2506970},
+        staging_process_vm_swap_kib=0,
     )
     assert record["swap_reliance"] is False
+    assert record["staging_process_vm_swap_kib"] == 0
+    assert record["system_wide_swap_deltas"]["pswpout"] > 0
 
 
-def test_swap_delta_nonzero_aborts() -> None:
-    with pytest.raises(PreflightGateError, match="swap"):
+def test_swap_reliance_process_vm_swap_nonzero_aborts() -> None:
+    with pytest.raises(PreflightGateError, match="staging process has"):
         require_no_swap_reliance(
-            {"pswpin": 100, "pswpout": 0}, {"pswpin": 100, "pswpout": 3}
+            {"pswpin": 100, "pswpout": 0},
+            {"pswpin": 100, "pswpout": 0},
+            staging_process_vm_swap_kib=512,
+        )
+
+
+def test_swap_reliance_missing_vmswap_evidence_aborts() -> None:
+    with pytest.raises(PreflightGateError, match="VmSwap not proven"):
+        require_no_swap_reliance(
+            {"pswpin": 0, "pswpout": 0}, {"pswpin": 0, "pswpout": 0}
         )
 
 

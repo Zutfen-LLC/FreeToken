@@ -155,6 +155,7 @@ def serve(
     # issue #57: MemAvailable >= 12 GiB and DMI physical RAM >= 16 GiB
     # measured immediately before Block-B heavyweight realization
     from benchmarks.inferswarm_r4.r4_preflight_gate import (
+        read_process_vm_swap_kib,
         require_block_b_host_ram,
         require_no_swap_reliance,
     )
@@ -378,24 +379,39 @@ def serve(
             service_markers["last"] = time.perf_counter_ns()
             del hidden, residual, host, logits
     finally:
+        # Compute every evidence field BEFORE the write; a failure in any
+        # check must not silently swallow the report (the previous
+        # `except Exception: pass` hid a raised check and skipped the
+        # write).  The swap-reliance criterion is process-scoped (VmSwap
+        # of this staging process); system-wide deltas are informational.
         try:
-            final_report = {
-                "schema": "inferswarm.r4.node-b-final-report/1",
-                "plan_digest": plan["digest"],
-                "producer_freetoken_sha": running_sha,
-                "diagnostic": diagnostic,
-                "stats": stats,
-                "host_ram_gate": host_ram_gate,
-                "memory_lifecycle": {
-                    "pre_realization": pre_realization_memory,
-                    "post_release": _probe_memory(),
-                    "swap_reliance": require_no_swap_reliance(
-                        pre_realization_memory["swap_activity"],
-                        _probe_memory()["swap_activity"],
-                    ),
-                },
-                "runtime": runtime.report("P5_post_run"),
+            post_release_memory = _probe_memory()
+            vm_swap_kib = read_process_vm_swap_kib()
+            memory_lifecycle = {
+                "pre_realization": pre_realization_memory,
+                "post_release": post_release_memory,
+                "staging_process_vm_swap_kib": vm_swap_kib,
+                "swap_reliance": require_no_swap_reliance(
+                    pre_realization_memory["swap_activity"],
+                    post_release_memory["swap_activity"],
+                    staging_process_vm_swap_kib=vm_swap_kib,
+                ),
             }
+            runtime_post = runtime.report("P5_post_run")
+        except Exception:  # noqa: BLE001 - never mask the original error
+            memory_lifecycle = {"error": "lifecycle evidence collection failed"}
+            runtime_post = None
+        final_report = {
+            "schema": "inferswarm.r4.node-b-final-report/1",
+            "plan_digest": plan["digest"],
+            "producer_freetoken_sha": running_sha,
+            "diagnostic": diagnostic,
+            "stats": stats,
+            "host_ram_gate": host_ram_gate,
+            "memory_lifecycle": memory_lifecycle,
+            "runtime": runtime_post,
+        }
+        try:
             Path(
                 os.environ.get("R4_NODE_B_FINAL_REPORT", "/tmp/r4-node-b-final.json")
             ).write_text(json.dumps(final_report))
