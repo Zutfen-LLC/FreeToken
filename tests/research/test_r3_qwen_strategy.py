@@ -4,7 +4,7 @@ from benchmarks.inferswarm_r3.build_artifacts import (
     synthetic_planner_proof,
 )
 from benchmarks.inferswarm_r3.qwen_strategy import compile_selected, planning_problem
-from freetoken.research.r3_planner import FEASIBLE_UNRANKED, POLICY_EXCLUDED, RANKED, freeze, plan
+from freetoken.research.r3_planner import FEASIBLE_UNRANKED, POLICY_EXCLUDED, RANKED, enumerate_candidates, freeze, plan
 
 
 def _policy(excluded=()):
@@ -12,7 +12,8 @@ def _policy(excluded=()):
 
 
 def _objective(metric, direction):
-    return freeze({"schema": "test.objective/1", "metric": metric, "direction": direction, "unit": "test", "statistic": "median", "evidence_context": {"workload_geometry": "W4-prompt121-generate32-prefill64-warm"}})
+    unit = "tok/s" if metric == "warm_decode_tok_s" else "ms"
+    return freeze({"schema": "test.objective/1", "metric": metric, "direction": direction, "unit": unit, "statistic": "median", "evidence_context": {"workload_geometry": "W4-prompt121-generate32-prefill64-warm"}})
 
 
 def _item(decision, candidate_id):
@@ -47,7 +48,18 @@ def test_unmeasured_mappings_remain_feasible_unranked():
     catalog = evidence_catalog(Path(__file__).resolve().parents[2])
     decision = plan(problem, snapshot, _policy(), _objective("warm_decode_tok_s", "MAXIMIZE"), catalog)
     assert _item(decision, "s0.source-backed-single-offload[whole-model-slot=gpu-b]")["state"] == FEASIBLE_UNRANKED
-    assert _item(decision, "s1.resident-two-slot-split[opaque-slot-a=gpu-b,opaque-slot-b=gpu-a]")["state"] == FEASIBLE_UNRANKED
+
+
+def test_s1_legal_candidate_set_is_exactly_the_accepted_r2_mapping():
+    problem, snapshot = planning_problem(), resource_snapshot()
+    s1 = [
+        item["id"]
+        for item in enumerate_candidates(problem, snapshot)
+        if item["shape_id"] == "s1.resident-two-slot-split"
+    ]
+    assert s1 == [
+        "s1.resident-two-slot-split[opaque-slot-a=gpu-a,opaque-slot-b=gpu-b]"
+    ]
 
 
 def test_compiler_reuses_existing_paths_and_preserves_lifecycles():

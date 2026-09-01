@@ -201,6 +201,7 @@ def synthetic_planner_proof(implementation_commit: str) -> dict:
             "metric": "widgets_per_second",
             "direction": "MAXIMIZE",
             "unit": "widgets/s",
+            "statistic": "median",
         }
     )
     catalog = freeze(
@@ -215,10 +216,12 @@ def synthetic_planner_proof(implementation_commit: str) -> dict:
                     "required_context": {"synthetic_revision": "violet-1"},
                     "freshness": "CURRENT",
                     "evidence_class": "SYNTHETIC_MEASURED",
+                    "confidence": "EXACT_CONTEXT",
                     "metric": {
                         "name": "widgets_per_second",
                         "value": 12.5,
                         "unit": "widgets/s",
+                        "statistic": "median",
                     },
                 }
             ],

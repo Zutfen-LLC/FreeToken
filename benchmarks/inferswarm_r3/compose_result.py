@@ -19,6 +19,58 @@ def _load(root: Path, name: str) -> dict:
     return json.loads(path.read_text())
 
 
+def _evaluation(decision: dict, candidate_id: str) -> dict:
+    return next(
+        item for item in decision["evaluations"] if item["id"] == candidate_id
+    )
+
+
+def _candidate_behavior(decisions: dict[str, dict], expected: dict[str, str]) -> dict:
+    """Derive required A/B loser ranks and A's unused-resource explanation."""
+    a_s0 = _evaluation(decisions["a"], expected["a"])
+    a_s1 = _evaluation(decisions["a"], expected["b"])
+    b_s0 = _evaluation(decisions["b"], expected["a"])
+    b_s1 = _evaluation(decisions["b"], expected["b"])
+    unused_gpu_b = next(
+        (
+            item
+            for item in decisions["a"].get("unused_resources", [])
+            if item.get("compute_unit_id") == "gpu-b"
+        ),
+        None,
+    )
+    a_s1_lower = (
+        decisions["a"].get("selected_candidate_id") == expected["a"]
+        and a_s1.get("technically_feasible") is True
+        and a_s1.get("state") == "RANKED"
+        and isinstance(a_s0.get("rank"), int)
+        and isinstance(a_s1.get("rank"), int)
+        and a_s1["rank"] > a_s0["rank"]
+    )
+    a_unused_explained = unused_gpu_b == {
+        "compute_unit_id": "gpu-b",
+        "reason": "not needed by the highest-ranked candidate",
+    }
+    b_s0_lower = (
+        decisions["b"].get("selected_candidate_id") == expected["b"]
+        and b_s0.get("technically_feasible") is True
+        and b_s0.get("state") == "RANKED"
+        and isinstance(b_s0.get("rank"), int)
+        and isinstance(b_s1.get("rank"), int)
+        and b_s0["rank"] > b_s1["rank"]
+    )
+    return {
+        "a_s0": a_s0,
+        "a_s1": a_s1,
+        "a_unused_gpu_b": unused_gpu_b,
+        "a_s1_technically_feasible_but_lower_ranked": a_s1_lower,
+        "a_unused_gpu_b_explained": a_unused_explained,
+        "b_s0": b_s0,
+        "b_s1": b_s1,
+        "b_s0_technically_feasible_but_lower_ranked": b_s0_lower,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--artifact-dir", type=Path, default=Path("docs/inferswarm_r3"))
@@ -41,7 +93,8 @@ def main(argv: list[str] | None = None) -> int:
         "c": "s0.source-backed-single-offload[whole-model-slot=gpu-a]",
     }
     selection_pass = all(decisions[key]["selected_candidate_id"] == value for key, value in expected.items())
-    split_c = next(item for item in decisions["c"]["evaluations"] if item["id"] == expected["b"])
+    behavior = _candidate_behavior(decisions, expected)
+    split_c = _evaluation(decisions["c"], expected["b"])
     policy_pass = split_c["technically_feasible"] and split_c["state"] == "POLICY_EXCLUDED"
     uncertainty_pass = all(
         any(item["state"] == "FEASIBLE_UNRANKED" for item in decisions[key]["evaluations"])
@@ -50,6 +103,9 @@ def main(argv: list[str] | None = None) -> int:
     physical_pass = all(item["passed"] for item in physical.values())
     gates = {
         "automatic_objective_relative_selection": selection_pass,
+        "scenario_a_s1_ranked_lower_than_selected_s0": behavior["a_s1_technically_feasible_but_lower_ranked"],
+        "scenario_a_unused_gpu_b_truthfully_explained": behavior["a_unused_gpu_b_explained"],
+        "scenario_b_s0_ranked_lower_than_selected_s1": behavior["b_s0_technically_feasible_but_lower_ranked"],
         "policy_separate_from_technical_feasibility": policy_pass,
         "unknown_evidence_preserved_as_feasible_unranked": uncertainty_pass,
         "decisions_frozen_before_materialization": all(item["decision_frozen_and_environment_validated_before_materialization"] for item in physical.values()),
@@ -75,13 +131,18 @@ def main(argv: list[str] | None = None) -> int:
             "A": {
                 "selected": expected["a"],
                 "reason": "highest applicable measured median warm decode throughput",
-                "s1_technically_feasible_but_lower_ranked": True,
-                "unused_gpu_b_explained": True,
+                "s0_rank": behavior["a_s0"].get("rank"),
+                "s1_rank": behavior["a_s1"].get("rank"),
+                "s1_technically_feasible_but_lower_ranked": behavior["a_s1_technically_feasible_but_lower_ranked"],
+                "unused_gpu_b": behavior["a_unused_gpu_b"],
+                "unused_gpu_b_explained": behavior["a_unused_gpu_b_explained"],
             },
             "B": {
                 "selected": expected["b"],
                 "reason": "lowest applicable measured median matched warm-request TTFT",
-                "s0_technically_feasible_but_lower_ranked": True,
+                "s1_rank": behavior["b_s1"].get("rank"),
+                "s0_rank": behavior["b_s0"].get("rank"),
+                "s0_technically_feasible_but_lower_ranked": behavior["b_s0_technically_feasible_but_lower_ranked"],
             },
             "C": {
                 "selected": expected["c"],

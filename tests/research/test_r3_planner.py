@@ -6,6 +6,7 @@ import pytest
 from freetoken.research.r3_planner import (
     EnvironmentDriftError,
     FEASIBLE_UNRANKED,
+    INTEGRITY_EXCLUDED,
     POLICY_EXCLUDED,
     RANKED,
     TECHNICALLY_INFEASIBLE,
@@ -117,8 +118,13 @@ def _catalog(problem, snapshot, records=None, *, context=None):
                 [
                     {"id": "two-c0-c1-speed", "shape_id": "two", "mapping": mappings["two[left=c0,right=c1]"]["mapping"], "required_context": context, "freshness": "ACCEPTED_COMPATIBLE", "class": "MEASURED", "metric": {"name": "speed", "value": 8.0}},
                     {"id": "two-c0-c1-latency", "shape_id": "two", "mapping": mappings["two[left=c0,right=c1]"]["mapping"], "required_context": context, "freshness": "CURRENT", "class": "MEASURED", "metric": {"name": "latency", "value": 20.0}},
-                ]
-            )
+            ]
+        )
+    for record in records:
+        record.setdefault("evidence_class", record.pop("class", "MEASURED"))
+        record.setdefault("confidence", "EXACT_CONTEXT")
+        record["metric"].setdefault("unit", "widgets/s")
+        record["metric"].setdefault("statistic", "median")
     return freeze({"schema": "synthetic.evidence/1", "context": context, "records": records})
 
 
@@ -203,7 +209,13 @@ def test_policy_exclusion_and_quarantine_are_not_technical_failure():
     snapshot = freeze(snapshot)
     quarantined = _run(snapshot=snapshot, catalog=_catalog(_problem(), snapshot))
     item = _evaluation(quarantined, "two[left=c0,right=c1]")
-    assert item["technically_feasible"] and item["state"] == POLICY_EXCLUDED
+    assert item["technically_feasible"]
+    assert not item["integrity_eligible"]
+    assert item["integrity_reasons"] == [
+        "Compute Unit 'c1' is integrity-ineligible/quarantined"
+    ]
+    assert item["policy_eligible"] and not item["policy_reasons"]
+    assert item["state"] == INTEGRITY_EXCLUDED
 
 
 def test_operator_reservation_is_policy_exclusion_not_technical_failure():
@@ -247,6 +259,43 @@ def test_resource_mapping_mismatch_and_stale_evidence_are_unranked():
     item = _evaluation(_run(problem, snapshot, catalog=catalog), "one[alpha=c0]")
     assert item["state"] == FEASIBLE_UNRANKED
     assert {reason for reason in item["evidence"][0]["reasons"]} == {"resource mapping mismatch", "evidence is stale or lacks a compatibility statement"}
+
+
+@pytest.mark.parametrize(
+    ("field", "wrong", "reason"),
+    [
+        ("unit", "requests/s", "metric unit mismatch"),
+        ("statistic", "p99", "metric statistic mismatch"),
+    ],
+)
+def test_metric_semantics_mismatch_is_feasible_unranked(field, wrong, reason):
+    problem, snapshot = _problem(two_shapes=False), _snapshot()
+    catalog = _catalog(problem, snapshot)
+    catalog["records"][0]["metric"][field] = wrong
+    catalog = freeze(catalog)
+    item = _evaluation(_run(problem, snapshot, catalog=catalog), "one[alpha=c0]")
+    assert item["technically_feasible"] and item["state"] == FEASIBLE_UNRANKED
+    assert item["evidence"][0]["applicable"] is False
+    assert any(reason in value for value in item["evidence"][0]["reasons"])
+
+
+def test_evidence_audit_is_self_describing():
+    item = _evaluation(_run(), "one[alpha=c0]")
+    audit = item["evidence"][0]
+    assert audit == {
+        "evidence_id": "one-c0-speed",
+        "applicable": True,
+        "reasons": [],
+        "evidence_class": "MEASURED",
+        "freshness": "CURRENT",
+        "confidence": "EXACT_CONTEXT",
+        "metric": {
+            "name": "speed",
+            "value": 10.0,
+            "unit": "widgets/s",
+            "statistic": "median",
+        },
+    }
 
 
 def test_no_evidence_returns_explicit_no_selection():

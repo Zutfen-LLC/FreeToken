@@ -20,6 +20,7 @@ DECISION_SCHEMA = "inferswarm.r3.planner-decision/1"
 RANKED = "RANKED"
 FEASIBLE_UNRANKED = "FEASIBLE_UNRANKED"
 TECHNICALLY_INFEASIBLE = "TECHNICALLY_INFEASIBLE"
+INTEGRITY_EXCLUDED = "INTEGRITY_EXCLUDED"
 POLICY_EXCLUDED = "POLICY_EXCLUDED"
 
 
@@ -250,6 +251,18 @@ def _evaluate_technical(
     }
 
 
+def _evaluate_integrity(
+    candidate: Mapping[str, Any], snapshot: Mapping[str, Any]
+) -> tuple[bool, list[str]]:
+    compute, _, _ = _resource_indexes(snapshot)
+    reasons = []
+    for compute_id in sorted(set(candidate["mapping"].values())):
+        unit = compute.get(compute_id)
+        if unit is not None and not unit.get("integrity_eligible", True):
+            reasons.append(f"Compute Unit {compute_id!r} is integrity-ineligible/quarantined")
+    return not reasons, reasons
+
+
 def _evaluate_policy(
     candidate: Mapping[str, Any],
     snapshot: Mapping[str, Any],
@@ -266,9 +279,6 @@ def _evaluate_policy(
             reasons.append(f"Compute Unit {compute_id!r} is operator-excluded")
         if approved_set is not None and compute_id not in approved_set:
             reasons.append(f"Compute Unit {compute_id!r} is not operator-approved")
-        unit = compute.get(compute_id)
-        if unit is not None and not unit.get("integrity_eligible", True):
-            reasons.append(f"Compute Unit {compute_id!r} is integrity-ineligible/quarantined")
     for memory_id, reserved in sorted(policy.get("reservations_bytes", {}).items()):
         if memory_id not in memory:
             reasons.append(f"operator reservation names missing Memory Resource {memory_id!r}")
@@ -316,7 +326,31 @@ def _applicable_evidence(
         if record.get("metric", {}).get("name") != objective.get("metric"):
             continue
         reasons = _context_mismatches(record, planning_context, candidate)
-        audit = {"evidence_id": record["id"], "applicable": not reasons, "reasons": reasons}
+        metric = record.get("metric", {})
+        if metric.get("unit") != objective.get("unit"):
+            reasons.append(
+                f"metric unit mismatch: evidence {metric.get('unit')!r}, "
+                f"objective {objective.get('unit')!r}"
+            )
+        if metric.get("statistic") != objective.get("statistic"):
+            reasons.append(
+                f"metric statistic mismatch: evidence {metric.get('statistic')!r}, "
+                f"objective {objective.get('statistic')!r}"
+            )
+        audit = {
+            "evidence_id": record["id"],
+            "applicable": not reasons,
+            "reasons": reasons,
+            "evidence_class": record.get("evidence_class", record.get("class")),
+            "freshness": record.get("freshness"),
+            "confidence": record.get("confidence"),
+            "metric": {
+                "name": metric.get("name"),
+                "value": metric.get("value"),
+                "unit": metric.get("unit"),
+                "statistic": metric.get("statistic"),
+            },
+        }
         considered.append(audit)
         if not reasons:
             applicable.append(dict(record))
@@ -358,6 +392,7 @@ def plan(
     evaluations = []
     for candidate in enumerate_candidates(problem, snapshot):
         technical = _evaluate_technical(candidate, shapes[candidate["shape_id"]], snapshot)
+        integrity_ok, integrity_reasons = _evaluate_integrity(candidate, snapshot)
         policy_ok, policy_reasons = _evaluate_policy(
             candidate, snapshot, policy, technical["memory_accounting"]
         )
@@ -367,8 +402,13 @@ def plan(
         metric = None
         state = TECHNICALLY_INFEASIBLE
         if technical["technically_feasible"]:
-            state = POLICY_EXCLUDED if not policy_ok else FEASIBLE_UNRANKED
-            if policy_ok and applicable:
+            if not integrity_ok:
+                state = INTEGRITY_EXCLUDED
+            elif not policy_ok:
+                state = POLICY_EXCLUDED
+            else:
+                state = FEASIBLE_UNRANKED
+            if integrity_ok and policy_ok and applicable:
                 # One immutable catalog may contain repetitions; rank its declared aggregate.
                 values = [float(record["metric"]["value"]) for record in applicable]
                 metric = statistics.median(values)
@@ -377,6 +417,8 @@ def plan(
             {
                 **candidate,
                 **technical,
+                "integrity_eligible": integrity_ok,
+                "integrity_reasons": integrity_reasons,
                 "policy_eligible": policy_ok,
                 "policy_reasons": policy_reasons,
                 "evidence": evidence_audit,

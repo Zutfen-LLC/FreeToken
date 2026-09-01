@@ -11,6 +11,7 @@ from pathlib import Path
 
 import torch
 from freetoken.research.n0_model_block import write_json_with_sha
+from freetoken.research.r2_local_split import plan_digest, validate_frozen_plan
 from freetoken.research.r3_planner import require_frozen, validate_decision_environment
 
 from benchmarks.inferswarm_r2.qwen_split_adapter import tensor_sha256
@@ -79,8 +80,32 @@ def _selected_resources(decision: dict, snapshot: dict) -> list[dict]:
     ]
 
 
-def _validate_r2_resource_identities(plan_path: Path, selected_resources: list[dict]) -> None:
+def _validate_compiled_decision(compiled: dict, decision: dict) -> None:
+    if compiled["planner_decision_digest"] != decision["digest"]:
+        raise RuntimeError("compiled plan is not linked to the frozen decision")
+    if compiled.get("input_digests") != decision.get("inputs"):
+        raise RuntimeError("compiled plan input digests differ from the frozen decision")
+    if compiled.get("candidate_id") != decision.get("selected_candidate_id"):
+        raise RuntimeError("compiled candidate differs from the frozen decision")
+    if compiled.get("mapping") != decision.get("selected_mapping"):
+        raise RuntimeError("compiled mapping differs from the frozen decision")
+
+
+def _validate_r2_plan(
+    plan_path: Path, compiled: dict, selected_resources: list[dict]
+) -> dict:
+    """Validate the exact accepted R2 identity and placement before materialization."""
     r2_plan = _load(plan_path)
+    actual_digest = f"sha256:{plan_digest(r2_plan)}"
+    validation = validate_frozen_plan(
+        r2_plan,
+        {"model": r2_plan.get("model", {}), "resources": r2_plan.get("resources", {})},
+    )
+    if actual_digest != r2_plan.get("digest"):
+        raise RuntimeError("loaded R2 plan canonical digest differs from its frozen digest")
+    if actual_digest != compiled.get("r2_frozen_plan_digest"):
+        raise RuntimeError("loaded R2 plan identity differs from the compiled S1 selection")
+
     r2_units = {
         unit["id"]: unit["stable_device_id"]
         for node in r2_plan["resources"]["nodes"]
@@ -92,6 +117,36 @@ def _validate_r2_resource_identities(plan_path: Path, selected_resources: list[d
             raise RuntimeError(
                 f"R2 realization resource identity drifted for {compute_id!r}"
             )
+    executions = {item["id"]: item["compute_unit_id"] for item in r2_plan["execution"]}
+    actual_mapping = {
+        "opaque-slot-a": executions.get("exec.block-a"),
+        "opaque-slot-b": executions.get("exec.block-b"),
+    }
+    selected_mapping = {
+        item["slot_id"]: item["compute_unit_id"] for item in selected_resources
+    }
+    if actual_mapping != selected_mapping or actual_mapping != compiled.get("mapping"):
+        raise RuntimeError(
+            "selected S1 slot mapping differs from the loaded R2 execution placement"
+        )
+    return {
+        "passed": True,
+        "canonical_digest": actual_digest,
+        "frozen_digest": r2_plan["digest"],
+        "compiled_digest": compiled["r2_frozen_plan_digest"],
+        "selected_slot_mapping": selected_mapping,
+        "r2_execution_mapping": {
+            "opaque-slot-a": {
+                "execution_id": "exec.block-a",
+                "compute_unit_id": actual_mapping["opaque-slot-a"],
+            },
+            "opaque-slot-b": {
+                "execution_id": "exec.block-b",
+                "compute_unit_id": actual_mapping["opaque-slot-b"],
+            },
+        },
+        "r2_validation": validation,
+    }
 
 
 def _logit_record(logits: torch.Tensor) -> dict:
@@ -248,8 +303,7 @@ def main(argv: list[str] | None = None) -> int:
             raise RuntimeError(f"{label} drifted after the frozen decision")
     require_frozen(compiled, "compiled selected plan")
     validate_decision_environment(decision, snapshot)
-    if compiled["planner_decision_digest"] != decision["digest"]:
-        raise RuntimeError("compiled plan is not linked to the frozen decision")
+    _validate_compiled_decision(compiled, decision)
     implementation_commit = snapshot.get("implementation_commit")
     if not implementation_commit or any(
         artifact.get("implementation_commit") != implementation_commit
@@ -266,6 +320,11 @@ def main(argv: list[str] | None = None) -> int:
         )
     _validate_live_resources(snapshot)
     selected_resources = _selected_resources(decision, snapshot)
+    r2_plan_validation = None
+    if args.scenario == "b":
+        r2_plan_validation = _validate_r2_plan(
+            args.r2_plan, compiled, selected_resources
+        )
 
     from inferswarm_phase0.manifest import load_manifest
     from transformers import AutoTokenizer
@@ -279,7 +338,6 @@ def main(argv: list[str] | None = None) -> int:
             raise RuntimeError(f"Scenario A requires CUDA_VISIBLE_DEVICES={expected_uuid}")
         correctness = _run_offload(args.model, manifest, tokenizer, reference)
     else:
-        _validate_r2_resource_identities(args.r2_plan, selected_resources)
         correctness = _run_split(args.r2_plan, args.model, manifest, tokenizer, reference)
     passed = (
         correctness["exact_generated_sequences"]
@@ -297,6 +355,7 @@ def main(argv: list[str] | None = None) -> int:
         "selected_candidate_id": decision["selected_candidate_id"],
         "selected_mapping": decision["selected_mapping"],
         "selected_resources": selected_resources,
+        "r2_plan_validation": r2_plan_validation,
         "decision_frozen_and_environment_validated_before_materialization": True,
         "workloads": list(CLASSES),
         "correctness": correctness,

@@ -12,6 +12,7 @@ REVISION = "491c2f1ea524c639598bf8fa787a93fed5a6fbce"
 GPU_A = "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099"
 GPU_B = "GPU-d5c05739-96c1-7e49-89b6-bf54c2121c55"
 R2_PLAN_DIGEST = "sha256:6128dd6705d6d692df3d5fc11cc130dba5c010cfff40c0e4c5ec7c19e1b78ff0"
+S1_MAPPING = {"opaque-slot-a": "gpu-a", "opaque-slot-b": "gpu-b"}
 
 
 def planning_problem(implementation_commit: str | None = None) -> dict[str, Any]:
@@ -54,6 +55,7 @@ def planning_problem(implementation_commit: str | None = None) -> dict[str, Any]
                     "slots": [
                         {
                             "id": "opaque-slot-a",
+                            "allowed_compute_unit_ids": ["gpu-a"],
                             "required_capabilities": ["freetoken-resident-block-v1"],
                             "memory": {
                                 "persistent_required_bytes": 10_861_202_432,
@@ -63,6 +65,7 @@ def planning_problem(implementation_commit: str | None = None) -> dict[str, Any]
                         },
                         {
                             "id": "opaque-slot-b",
+                            "allowed_compute_unit_ids": ["gpu-b"],
                             "required_capabilities": ["freetoken-resident-block-v1"],
                             "memory": {
                                 "persistent_required_bytes": 11_170_278_912,
@@ -144,6 +147,10 @@ def compile_selected(
             }
         )
     elif shape["id"] == "s1.resident-two-slot-split":
+        if evaluation["mapping"] != S1_MAPPING:
+            raise ValueError(
+                "the R3 S1 adapter can compile only the accepted GPU-A to GPU-B mapping"
+            )
         common.update(
             {
                 "realization_path": "inferswarm-r2-frozen-plan-coordinator",
