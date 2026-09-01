@@ -22,6 +22,7 @@ OUT=$FT/docs/inferswarm_r4
 NODE_B=10.0.0.219
 SSH_B="ssh -i /home/zutfen/.ssh/id_r4_staging zutfen@$NODE_B"
 TMPDIR=/var/tmp
+export PYTHONPATH=$FT/python
 
 cd "$FT"
 mkdir -p "$OUT/raw"

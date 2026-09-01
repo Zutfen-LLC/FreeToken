@@ -11,7 +11,9 @@ record.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -71,13 +73,14 @@ def main(argv: list[str] | None = None) -> int:
     write_json_with_sha(out / "node-a-hardware.json", profile_a)
     remote_script = (
         "cd /home/zutfen/FreeToken-r4 && TMPDIR=/var/tmp "
+        "PYTHONPATH=/home/zutfen/FreeToken-r4/python "
         "/home/zutfen/FreeToken/.venv/bin/python -m "
         "benchmarks.inferswarm_r4.capture_profile --node node-b "
         "--out /tmp/r4-node-b-profile.json"
     )
+    ssh_argv = shlex.split(args.ssh_node_b)
     subprocess.run(
-        f"{args.ssh_node_b} {remote_script!r}",
-        shell=True,
+        [*ssh_argv, remote_script],
         check=True,
         capture_output=True,
         text=True,
@@ -89,8 +92,6 @@ def main(argv: list[str] | None = None) -> int:
         check=True,
     )
     profile_b = json.loads((out / "node-b-hardware.json").read_text())
-    import hashlib
-
     (out / "node-b-hardware.json.sha256").write_text(
         f"{hashlib.sha256((out / 'node-b-hardware.json').read_bytes()).hexdigest()}"
         "  node-b-hardware.json\n"
@@ -100,14 +101,14 @@ def main(argv: list[str] | None = None) -> int:
     manifest_a = checkpoint_manifest(args.node_a_model)
     manifest_script = (
         "cd /home/zutfen/FreeToken-r4 && "
+        "PYTHONPATH=/home/zutfen/FreeToken-r4/python "
         "/home/zutfen/FreeToken/.venv/bin/python -c '"
         "import json;from benchmarks.inferswarm_r4.r4_preflight_gate "
         "import checkpoint_manifest;"
         f'print(json.dumps(checkpoint_manifest("{args.node_b_model}")))\''
     )
     proc = subprocess.run(
-        f"{args.ssh_node_b} {manifest_script!r}",
-        shell=True,
+        [*ssh_argv, manifest_script],
         capture_output=True,
         text=True,
         check=True,
