@@ -11,6 +11,12 @@ from freetoken.research.n0_model_block import write_json_with_sha
 from freetoken.research.r2_local_split import RESULT_SCHEMA
 
 from .coordinator import LocalSplitCoordinator
+from .correctness_support import (
+    DIAGNOSTIC_OVERRIDE,
+    NONCANONICAL_LABEL,
+    reference_provenance,
+    validate_diagnostic_output,
+)
 
 
 def _prompt_ids(tokenizer, workload) -> list[int]:
@@ -71,6 +77,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--reference", type=Path, required=True)
     parser.add_argument("--classes", default="W1,W2,W3,W4")
     parser.add_argument("--max-new-tokens", type=int, default=32)
+    parser.add_argument("--diagnostic-prefill-chunk", type=int)
+    parser.add_argument("--allow-legacy-reference-diagnostic", action="store_true")
+    parser.add_argument("--capture-prefill-state", action="store_true")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
 
@@ -83,13 +92,40 @@ def main(argv: list[str] | None = None) -> int:
     manifest = load_manifest(args.manifest, canonical=True)
     tokenizer = AutoTokenizer.from_pretrained(args.model, local_files_only=True)
     selected = [value.strip() for value in args.classes.split(",") if value.strip()]
+    diagnostic_override = args.diagnostic_prefill_chunk is not None
+    if args.allow_legacy_reference_diagnostic and not diagnostic_override:
+        raise ValueError("legacy reference allowance requires a diagnostic override")
+    validate_diagnostic_output(args.out, diagnostic_override=diagnostic_override)
+    prefill_chunk = (
+        args.diagnostic_prefill_chunk
+        if diagnostic_override
+        else plan["runtime_capacity"]["prefill_chunk_tokens"]
+    )
+    if prefill_chunk <= 0:
+        raise ValueError("prefill chunk must be positive")
+    prompt_ids_by_class = {
+        class_id: _prompt_ids(tokenizer, manifest.by_class()[class_id])
+        for class_id in selected
+    }
+    reference_record = reference_provenance(
+        reference,
+        args.reference,
+        required_model=plan["model"]["repository"],
+        required_revision=plan["model"]["revision"],
+        required_classes=selected,
+        required_prompt_ids=prompt_ids_by_class,
+        allow_legacy_diagnostic=args.allow_legacy_reference_diagnostic,
+    )
     rows = []
     with LocalSplitCoordinator(
-        plan_path=str(args.plan), model_path=args.model, diagnostic=True
+        plan_path=str(args.plan),
+        model_path=args.model,
+        diagnostic=True,
+        diagnostic_prefill_chunk=args.diagnostic_prefill_chunk,
     ) as coordinator:
         startup = coordinator.ready
         for index, class_id in enumerate(selected):
-            prompt_ids = _prompt_ids(tokenizer, manifest.by_class()[class_id])
+            prompt_ids = prompt_ids_by_class[class_id]
             expected = reference_by_class[class_id]
             if prompt_ids != expected["prompt_token_ids"]:
                 raise RuntimeError(
@@ -99,10 +135,15 @@ def main(argv: list[str] | None = None) -> int:
                 session_id=1000 + index,
                 prompt_ids=prompt_ids,
                 max_new_tokens=args.max_new_tokens,
-                prefill_chunk=plan["runtime_capacity"]["prefill_chunk_tokens"],
+                prefill_chunk=prefill_chunk,
                 capture_steps={0, 1, 15, 31} & set(range(args.max_new_tokens)),
+                capture_prefill_state=args.capture_prefill_state,
             )
             row["class_id"] = class_id
+            row["prefill_chunk_tokens"] = prefill_chunk
+            row["prefill_chunk_count"] = (
+                len(prompt_ids) + prefill_chunk - 1
+            ) // prefill_chunk
             row["expected_generated_token_ids"] = expected["generated_token_ids"][
                 : args.max_new_tokens
             ]
@@ -133,7 +174,7 @@ def main(argv: list[str] | None = None) -> int:
             session_id=2000,
             prompt_ids=repeat_ids,
             max_new_tokens=args.max_new_tokens,
-            prefill_chunk=plan["runtime_capacity"]["prefill_chunk_tokens"],
+            prefill_chunk=prefill_chunk,
             capture_steps=set(),
         )
         session_isolation = {
@@ -168,6 +209,11 @@ def main(argv: list[str] | None = None) -> int:
     payload = {
         "schema": RESULT_SCHEMA,
         "result_kind": "correctness",
+        "evidence_label": NONCANONICAL_LABEL
+        if diagnostic_override
+        else "CANONICAL_CANDIDATE_EVIDENCE",
+        "diagnostic_override": DIAGNOSTIC_OVERRIDE if diagnostic_override else None,
+        "reference": reference_record,
         "architectural_result": "AWAITING_PHYSICAL_REVIEW",
         "plan": {
             "digest": plan["digest"],

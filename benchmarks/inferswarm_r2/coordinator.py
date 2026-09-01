@@ -10,18 +10,26 @@ from multiprocessing import shared_memory
 from pathlib import Path
 
 from .block_service import CONTROL_PROTOCOL, service_entry
+from .correctness_support import diagnostic_shared_bytes
 
 
 class LocalSplitCoordinator:
-    def __init__(self, *, plan_path: str, model_path: str, diagnostic: bool):
+    def __init__(
+        self,
+        *,
+        plan_path: str,
+        model_path: str,
+        diagnostic: bool,
+        diagnostic_prefill_chunk: int | None = None,
+    ):
         self.plan_path = plan_path
         self.plan = json.loads(Path(plan_path).read_text())
         self.model_path = model_path
         self.diagnostic = diagnostic
         self.context = multiprocessing.get_context("spawn")
-        self.shared_bytes = self.plan["boundary"]["contract"][
-            "prefill_chunk_payload_bytes"
-        ]
+        self.shared_bytes = diagnostic_shared_bytes(
+            self.plan, diagnostic_prefill_chunk if diagnostic else None
+        )
         self.segment = shared_memory.SharedMemory(create=True, size=self.shared_bytes)
         self.connections = {}
         self.processes = {}
@@ -90,6 +98,7 @@ class LocalSplitCoordinator:
         token_ids: list[int],
         position: int,
         capture_logits: bool,
+        capture_state: bool = False,
     ) -> tuple[int, dict]:
         wall_started = time.perf_counter_ns()
         produced = self._request(
@@ -99,6 +108,7 @@ class LocalSplitCoordinator:
                 session_id=session_id,
                 token_ids=token_ids,
                 position=position,
+                capture_state=capture_state,
             ),
         )
         consumed = self._request(
@@ -114,6 +124,7 @@ class LocalSplitCoordinator:
                 payload_bytes=produced["payload_bytes"],
                 producer_sha256=produced["producer_sha256"],
                 capture_logits=capture_logits,
+                capture_state=capture_state,
             ),
         )
         wall_ended = time.perf_counter_ns()
@@ -128,6 +139,16 @@ class LocalSplitCoordinator:
         }
         if "logits" in consumed:
             record["logits"] = consumed["logits"]
+        for key in (
+            "producer_tensors",
+            "producer_state",
+            "consumer_tensors",
+        ):
+            if key in produced:
+                record[key] = produced[key]
+        for key in ("consumer_tensors", "consumer_state", "execution_diagnostic"):
+            if key in consumed:
+                record[key] = consumed[key]
         return consumed["token_id"], record
 
     def run_session(
@@ -138,6 +159,7 @@ class LocalSplitCoordinator:
         max_new_tokens: int,
         prefill_chunk: int,
         capture_steps: set[int] | None = None,
+        capture_prefill_state: bool = False,
     ) -> dict:
         capture_steps = capture_steps or set()
         self.open(session_id)
@@ -155,6 +177,7 @@ class LocalSplitCoordinator:
                 token_ids=chunk,
                 position=start,
                 capture_logits=final and 0 in capture_steps,
+                capture_state=capture_prefill_state,
             )
             boundaries.append(boundary)
             if final:

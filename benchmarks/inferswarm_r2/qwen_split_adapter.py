@@ -19,6 +19,7 @@ from freetoken.research.n0_model_block import (
 )
 
 from benchmarks.inferswarm_p48.run_resident_block import _unique_tensor_bytes
+from benchmarks.inferswarm_r2.correctness_support import tensor_record
 
 HIDDEN_SIZE = 2048
 BOUNDARY_PLANES = 2
@@ -293,6 +294,31 @@ class QwenSplitRuntime:
         self.ctx.kv_cache._kv_buffer.zero_()
         torch.cuda.synchronize(self.device)
 
+    def logical_state_records(self, used_tokens: int) -> dict:
+        """Hash logical, used state by global layer; never expose allocator identity."""
+
+        kv = self.ctx.kv_cache._kv_buffer
+        kv_records = {}
+        for local_id, global_id in enumerate(
+            self.state_ownership["kv_global_layer_ids"]
+        ):
+            kv_records[str(global_id)] = tensor_record(kv[:, local_id, :used_tokens])
+        linear_records = {}
+        if self.ctx.linear_state_pool is not None:
+            pool = self.ctx.linear_state_pool
+            for local_id, global_id in enumerate(
+                self.state_ownership["linear_global_layer_ids"]
+            ):
+                linear_records[str(global_id)] = {
+                    "conv": tensor_record(pool.conv_states[local_id, 0]),
+                    "recurrent": tensor_record(pool.recurrent_states[local_id, 0]),
+                }
+        return {
+            "used_tokens": used_tokens,
+            "kv_by_global_layer": kv_records,
+            "linear_by_global_layer": linear_records,
+        }
+
     def _capture_decode_graph(self) -> DecodeGraph:
         batch = _make_batch(start=0, token_count=1, phase="decode", device=self.device)
         self.ctx.attn_backend.init_capture_graph(
@@ -371,12 +397,28 @@ class QwenSplitRuntime:
             return self.block.forward_layers(hidden, None)
 
     @torch.inference_mode()
-    def prefill_b(self, hidden: torch.Tensor, residual: torch.Tensor, start: int):
+    def prefill_b(
+        self,
+        hidden: torch.Tensor,
+        residual: torch.Tensor,
+        start: int,
+        *,
+        capture_diagnostics: bool = False,
+    ):
         batch = self._prepare(start=start, token_count=hidden.shape[0], phase="prefill")
         with self.ctx.forward_batch(batch):
             hidden, residual = self.block.forward_layers(hidden, residual)
-            logits = self.block.lm_head.forward(self.block.finalize(hidden, residual))
-        return int(torch.argmax(logits, dim=-1).item()), logits.detach()
+            final = self.block.finalize(hidden, residual)
+            logits = self.block.lm_head.forward(final)
+        diagnostic = None
+        if capture_diagnostics:
+            diagnostic = {
+                "block_output_hidden": tensor_record(hidden),
+                "block_output_residual": tensor_record(residual),
+                "final_norm": tensor_record(final),
+                "logits": tensor_record(logits.float()),
+            }
+        return int(torch.argmax(logits, dim=-1).item()), logits.detach(), diagnostic
 
     def _prepare_replay(self, position: int):
         graph = self.decode_graph

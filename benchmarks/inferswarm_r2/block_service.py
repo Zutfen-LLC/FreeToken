@@ -51,6 +51,7 @@ def service_entry(
         validate_participant,
     )
 
+    from benchmarks.inferswarm_r2.correctness_support import tensor_record
     from benchmarks.inferswarm_r2.preflight_transport import _register, _unregister
     from benchmarks.inferswarm_r2.qwen_split_adapter import (
         BOUNDARY_PLANES,
@@ -199,6 +200,14 @@ def service_entry(
                     "compute_ns": compute_ended - compute_started,
                     "d2h_ns": transfer_ended - transfer_started,
                 }
+                if diagnostic and message.get("capture_state"):
+                    response["producer_tensors"] = {
+                        "hidden": tensor_record(hidden),
+                        "residual": tensor_record(residual),
+                    }
+                    response["producer_state"] = runtime.logical_state_records(
+                        message["position"] + token_count
+                    )
                 del hidden, residual, host
             elif op == "CONSUME_BOUNDARY" and role == "b":
                 if not session_open or message["session_id"] != session_id:
@@ -243,13 +252,17 @@ def service_entry(
                         )
                 compute_started = time.perf_counter_ns()
                 if message["operation"] == "prefill":
-                    token, logits = runtime.prefill_b(
-                        hidden, residual, message["position"]
+                    token, logits, execution_diagnostic = runtime.prefill_b(
+                        hidden,
+                        residual,
+                        message["position"],
+                        capture_diagnostics=bool(message.get("capture_state")),
                     )
                 else:
                     token, logits = runtime.decode_b(
                         hidden, residual, message["position"]
                     )
+                    execution_diagnostic = None
                 torch.cuda.synchronize(0)
                 compute_ended = time.perf_counter_ns()
                 boundary_count += 1
@@ -272,6 +285,15 @@ def service_entry(
                         "inf_count": int(torch.isinf(values).sum().item()),
                         "full_logits": values.cpu().tolist(),
                     }
+                if diagnostic and message.get("capture_state"):
+                    response["consumer_tensors"] = {
+                        "hidden": tensor_record(hidden),
+                        "residual": tensor_record(residual),
+                    }
+                    response["consumer_state"] = runtime.logical_state_records(
+                        message["position"] + token_count
+                    )
+                    response["execution_diagnostic"] = execution_diagnostic
                 del hidden, residual, host, logits
             elif op == "REPORT":
                 response = {
