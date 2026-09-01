@@ -1,0 +1,46 @@
+{
+  "backend": {
+    "attention": "fi",
+    "decode": "captured-bs1",
+    "moe": "offload",
+    "moe_cache_slots": 3774,
+    "moe_cpu_layers": 0,
+    "nvfp4": "triton",
+    "prefill_overlap": true
+  },
+  "compute_unit": {
+    "id": "baseline-gpu",
+    "stable_device_id": "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099"
+  },
+  "execution": "current supported single-GPU FreeToken offload path",
+  "freetoken_base": "6a242a34083c3080aa6d8f92625a6be4a0d124db",
+  "model": {
+    "repository": "nvidia/Qwen3.6-35B-A3B-NVFP4",
+    "revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce"
+  },
+  "runtime_capacity": {
+    "concurrency": 1,
+    "explicit_margin_tokens": 301,
+    "generated_tokens": 32,
+    "max_prompt_tokens": 16819,
+    "max_sequence_tokens": 17152,
+    "prefill_chunk_tokens": 64
+  },
+  "sampling": "deterministic-greedy",
+  "schema": "inferswarm.r2.baseline-config/1",
+  "server": {
+    "kv_reserve_tokens": 17152,
+    "max_prefill_length": 64,
+    "max_running_requests": 1,
+    "memory_ratio": 0.85,
+    "num_tokens": 17152,
+    "sampling_defaults": "none"
+  },
+  "workload_manifest_sha256": "10f81e5418a71a68f387632de422c3337cc7ba0518111a8746ad856d0210b24a",
+  "workloads": [
+    "W1",
+    "W2",
+    "W3",
+    "W4"
+  ]
+}

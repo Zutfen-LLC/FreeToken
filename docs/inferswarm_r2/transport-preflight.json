@@ -1,0 +1,189 @@
+{
+  "consumer_gpu": {
+    "compute_cap": "8.6",
+    "driver_version": "610.57.04",
+    "index": "1",
+    "memory.total": "12288",
+    "name": "NVIDIA GeForce RTX 3060",
+    "pci.bus_id": "00000000:03:00.0",
+    "pcie.link.gen.current": "3",
+    "pcie.link.width.current": "16",
+    "uuid": "GPU-d5c05739-96c1-7e49-89b6-bf54c2121c55"
+  },
+  "cuda_version": "13.0",
+  "participants": [
+    {
+      "pid": 1789761,
+      "ready": true,
+      "role": "producer"
+    },
+    {
+      "pid": 1789762,
+      "ready": true,
+      "role": "consumer"
+    }
+  ],
+  "producer_gpu": {
+    "compute_cap": "8.6",
+    "driver_version": "610.57.04",
+    "index": "0",
+    "memory.total": "12288",
+    "name": "NVIDIA GeForce RTX 3060",
+    "pci.bus_id": "00000000:02:00.0",
+    "pcie.link.gen.current": "3",
+    "pcie.link.width.current": "16",
+    "uuid": "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099"
+  },
+  "rows": [
+    {
+      "correct": true,
+      "median_d2h_ns": 82477.5,
+      "median_effective_gib_per_second": 0.00616977156791351,
+      "median_end_to_end_ns": 1236576.5,
+      "median_h2d_ns": 110796.5,
+      "payload_bytes": 8192,
+      "retained_repetitions": [
+        {
+          "d2h_ns": 80054,
+          "end_to_end_ns": 1179869,
+          "h2d_ns": 116093,
+          "sha256": "0a3007009778cdd051588e1ada0aba9ef0d93f9fd3e4097f821c69b9ed3ece1f"
+        },
+        {
+          "d2h_ns": 79601,
+          "end_to_end_ns": 1132792,
+          "h2d_ns": 108370,
+          "sha256": "0f7bbda8c0d6d2e9f948488129dde087fe72f0084cdfa74b9a6fddd375c737b1"
+        },
+        {
+          "d2h_ns": 79367,
+          "end_to_end_ns": 1166628,
+          "h2d_ns": 108242,
+          "sha256": "2d608422a101fc84c23893cf41f1df9038d6c96784f781c12aaa4306e21095dc"
+        },
+        {
+          "d2h_ns": 80635,
+          "end_to_end_ns": 1275831,
+          "h2d_ns": 175410,
+          "sha256": "b65678f6da8af2018dc37f10a4e3080c34224ec4ea0ccc29578e253da76a0587"
+        },
+        {
+          "d2h_ns": 109364,
+          "end_to_end_ns": 1321187,
+          "h2d_ns": 108729,
+          "sha256": "9e512eae549654ace2019148dc3717cd061b2e53cbc1fe8a6ba55a15d012335b"
+        },
+        {
+          "d2h_ns": 77831,
+          "end_to_end_ns": 1168879,
+          "h2d_ns": 108979,
+          "sha256": "742e667ff1d23374b53a94150a95258e8ada5a764bf25d45f812a532588b9c50"
+        },
+        {
+          "d2h_ns": 84320,
+          "end_to_end_ns": 1342255,
+          "h2d_ns": 129284,
+          "sha256": "f3b22d9bf131c3de0f08eb5f1b72263ee2e5f4870f4d07306de9fabc1d5d31a9"
+        },
+        {
+          "d2h_ns": 85973,
+          "end_to_end_ns": 1343865,
+          "h2d_ns": 110968,
+          "sha256": "15dbcb751cf7c297dd644ba36e2fecc2c515a703c68090e4bdc8186089724433"
+        },
+        {
+          "d2h_ns": 90967,
+          "end_to_end_ns": 1413827,
+          "h2d_ns": 163510,
+          "sha256": "22111e2456f3ec609becc5e2aebf1ce825440db6010d2cb26183bfc534d51f6b"
+        },
+        {
+          "d2h_ns": 92277,
+          "end_to_end_ns": 1197322,
+          "h2d_ns": 110625,
+          "sha256": "ca82d007b1010c3bdab732f0e5f9935d5684ee100e899acc475ffe94b816bd94"
+        }
+      ]
+    },
+    {
+      "correct": true,
+      "median_d2h_ns": 123224.5,
+      "median_effective_gib_per_second": 0.09578735254326363,
+      "median_end_to_end_ns": 5097554.5,
+      "median_h2d_ns": 159708.5,
+      "payload_bytes": 524288,
+      "retained_repetitions": [
+        {
+          "d2h_ns": 144032,
+          "end_to_end_ns": 5136282,
+          "h2d_ns": 127793,
+          "sha256": "44254a14ac350a45c7a65e8fe4c2cae577f72cd1fcf3b597018870550fb252b3"
+        },
+        {
+          "d2h_ns": 125157,
+          "end_to_end_ns": 4914536,
+          "h2d_ns": 123753,
+          "sha256": "793bf4d1c4c297c7d28518c8d734a0139fe8b6501df161b899791862e51747dc"
+        },
+        {
+          "d2h_ns": 124031,
+          "end_to_end_ns": 4973576,
+          "h2d_ns": 122640,
+          "sha256": "5a7f29831512e87c7aec99c13d38a52aa1e32a8467ef49a1dca3cf27e8720228"
+        },
+        {
+          "d2h_ns": 122916,
+          "end_to_end_ns": 4992139,
+          "h2d_ns": 121959,
+          "sha256": "7e459cca52644e59d0694c9b496f48e1e17002a066da383c9e5a8838cd47cf2c"
+        },
+        {
+          "d2h_ns": 123236,
+          "end_to_end_ns": 5105863,
+          "h2d_ns": 160322,
+          "sha256": "3bd87ca586f91d0dcad1d35bb9245afed1e7af03cd593a97d6ea3eac20de7e39"
+        },
+        {
+          "d2h_ns": 124644,
+          "end_to_end_ns": 5077730,
+          "h2d_ns": 161227,
+          "sha256": "7b5390ddf60ebcc33b7f933f85266aea79608b8749a66e2b7b01a7462123bad3"
+        },
+        {
+          "d2h_ns": 122702,
+          "end_to_end_ns": 5110507,
+          "h2d_ns": 159598,
+          "sha256": "9529060e65770a5544ad882e856221ee4260f93cb8cc79a1c655a7f55ec95b0e"
+        },
+        {
+          "d2h_ns": 121550,
+          "end_to_end_ns": 5091741,
+          "h2d_ns": 159819,
+          "sha256": "eb4aec83cef09d2a7f1891569abae5607426547945adc3883a99bf0eda6ab726"
+        },
+        {
+          "d2h_ns": 123213,
+          "end_to_end_ns": 5151361,
+          "h2d_ns": 160339,
+          "sha256": "0e4dda60ac81255d06ba13f635210fa0e7de5d548f973f9a7c507052d6b5ef01"
+        },
+        {
+          "d2h_ns": 121866,
+          "end_to_end_ns": 5103368,
+          "h2d_ns": 161155,
+          "sha256": "ba2695ffe8f38440805d0979d5a77386777eb6e498e64ab926a5fef32a8d5bb8"
+        }
+      ]
+    }
+  ],
+  "schema": "inferswarm.r2.transport-preflight/1",
+  "status": "PREFLIGHT_PASS",
+  "torch_version": "2.11.0+cu130",
+  "transport": {
+    "buffer_bytes": 524288,
+    "control_path": "multiprocessing Pipe during preflight",
+    "kind": "registered-pinned-host-staging",
+    "peer_access_available": false,
+    "physical_path": "producer VRAM -> registered system-RAM buffer -> consumer VRAM"
+  }
+}

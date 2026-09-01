@@ -77,7 +77,9 @@ def test_resident_only_rejects_source_dependent_execution_modes(kwargs, message)
         cache.detach_host_sources_for_full_residency()
 
 
-@pytest.mark.parametrize("corruption", ["duplicate_slot", "missing_identity", "bad_inverse"])
+@pytest.mark.parametrize(
+    "corruption", ["duplicate_slot", "missing_identity", "bad_inverse"]
+)
 def test_full_residency_validation_catches_inconsistent_maps(corruption):
     cache, _ = _cache(cache_size=7)
     _populate(cache, torch.tensor([5, 1, 3, 0, 4, 2], dtype=torch.int32))
@@ -116,14 +118,19 @@ def test_successful_detach_clears_sources_and_descriptors_but_keeps_cache_views(
     assert cache._copy_src_ptrs is None and cache._copy_src_ptrs_host == []
     assert cache._copy_feat_bytes is None and cache._copy_feat_bytes_host == []
     assert cache._copy_dst_ptrs is None and cache._copy_dst_ptrs_host == []
-    assert all(torch.equal(actual, expected) for actual, expected in zip(cache.bank_views(), expected_views))
+    assert all(
+        torch.equal(actual, expected)
+        for actual, expected in zip(cache.bank_views(), expected_views)
+    )
 
     del sources
     gc.collect()
     assert all(ref() is None for ref in refs)
 
 
-def test_resident_expert_mapping_is_frozen_deterministic_and_decode_uses_it(monkeypatch):
+def test_resident_expert_mapping_is_frozen_deterministic_and_decode_uses_it(
+    monkeypatch,
+):
     from freetoken.distributed import set_tp_info, try_get_tp_info
     from freetoken.layers.moe import OffloadMoELayer
 
@@ -149,7 +156,9 @@ def test_resident_expert_mapping_is_frozen_deterministic_and_decode_uses_it(monk
 
     monkeypatch.setattr(layer, "_expert_gemm", expert_gemm)
     monkeypatch.setattr(
-        cache, "ensure_experts", lambda *args, **kwargs: pytest.fail("legacy cache service ran")
+        cache,
+        "ensure_experts",
+        lambda *args, **kwargs: pytest.fail("legacy cache service ran"),
     )
     monkeypatch.setattr(cache, "copy_missing", lambda: pytest.fail("host copy ran"))
     hidden = torch.randn(2, 2)
@@ -158,6 +167,73 @@ def test_resident_expert_mapping_is_frozen_deterministic_and_decode_uses_it(monk
     assert out is hidden
     assert captured["ids"].tolist() == [[2, 4], [1, 5]]
     assert captured["views"] == cache.bank_views()
+    assert cache.resident_source_access_attempts == 0
+
+
+def test_resident_only_prefill_maps_to_frozen_slots_without_host_sources(monkeypatch):
+    from freetoken.distributed import set_tp_info, try_get_tp_info
+    from freetoken.layers.moe import OffloadMoELayer
+
+    if try_get_tp_info() is None:
+        set_tp_info(rank=0, size=1)
+    cache, _ = _cache(num_layers=2, num_experts=3, cache_size=7)
+    _populate(cache, torch.tensor([5, 1, 3, 0, 4, 2], dtype=torch.int32))
+    cache.detach_host_sources_for_full_residency()
+    layer = OffloadMoELayer(1, 3, 2, 2, 2)
+    layer.offload_cache = cache
+    routed = torch.tensor([[2, 0], [1, 2]], dtype=torch.int32)
+    captured = {}
+
+    def expert_gemm(cache_arg, hidden, weights, ids, **kwargs):
+        captured.update(ids=ids.clone(), **kwargs)
+        return hidden
+
+    monkeypatch.setattr(layer, "_expert_gemm", expert_gemm)
+    monkeypatch.setattr(
+        cache,
+        "materialize_layer",
+        lambda *args: pytest.fail("host materialization ran"),
+    )
+    monkeypatch.setattr(cache, "copy_missing", lambda: pytest.fail("host copy ran"))
+    hidden = torch.randn(2, 2)
+    out = layer._prefill_routed(hidden, torch.ones(2, 2), routed)
+
+    assert out is hidden
+    assert captured["ids"].tolist() == [[2, 0], [4, 2]]
+    assert captured["views"] == cache.bank_views()
+    assert captured["n"] is None
+    assert captured["is_prefill"] is False
+    assert cache.resident_source_access_attempts == 0
+
+
+def test_resident_only_prefill_uses_layer_aliases_for_canonical_population(monkeypatch):
+    from freetoken.distributed import set_tp_info, try_get_tp_info
+    from freetoken.layers.moe import OffloadMoELayer
+
+    if try_get_tp_info() is None:
+        set_tp_info(rank=0, size=1)
+    cache, _ = _cache(num_layers=2, num_experts=3)
+    _populate(cache)
+    cache.detach_host_sources_for_full_residency()
+    layer = OffloadMoELayer(1, 3, 2, 2, 2)
+    layer.offload_cache = cache
+    routed = torch.tensor([[2, 0]], dtype=torch.int32)
+    captured = {}
+
+    def expert_gemm(cache_arg, hidden, weights, ids, **kwargs):
+        captured.update(ids=ids.clone(), **kwargs)
+        return hidden
+
+    monkeypatch.setattr(layer, "_expert_gemm", expert_gemm)
+    hidden = torch.randn(1, 2)
+    out = layer._prefill_routed(hidden, torch.ones(1, 2), routed)
+
+    assert out is hidden
+    assert captured["ids"].tolist() == [[2, 0]]
+    assert captured["n"] == 3 and captured["is_prefill"] is True
+    for actual, full in zip(captured["views"], cache.bank_views(), strict=True):
+        assert actual.data_ptr() == full[3:].data_ptr()
+        assert actual.shape[0] == 3
     assert cache.resident_source_access_attempts == 0
 
 
@@ -188,7 +264,9 @@ def test_selective_load_result_releases_its_source_owner_only_after_detach():
     with pytest.raises(RuntimeError, match="after cache resident-only"):
         result.release_expert_banks_after_residency(cache)
 
-    expected = sum(t.numel() * t.element_size() for layers in sources.values() for t in layers)
+    expected = sum(
+        t.numel() * t.element_size() for layers in sources.values() for t in layers
+    )
     _populate(cache)
     cache.detach_host_sources_for_full_residency()
 

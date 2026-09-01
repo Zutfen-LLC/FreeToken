@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import math
 import os
+from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Iterator
 
 import torch
 from flashlib.kernels.slot_cache import N_STATS, Stat
@@ -228,6 +228,7 @@ class OffloadMoeCache:
         self._resident_only = False
         self._resident_slot_for_id: torch.Tensor | None = None
         self._resident_id_of_slot: torch.Tensor | None = None
+        self._resident_layers_contiguous = False
         self.resident_source_access_attempts = 0
         # per-layer host residency: the GPU movement paths require "pinned"; LOCKED/PAGEABLE layers decode on the CPU executor and prefill via copy_missing's pageable branch
         # _unpinned_layers is the derived id set the hot paths test against
@@ -654,9 +655,7 @@ class OffloadMoeCache:
         if self.gate_up_alpha is None:
             return None
         id_of_slot = (
-            self._resident_id_of_slot
-            if self._resident_only
-            else self.id_of_slot
+            self._resident_id_of_slot if self._resident_only else self.id_of_slot
         )
         idx = layer_id * self.num_experts + (
             id_of_slot.clamp(min=0).long() % self.num_experts
@@ -713,17 +712,29 @@ class OffloadMoeCache:
         the host. The resulting decode path performs no host inspection.
         """
         if self.decode_target != "gpu":
-            raise RuntimeError("resident-only finalization requires decode_target == 'gpu'")
+            raise RuntimeError(
+                "resident-only finalization requires decode_target == 'gpu'"
+            )
         if self.cpu_layer_ids or self.cpu_executor is not None:
-            raise RuntimeError("resident-only finalization is incompatible with CPU/hybrid execution")
+            raise RuntimeError(
+                "resident-only finalization is incompatible with CPU/hybrid execution"
+            )
         if self.prefill_overlap or self.prefill_bank_buffers:
-            raise RuntimeError("resident-only finalization requires prefill overlap to be disabled")
+            raise RuntimeError(
+                "resident-only finalization requires prefill overlap to be disabled"
+            )
         if self._unpinned_layers:
-            raise RuntimeError("resident-only finalization requires accelerator-addressable source layers")
+            raise RuntimeError(
+                "resident-only finalization requires accelerator-addressable source layers"
+            )
         if not self.bank_sources or set(self.bank_sources) != set(self.bank_schema):
-            raise RuntimeError("resident-only finalization requires complete host bank sources")
+            raise RuntimeError(
+                "resident-only finalization requires complete host bank sources"
+            )
         if set(self.bank_caches) != set(self.bank_schema):
-            raise RuntimeError("resident-only finalization requires complete accelerator banks")
+            raise RuntimeError(
+                "resident-only finalization requires complete accelerator banks"
+            )
 
         required = self.num_layers * self.num_experts
         if self.cache_size < required:
@@ -734,21 +745,27 @@ class OffloadMoeCache:
             sources = self.bank_sources[name]
             cache = self.bank_caches[name]
             if len(sources) != self.num_layers or cache.shape[0] != self.cache_size:
-                raise RuntimeError(f"bank {name!r} has incompatible layer/slot geometry")
+                raise RuntimeError(
+                    f"bank {name!r} has incompatible layer/slot geometry"
+                )
             if any(
                 source.shape[0] != self.num_experts
                 or source.shape[1:] != cache.shape[1:]
                 or source.dtype != cache.dtype
                 for source in sources
             ):
-                raise RuntimeError(f"bank {name!r} source/cache row geometry is inconsistent")
+                raise RuntimeError(
+                    f"bank {name!r} source/cache row geometry is inconsistent"
+                )
 
         if (self.gate_up_alpha is None) != (self.down_alpha is None):
             raise RuntimeError("resident accelerator alpha metadata is incomplete")
         if self.gate_up_alpha is not None:
             for alpha in (self.gate_up_alpha, self.down_alpha):
                 if alpha.shape != (required,) or alpha.device != self.device:
-                    raise RuntimeError("resident accelerator alpha metadata has invalid shape/device")
+                    raise RuntimeError(
+                        "resident accelerator alpha metadata has invalid shape/device"
+                    )
 
         if self.device.type == "cuda":
             # Complete direct population copies and any preceding work that could
@@ -758,13 +775,21 @@ class OffloadMoeCache:
         slots = self.slot_for_id.detach().to(device="cpu", dtype=torch.int64).view(-1)
         reverse = self.id_of_slot.detach().to(device="cpu", dtype=torch.int64)
         expected = torch.arange(required, dtype=torch.int64)
-        if slots.numel() != required or bool(((slots < 0) | (slots >= self.cache_size)).any()):
-            raise RuntimeError("full residency has missing or out-of-range expert slots")
+        if slots.numel() != required or bool(
+            ((slots < 0) | (slots >= self.cache_size)).any()
+        ):
+            raise RuntimeError(
+                "full residency has missing or out-of-range expert slots"
+            )
         if torch.unique(slots).numel() != required:
             raise RuntimeError("full residency contains duplicate expert slots")
         resident_ids = reverse[reverse >= 0]
-        if resident_ids.numel() != required or not torch.equal(torch.sort(resident_ids).values, expected):
-            raise RuntimeError("accelerator slot map has missing or duplicate expert identities")
+        if resident_ids.numel() != required or not torch.equal(
+            torch.sort(resident_ids).values, expected
+        ):
+            raise RuntimeError(
+                "accelerator slot map has missing or duplicate expert identities"
+            )
         if not torch.equal(reverse[slots], expected):
             raise RuntimeError("slot_for_id and id_of_slot are not mutual inverses")
         return self.slot_for_id.detach().clone()
@@ -784,6 +809,11 @@ class OffloadMoeCache:
         # performed after this point; the transition is one-way.
         self._resident_slot_for_id = frozen_map
         self._resident_id_of_slot = self.id_of_slot.detach().clone()
+        required = self.num_layers * self.num_experts
+        self._resident_layers_contiguous = torch.equal(
+            frozen_map.detach().to(device="cpu", dtype=torch.int64).view(-1),
+            torch.arange(required, dtype=torch.int64),
+        )
         self._resident_only = True
         self.bank_sources = {}
         self.banks = []
@@ -829,13 +859,41 @@ class OffloadMoeCache:
     ) -> None:
         """Rewrite raw routed ids through the immutable resident device map."""
         if not self._resident_only or self._resident_slot_for_id is None:
-            raise RuntimeError("resident expert mapping requires resident-only finalization")
-        if self.decode_target != "gpu" or self.cpu_layer_ids or self.cpu_executor is not None:
-            raise RuntimeError("resident-only cache cannot change to CPU/hybrid execution")
+            raise RuntimeError(
+                "resident expert mapping requires resident-only finalization"
+            )
+        if (
+            self.decode_target != "gpu"
+            or self.cpu_layer_ids
+            or self.cpu_executor is not None
+        ):
+            raise RuntimeError(
+                "resident-only cache cannot change to CPU/hybrid execution"
+            )
         if record_routing and (self.collect_decode_freq or self.trace_enabled):
             self.record_decode_routing(layer_id, expert_ids)
         row = self._resident_slot_for_id[layer_id]
         expert_ids.copy_(row[expert_ids.long()])
+
+    def resident_prefill_layer_views(
+        self, layer_id: int
+    ) -> tuple[torch.Tensor, ...] | None:
+        """Return exact layer-local aliases when frozen slots are canonical.
+
+        The ordinary prefill kernels require local expert ids and an E-row bank.
+        Complete residency populated in canonical flat order can provide that
+        view without any source access or copying. Arbitrary valid resident slot
+        maps return ``None`` and use the slot-addressed accelerator kernel.
+        """
+        if not self._resident_only:
+            raise RuntimeError(
+                "resident prefill views require resident-only finalization"
+            )
+        if not self._resident_layers_contiguous:
+            return None
+        lo = layer_id * self.num_experts
+        hi = lo + self.num_experts
+        return tuple(self.bank_caches[name][lo:hi] for name in self.bank_schema)
 
     def expert_bank_tensor_bytes(self) -> int:
         """Actual unique GPU slot-bank payload bytes (prefill views are aliases)."""
