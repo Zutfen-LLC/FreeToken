@@ -11,6 +11,7 @@ import argparse
 import json
 import re
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -73,7 +74,7 @@ def main(argv: list[str] | None = None) -> int:
                 ["uname", "-r"], text=True
             ).strip(),
             "python": subprocess.check_output(
-                ["python", "--version"], text=True, stderr=subprocess.STDOUT
+                [sys.executable, "--version"], text=True, stderr=subprocess.STDOUT
             ).strip(),
         },
         "test_commands": {
