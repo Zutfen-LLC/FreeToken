@@ -335,6 +335,19 @@ def serve(
             service_markers["last"] = time.perf_counter_ns()
             del hidden, residual, host, logits
     finally:
+        try:
+            final_report = {
+                "schema": "inferswarm.r4.node-b-final-report/1",
+                "plan_digest": plan["digest"],
+                "diagnostic": diagnostic,
+                "stats": stats,
+                "runtime": runtime.report("P5_post_run"),
+            }
+            Path(
+                os.environ.get("R4_NODE_B_FINAL_REPORT", "/tmp/r4-node-b-final.json")
+            ).write_text(json.dumps(final_report))
+        except Exception:  # noqa: BLE001 - never mask the original error
+            pass
         _unregister(host_u8)
         server.close()
 
