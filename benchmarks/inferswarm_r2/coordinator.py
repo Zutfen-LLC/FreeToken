@@ -21,12 +21,14 @@ class LocalSplitCoordinator:
         model_path: str,
         diagnostic: bool,
         diagnostic_prefill_chunk: int | None = None,
+        host_staging_policy: str = "release_after_final_residency",
     ):
         self.plan_path = plan_path
         self.plan = json.loads(Path(plan_path).read_text())
         self.model_path = model_path
         self.diagnostic = diagnostic
         self.context = multiprocessing.get_context("spawn")
+        self.host_release_barrier = self.context.Barrier(2)
         self.shared_bytes = diagnostic_shared_bytes(
             self.plan, diagnostic_prefill_chunk if diagnostic else None
         )
@@ -34,6 +36,7 @@ class LocalSplitCoordinator:
         self.connections = {}
         self.processes = {}
         self.ready = {}
+        self.shutdown_records = {}
         units = {
             unit["id"]: unit
             for node in self.plan["resources"]["nodes"]
@@ -53,6 +56,8 @@ class LocalSplitCoordinator:
                     "shared_bytes": self.shared_bytes,
                     "connection": child,
                     "diagnostic": diagnostic,
+                    "host_staging_policy": host_staging_policy,
+                    "host_release_barrier": self.host_release_barrier,
                 },
             )
             process.start()
@@ -237,18 +242,32 @@ class LocalSplitCoordinator:
         }
 
     def shutdown(self) -> None:
+        awaiting = []
         for role in ("a", "b"):
             process = self.processes.get(role)
             if process is not None and process.is_alive():
                 try:
                     self.connections[role].send(self._message("SHUTDOWN"))
+                    awaiting.append(role)
                 except (EOFError, BrokenPipeError, OSError):
                     pass
+        for role in awaiting:
+            try:
+                if self.connections[role].poll(5):
+                    self.shutdown_records[role] = self.connections[role].recv()
+            except (EOFError, BrokenPipeError, OSError):
+                pass
         for process in self.processes.values():
             process.join(30)
             if process.is_alive():
                 process.terminate()
                 process.join(10)
+        from freetoken.research.host_reclamation import snapshot_host_memory
+
+        for role, process in self.processes.items():
+            self.shutdown_records.setdefault(role, {})[
+                "P6_worker_shutdown_complete"
+            ] = snapshot_host_memory(process.pid)
         self.segment.close()
         self.segment.unlink()
 

@@ -41,6 +41,8 @@ def service_entry(
     shared_bytes: int,
     connection,
     diagnostic: bool,
+    host_staging_policy: str = "release_after_final_residency",
+    host_release_barrier=None,
 ) -> None:
     # The process is spawned before CUDA exists and pins its sole visible device by UUID.
     os.environ["CUDA_VISIBLE_DEVICES"] = stable_gpu_uuid
@@ -77,7 +79,12 @@ def service_entry(
         "model_revision": plan["model"]["revision"],
         "resources": r1_plan["resources"],
     }
-    adapter = QwenSplitResearchAdapter(role=role, model_path=model_path)
+    adapter = QwenSplitResearchAdapter(
+        role=role,
+        model_path=model_path,
+        host_staging_policy=host_staging_policy,
+        host_release_barrier=host_release_barrier,
+    )
     realized = realize_frozen_plan(r1_plan, environment, adapter)
     runtime = adapter.runtime
     if runtime is None:
@@ -110,7 +117,7 @@ def service_entry(
                 "execution": realized.observed_execution,
                 "authorities": realized.observed_authorities,
             },
-            "runtime": runtime.report(),
+            "runtime": runtime.report("P4_ready_for_resident_execution"),
         }
         connection.send(ready)
         while True:
@@ -305,7 +312,14 @@ def service_entry(
                     "control_tx_bytes": control_tx_bytes,
                 }
             elif op == "SHUTDOWN":
-                connection.send({"op": "ACK"})
+                from freetoken.research.host_reclamation import snapshot_host_memory
+
+                connection.send(
+                    {
+                        "op": "ACK",
+                        "P6_pre_worker_shutdown": snapshot_host_memory(),
+                    }
+                )
                 break
             else:
                 raise RuntimeError(f"unsupported {role} operation {op!r}")

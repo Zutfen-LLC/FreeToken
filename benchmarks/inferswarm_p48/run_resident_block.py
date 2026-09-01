@@ -10,18 +10,18 @@ from dataclasses import replace
 from pathlib import Path
 
 import torch
-
-from benchmarks.inferswarm_n0.check_block import (
-    _batch,
-    _block_runtime_config,
-    _tensor_bytes,
-)
 from freetoken.research.n0_model_block import (
     MODEL_REPOSITORY,
     MODEL_REVISION,
     ModelBlockSpec,
     load_selective_qwen35_block,
     write_json_with_sha,
+)
+
+from benchmarks.inferswarm_n0.check_block import (
+    _batch,
+    _block_runtime_config,
+    _tensor_bytes,
 )
 
 SCHEMA = "inferswarm.p48.accelerator-residency/1"
@@ -313,7 +313,7 @@ def _run_block(block, ctx, fixture, phase: str, label: str) -> dict:
 @contextmanager
 def _post_detach_load_sentinels():
     import safetensors.torch
-    import freetoken.models.nvfp4_banks as nvfp4_banks
+    from freetoken.models import nvfp4_banks
 
     counters = {
         "whole_shard_loader_calls": 0,
@@ -440,6 +440,7 @@ def main() -> int:
 
     detach_report = cache.detach_host_sources_for_full_residency()
     released_owner_bytes = result.release_expert_banks_after_residency(cache)
+    cache.release_detached_host_materializations()
     gc.collect()
     torch.cuda.synchronize(device)
     dead_source_tensors = sum(ref() is None for ref in source_refs)
