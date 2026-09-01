@@ -65,7 +65,7 @@ def _validate_preflight(args, runtime: MatchedLocalRuntime, manifest_sha: str) -
         runtime.ctx.page_table[0], expected_pages
     ):
         raise RuntimeError("logical page mapping is not identity")
-    if runtime.ctx.kv_cache.page_size != 1:
+    if runtime.config.page_size != 1:
         raise RuntimeError("resolved KV page size differs from 1")
     if runtime.ctx.linear_state_pool.num_slots != 1:
         raise RuntimeError("resolved linear/recurrent state slots differ from one")
