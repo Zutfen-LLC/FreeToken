@@ -1,0 +1,356 @@
+{
+  "all_captured_split_and_local_state_exact": true,
+  "canonical_threshold": {
+    "atol": 0.002,
+    "rtol": 0.002
+  },
+  "evidence_label": "NONCANONICAL_DIAGNOSTIC_EVIDENCE",
+  "generated_tokens_exact_between_split_and_local": true,
+  "input_artifact_sha256": {
+    "correctness.json": "c54c0970c483d7a31e67efd80724d5b4ec3b46754482995b6f196b0bad64f6ea",
+    "w2-chunk32.json": "558e2e4388c9ab92458f4f46dd14297e0aaaff85ae457b85a12ba8f6f2676ba0",
+    "w4-chunk128.json": "88f60d4128281852b57d7dc513fbe7289688e08cfe250539061aedcc174f5e21",
+    "w4-matched-local-chunk128.json": "304b3b02b374c5f4ab92db4998404758ff802964aaf3ddf1db4eedf41d71baea",
+    "w4-matched-local-chunk64.json": "7a28beb99de00694be97b7030452ae97a00748de1115ae4be875fd055a2c6198",
+    "w4-split-chunk64-state.json": "4febe65b846de70f04c160e586b838b56386e23645cbaa344a63ded20b6cf8a1"
+  },
+  "local_device": {
+    "index": "2",
+    "memory.total": "12288",
+    "name": "NVIDIA GeForce RTX 3060",
+    "uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176"
+  },
+  "local_runtime_configuration": {
+    "attention": "fi",
+    "concurrency": 1,
+    "graph_policy": "one-full-model-bs1-decode-capture",
+    "moe": "offload",
+    "moe_cache_slots": 3774,
+    "nvfp4": "triton",
+    "page_size": 1,
+    "prefill_chunk_tokens": 64,
+    "prefill_overlap": false,
+    "runtime_capacity_tokens": 17152,
+    "session_state_protocol": "zero-kv-and-linear-state-before-workload"
+  },
+  "prefill_checkpoints": [
+    {
+      "block_a_state": {
+        "all_exact": true,
+        "kv_by_global_layer": {
+          "11": true,
+          "15": true,
+          "3": true,
+          "7": true
+        },
+        "linear_by_global_layer": {
+          "0": {
+            "conv": true,
+            "recurrent": true
+          },
+          "1": {
+            "conv": true,
+            "recurrent": true
+          },
+          "10": {
+            "conv": true,
+            "recurrent": true
+          },
+          "12": {
+            "conv": true,
+            "recurrent": true
+          },
+          "13": {
+            "conv": true,
+            "recurrent": true
+          },
+          "14": {
+            "conv": true,
+            "recurrent": true
+          },
+          "16": {
+            "conv": true,
+            "recurrent": true
+          },
+          "17": {
+            "conv": true,
+            "recurrent": true
+          },
+          "18": {
+            "conv": true,
+            "recurrent": true
+          },
+          "2": {
+            "conv": true,
+            "recurrent": true
+          },
+          "4": {
+            "conv": true,
+            "recurrent": true
+          },
+          "5": {
+            "conv": true,
+            "recurrent": true
+          },
+          "6": {
+            "conv": true,
+            "recurrent": true
+          },
+          "8": {
+            "conv": true,
+            "recurrent": true
+          },
+          "9": {
+            "conv": true,
+            "recurrent": true
+          }
+        }
+      },
+      "block_b_output_hidden_exact": true,
+      "block_b_output_residual_exact": true,
+      "block_b_state": {
+        "all_exact": true,
+        "kv_by_global_layer": {
+          "19": true,
+          "23": true,
+          "27": true,
+          "31": true,
+          "35": true,
+          "39": true
+        },
+        "linear_by_global_layer": {
+          "20": {
+            "conv": true,
+            "recurrent": true
+          },
+          "21": {
+            "conv": true,
+            "recurrent": true
+          },
+          "22": {
+            "conv": true,
+            "recurrent": true
+          },
+          "24": {
+            "conv": true,
+            "recurrent": true
+          },
+          "25": {
+            "conv": true,
+            "recurrent": true
+          },
+          "26": {
+            "conv": true,
+            "recurrent": true
+          },
+          "28": {
+            "conv": true,
+            "recurrent": true
+          },
+          "29": {
+            "conv": true,
+            "recurrent": true
+          },
+          "30": {
+            "conv": true,
+            "recurrent": true
+          },
+          "32": {
+            "conv": true,
+            "recurrent": true
+          },
+          "33": {
+            "conv": true,
+            "recurrent": true
+          },
+          "34": {
+            "conv": true,
+            "recurrent": true
+          },
+          "36": {
+            "conv": true,
+            "recurrent": true
+          },
+          "37": {
+            "conv": true,
+            "recurrent": true
+          },
+          "38": {
+            "conv": true,
+            "recurrent": true
+          }
+        }
+      },
+      "consumer_sha256": "d3b4eea6d73f20b4da0c8fea8ac47b9ee91d8dddb8ad07778296738e43b41516",
+      "final_norm_exact": true,
+      "layer_18_hidden_exact": true,
+      "layer_18_residual_exact": true,
+      "local_pair_sha256": "d3b4eea6d73f20b4da0c8fea8ac47b9ee91d8dddb8ad07778296738e43b41516",
+      "logits_exact": true,
+      "producer_sha256": "d3b4eea6d73f20b4da0c8fea8ac47b9ee91d8dddb8ad07778296738e43b41516",
+      "start": 0,
+      "token_count": 64,
+      "transport_exact": true
+    },
+    {
+      "block_a_state": {
+        "all_exact": true,
+        "kv_by_global_layer": {
+          "11": true,
+          "15": true,
+          "3": true,
+          "7": true
+        },
+        "linear_by_global_layer": {
+          "0": {
+            "conv": true,
+            "recurrent": true
+          },
+          "1": {
+            "conv": true,
+            "recurrent": true
+          },
+          "10": {
+            "conv": true,
+            "recurrent": true
+          },
+          "12": {
+            "conv": true,
+            "recurrent": true
+          },
+          "13": {
+            "conv": true,
+            "recurrent": true
+          },
+          "14": {
+            "conv": true,
+            "recurrent": true
+          },
+          "16": {
+            "conv": true,
+            "recurrent": true
+          },
+          "17": {
+            "conv": true,
+            "recurrent": true
+          },
+          "18": {
+            "conv": true,
+            "recurrent": true
+          },
+          "2": {
+            "conv": true,
+            "recurrent": true
+          },
+          "4": {
+            "conv": true,
+            "recurrent": true
+          },
+          "5": {
+            "conv": true,
+            "recurrent": true
+          },
+          "6": {
+            "conv": true,
+            "recurrent": true
+          },
+          "8": {
+            "conv": true,
+            "recurrent": true
+          },
+          "9": {
+            "conv": true,
+            "recurrent": true
+          }
+        }
+      },
+      "block_b_output_hidden_exact": true,
+      "block_b_output_residual_exact": true,
+      "block_b_state": {
+        "all_exact": true,
+        "kv_by_global_layer": {
+          "19": true,
+          "23": true,
+          "27": true,
+          "31": true,
+          "35": true,
+          "39": true
+        },
+        "linear_by_global_layer": {
+          "20": {
+            "conv": true,
+            "recurrent": true
+          },
+          "21": {
+            "conv": true,
+            "recurrent": true
+          },
+          "22": {
+            "conv": true,
+            "recurrent": true
+          },
+          "24": {
+            "conv": true,
+            "recurrent": true
+          },
+          "25": {
+            "conv": true,
+            "recurrent": true
+          },
+          "26": {
+            "conv": true,
+            "recurrent": true
+          },
+          "28": {
+            "conv": true,
+            "recurrent": true
+          },
+          "29": {
+            "conv": true,
+            "recurrent": true
+          },
+          "30": {
+            "conv": true,
+            "recurrent": true
+          },
+          "32": {
+            "conv": true,
+            "recurrent": true
+          },
+          "33": {
+            "conv": true,
+            "recurrent": true
+          },
+          "34": {
+            "conv": true,
+            "recurrent": true
+          },
+          "36": {
+            "conv": true,
+            "recurrent": true
+          },
+          "37": {
+            "conv": true,
+            "recurrent": true
+          },
+          "38": {
+            "conv": true,
+            "recurrent": true
+          }
+        }
+      },
+      "consumer_sha256": "57efa6e3525bfd2046d5832ddf03ea08b6f04183eda10802c93f3ce193f71659",
+      "final_norm_exact": true,
+      "layer_18_hidden_exact": true,
+      "layer_18_residual_exact": true,
+      "local_pair_sha256": "57efa6e3525bfd2046d5832ddf03ea08b6f04183eda10802c93f3ce193f71659",
+      "logits_exact": true,
+      "producer_sha256": "57efa6e3525bfd2046d5832ddf03ea08b6f04183eda10802c93f3ce193f71659",
+      "start": 64,
+      "token_count": 57,
+      "transport_exact": true
+    }
+  ],
+  "schema": "inferswarm.r2.matched-local-comparison/1",
+  "selected_logits_byte_identical_between_split_and_local": true
+}

@@ -1,0 +1,89 @@
+{
+  "canonical_threshold": {
+    "atol": 0.002,
+    "rtol": 0.002
+  },
+  "classification": "REFERENCE_GEOMETRY_MISMATCH",
+  "evidence_label": "NONCANONICAL_DIAGNOSTIC_EVIDENCE",
+  "first_chunk_geometry_kv_difference": {
+    "chunk128": {
+      "dtype": "bfloat16",
+      "max": 11.1875,
+      "min": -12.25,
+      "raw_byte_sha256": "1ab4054b45f89a0f0c8f044364e644e5ec63db5c5ef5acafef6774ec817a84d4",
+      "shape": [
+        2,
+        121,
+        1,
+        2,
+        256
+      ]
+    },
+    "chunk64": {
+      "dtype": "bfloat16",
+      "max": 11.1875,
+      "min": -12.25,
+      "raw_byte_sha256": "98c2e13c6950c1cce9215e5dedd49a18f71891616bcbc701c8e99a6c9405eb40",
+      "shape": [
+        2,
+        121,
+        1,
+        2,
+        256
+      ]
+    },
+    "global_layer": 3
+  },
+  "first_chunk_geometry_state_difference": {
+    "chunk128": {
+      "dtype": "float32",
+      "max": 15.086614608764648,
+      "min": -17.886154174804688,
+      "raw_byte_sha256": "313c280746aff6d1f889248198d4dd81fc5475525b50bcbf81de6a06e1131cbb",
+      "shape": [
+        32,
+        128,
+        128
+      ]
+    },
+    "chunk64": {
+      "dtype": "float32",
+      "max": 15.11454963684082,
+      "min": -17.880098342895508,
+      "raw_byte_sha256": "406bb2e95ba1e2f3ae1dac181affb99ff8ca48a38ce871a828897547130a2adc",
+      "shape": [
+        32,
+        128,
+        128
+      ]
+    },
+    "global_layer": 0,
+    "numerical_comparison": {
+      "exact": false,
+      "inf_count": 0,
+      "max_absolute_deviation": 0.043923377990722656,
+      "max_relative_deviation": 18153.4453125,
+      "nan_count": 0
+    },
+    "state": "recurrent"
+  },
+  "first_observed_legacy_reference_divergence": {
+    "checkpoint": "after-second-prefill-chunk",
+    "global_layer": null,
+    "observable": "step-0 logits",
+    "reason_layer_unavailable": "legacy reference retained no layer/state captures",
+    "workload": "W4"
+  },
+  "inference": "The earliest retained state difference between matched local chunk64 and chunk128 is global layer 0 recurrent state; its conv state remains exact. This locates the geometry-dependent change to the layer-0 GatedDeltaNet recurrent update, before any R2 layer-19 boundary or transport.",
+  "input_artifact_sha256": {
+    "correctness.json": "c54c0970c483d7a31e67efd80724d5b4ec3b46754482995b6f196b0bad64f6ea",
+    "w2-chunk32.json": "558e2e4388c9ab92458f4f46dd14297e0aaaff85ae457b85a12ba8f6f2676ba0",
+    "w4-chunk128.json": "88f60d4128281852b57d7dc513fbe7289688e08cfe250539061aedcc174f5e21",
+    "w4-matched-local-chunk128.json": "304b3b02b374c5f4ab92db4998404758ff802964aaf3ddf1db4eedf41d71baea",
+    "w4-matched-local-chunk64.json": "7a28beb99de00694be97b7030452ae97a00748de1115ae4be875fd055a2c6198",
+    "w4-split-chunk64-state.json": "4febe65b846de70f04c160e586b838b56386e23645cbaa344a63ded20b6cf8a1"
+  },
+  "schema": "inferswarm.r2.first-divergence/1",
+  "split_specific_first_divergence": null,
+  "split_specific_result": "No divergence: split and matched local are byte-identical through both W4 prefill chunks, all logical mutable state, finalization, selected logits, and all 32 generated tokens."
+}

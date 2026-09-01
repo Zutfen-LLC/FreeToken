@@ -1,0 +1,124 @@
+{
+  "canonical_threshold": {
+    "atol": 0.002,
+    "rtol": 0.002
+  },
+  "cases": [
+    {
+      "case": "W2 current",
+      "chunk_tokens": 64,
+      "logits": {
+        "all_exact": true,
+        "inf_count": 0,
+        "max_absolute_deviation": 0.0,
+        "max_relative_deviation": 0.0,
+        "nan_count": 0,
+        "selected_float32_sha256": {
+          "0": "e9b7a49752014f6ea5d4fe3abe9c6cdb88dbde199d064a64ac9888fd2b9400aa",
+          "1": "7d92bb5e2f1d76675261d73aa81a85e110b5e7a33ff8512e5e876567e03c1014",
+          "15": "3c61b61bd57c975f9d70e736551e77bd6cf6f401a614a3376b0062f50388449c",
+          "31": "6a2a21eafa02924c03fae7affdd72e937bea51083915bc93f6777bd8fbfb9744"
+        },
+        "within_threshold": true
+      },
+      "prefill_chunks": 1,
+      "prompt_tokens": 54,
+      "tokens_exact": true
+    },
+    {
+      "case": "W2 diagnostic",
+      "chunk_tokens": 32,
+      "logits": {
+        "all_exact": false,
+        "inf_count": 0,
+        "max_absolute_deviation": 1.15234375,
+        "max_relative_deviation": 35994.15234375,
+        "nan_count": 0,
+        "selected_float32_sha256": {
+          "0": "4443458a439134942bf65e9f8206e32194aaa11b62877b779b0862d227ce7225",
+          "1": "cddb77b8ad741071e45baa63dec8ce008535f76c1bb17a59508717f1ba85f21d",
+          "15": "fbd0a9da331cc82dec6376c9c576a7d5040a890b58a80ae26e28a657e430c919",
+          "31": "77e61d9e40196f4ccf94bab86c005b2c217420b312e27666c745512189bb1a59"
+        },
+        "within_threshold": false
+      },
+      "prefill_chunks": 2,
+      "prompt_tokens": 54,
+      "tokens_exact": true
+    },
+    {
+      "case": "W4 current",
+      "chunk_tokens": 64,
+      "logits": {
+        "all_exact": false,
+        "inf_count": 0,
+        "max_absolute_deviation": 0.75390625,
+        "max_relative_deviation": 37241.92578125,
+        "nan_count": 0,
+        "selected_float32_sha256": {
+          "0": "1737e67d9f9aa10f6858fd8b0d4bb7c5cb7fbdce7beedbddf3c5be585d8c51aa",
+          "1": "bcc26a2052a0c2b99adaaf59594642c7fe7e791fcd631473199993943c473859",
+          "15": "9d203eafa5a118428a0b8b6972e900cb54a779068926b1c84cae729e34cbf230",
+          "31": "74be278376d5e406c08ce3d8b1ec9fbc4701fc33ca7087f5b19519db820d8b83"
+        },
+        "within_threshold": false
+      },
+      "prefill_chunks": 2,
+      "prompt_tokens": 121,
+      "tokens_exact": true
+    },
+    {
+      "case": "W4 diagnostic",
+      "chunk_tokens": 128,
+      "logits": {
+        "all_exact": false,
+        "inf_count": 0,
+        "max_absolute_deviation": 29.08984375,
+        "max_relative_deviation": 785278.1875,
+        "nan_count": 0,
+        "selected_float32_sha256": {
+          "0": "afd54b4f6020a55fe6f126752f4b4c70a504ad8b6310d1470bc84390523a5d19",
+          "1": "49de343b745e09aff5c24abeeb9bbb724c96f0f6f535859c38acc937152a64c1",
+          "15": "679eb65d505555841af2ef3e909cc8151a308ca09ddef92ed2699c94e394bbc3",
+          "31": "e287839a04324f342b9c7f1e83983a0ed2d93a8869be09a443801dccbd68114d"
+        },
+        "within_threshold": false
+      },
+      "prefill_chunks": 1,
+      "prompt_tokens": 121,
+      "tokens_exact": false
+    },
+    {
+      "case": "W4 matched local",
+      "chunk_tokens": 64,
+      "logits": {
+        "all_exact": false,
+        "inf_count": 0,
+        "max_absolute_deviation": 0.75390625,
+        "max_relative_deviation": 37241.92578125,
+        "nan_count": 0,
+        "selected_float32_sha256": {
+          "0": "1737e67d9f9aa10f6858fd8b0d4bb7c5cb7fbdce7beedbddf3c5be585d8c51aa",
+          "1": "bcc26a2052a0c2b99adaaf59594642c7fe7e791fcd631473199993943c473859",
+          "15": "9d203eafa5a118428a0b8b6972e900cb54a779068926b1c84cae729e34cbf230",
+          "31": "74be278376d5e406c08ce3d8b1ec9fbc4701fc33ca7087f5b19519db820d8b83"
+        },
+        "within_threshold": false
+      },
+      "prefill_chunks": 2,
+      "prompt_tokens": 121,
+      "tokens_exact": true
+    }
+  ],
+  "evidence_label": "NONCANONICAL_DIAGNOSTIC_EVIDENCE",
+  "input_artifact_sha256": {
+    "correctness.json": "c54c0970c483d7a31e67efd80724d5b4ec3b46754482995b6f196b0bad64f6ea",
+    "w2-chunk32.json": "558e2e4388c9ab92458f4f46dd14297e0aaaff85ae457b85a12ba8f6f2676ba0",
+    "w4-chunk128.json": "88f60d4128281852b57d7dc513fbe7289688e08cfe250539061aedcc174f5e21",
+    "w4-matched-local-chunk128.json": "304b3b02b374c5f4ab92db4998404758ff802964aaf3ddf1db4eedf41d71baea",
+    "w4-matched-local-chunk64.json": "7a28beb99de00694be97b7030452ae97a00748de1115ae4be875fd055a2c6198",
+    "w4-split-chunk64-state.json": "4febe65b846de70f04c160e586b838b56386e23645cbaa344a63ded20b6cf8a1"
+  },
+  "reciprocal_observation": "W2 becomes non-exact when changed from one to two prefill chunks; W4 step-0/step-1 logits become byte-exact to the legacy reference when changed from two chunks to one. Later W4 decode divergence shows that the legacy reference also leaves graph/state protocol unmatched.",
+  "schema": "inferswarm.r2.chunk-controls/1"
+}
