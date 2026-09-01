@@ -114,10 +114,11 @@ def _physical_installed_ram_bytes() -> int | None:
 
     Linux MemTotal excludes firmware/hardware reservations (a 16 GiB machine
     commonly reports ~15.48 GiB), so issue #57's 16 GiB installed-RAM
-    requirement must be proven from DMI memory-device sizes.
+    requirement must be proven from DMI memory-device sizes.  Uses the
+    absolute path pinned in the r4 sudoers entry (90-r4-dmidecode).
     """
 
-    output = _run(["sudo", "-n", "dmidecode", "-t", "memory"])
+    output = _run(["sudo", "-n", "/usr/sbin/dmidecode", "-t", "memory"])
     if output.startswith("<failed"):
         return None
     total = 0

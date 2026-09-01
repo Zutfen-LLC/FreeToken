@@ -578,7 +578,12 @@ def test_physical_ram_from_dmi_not_memtotal() -> None:
     )
 
     def fake_run(cmd, ethtool_path=np.DEFAULT_ETHTOOL):
-        return dmi if cmd[:3] == ["sudo", "-n", "dmidecode"] else "<failed>"
+        return (
+            dmi
+            if cmd[:4] == ["sudo", "-n", "/usr/sbin/dmidecode", "-t", "memory"][:4]
+            and cmd[4:5] == ["memory"]
+            else "<failed>"
+        )
 
     mp = pytest.MonkeyPatch()
     mp.setattr(np, "_run", fake_run)
