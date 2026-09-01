@@ -61,7 +61,7 @@ case "$PHASE" in
   diagnostic|clean)
     ARM="$PHASE"
     # start Node B service
-    $SSH_B "cd /home/zutfen/FreeToken-r4 && nohup /home/zutfen/FreeToken/.venv/bin/python -m benchmarks.inferswarm_r4.node_b_service --plan docs/inferswarm_r4/r4-frozen-plan.json --model $MODEL $([ $ARM = diagnostic ] && echo --diagnostic) --ready-file /tmp/r4-node-b-ready.json > /tmp/r4-node-b.log 2>&1 & echo \$!"
+    $SSH_B "cd /home/zutfen/FreeToken-r4 && PYTHONPATH=/home/zutfen/FreeToken-r4/python nohup /home/zutfen/FreeToken/.venv/bin/python -m benchmarks.inferswarm_r4.node_b_service --plan docs/inferswarm_r4/r4-frozen-plan.json --model $MODEL $([ $ARM = diagnostic ] && echo --diagnostic) --ready-file /tmp/r4-node-b-ready.json > /tmp/r4-node-b.log 2>&1 & echo \$!"
     for i in $(seq 1 120); do
       $SSH_B "test -f /tmp/r4-node-b-ready.json" 2>/dev/null && break
       sleep 10
@@ -78,7 +78,7 @@ case "$PHASE" in
     scp -q -i /home/zutfen/.ssh/id_r4_staging zutfen@$NODE_B:/tmp/r4-node-b-final-$ARM.json "$OUT/raw/node-b-final-$ARM.json" || true
     ;;
   microbench)
-    $SSH_B "cd /home/zutfen/FreeToken-r4 && nohup /home/zutfen/FreeToken/.venv/bin/python -m benchmarks.inferswarm_r4.transport_microbench --server --port 18490 >/tmp/r4-microbench-b.log 2>&1 &"
+    $SSH_B "cd /home/zutfen/FreeToken-r4 && PYTHONPATH=/home/zutfen/FreeToken-r4/python nohup /home/zutfen/FreeToken/.venv/bin/python -m benchmarks.inferswarm_r4.transport_microbench --server --port 18490 >/tmp/r4-microbench-b.log 2>&1 &"
     sleep 2
     $VENV -m benchmarks.inferswarm_r4.transport_microbench --client --peer $NODE_B --port 18490 --out "$OUT/transport-microbenchmark.json" 2>&1 | tee "$OUT/raw/microbench.log"
     ;;
