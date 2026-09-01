@@ -284,3 +284,82 @@ def test_ordinary_offload_still_retains_host_banks_and_can_rebuild():
     assert cache.host_source_tensor_bytes() == before
     assert cache.bank_sources["down"][1] is sources["down"][1]
     assert cache.resident_source_access_attempts == 0
+
+
+def test_retain_policy_is_optional_not_required_host_residency():
+    cache, _ = _cache()
+    _populate(cache)
+    host_bytes = cache.host_source_tensor_bytes()
+
+    report = cache.detach_host_sources_for_full_residency("retain_reusable_source")
+    accounting = cache.host_materialization_accounting()
+
+    assert report["persistent_optional_host_cache_bytes"] == host_bytes
+    assert accounting["required_persistent_host_bytes"] == 0
+    assert accounting["optional_retained_host_cache_bytes"] == host_bytes
+    assert accounting["reclaimable_host_cache_bytes"] == host_bytes
+    assert cache.host_source_tensor_bytes() == 0
+    with pytest.raises(RuntimeError, match="not selected"):
+        cache.release_detached_host_materializations()
+
+
+def test_physical_release_requires_dead_source_tensor_owners_and_double_fails():
+    from freetoken.moe.host_banks import HostBank
+    from freetoken.moe.offload_cache import OffloadMoeCache
+
+    owners = {
+        "gate_up": [HostBank((3, 4, 2), torch.float32, backing="mmap")],
+        "down": [HostBank((3, 2, 2), torch.float32, backing="mmap")],
+    }
+    sources = {
+        name: [owner.tensor for owner in banks] for name, banks in owners.items()
+    }
+    cache = OffloadMoeCache(1, 3, 3, torch.device("cpu"))
+    cache.set_bank_sources(sources)
+    _populate(cache)
+    cache.detach_host_sources_for_full_residency("release_after_final_residency")
+
+    with pytest.raises(RuntimeError, match="remain alive"):
+        cache.release_detached_host_materializations()
+    sources = {}
+    report = cache.release_detached_host_materializations()
+    assert report["source_tensor_objects_alive"] == 0
+    assert report["explicit_storage_owner_count"] == 2
+    assert cache.host_materialization_accounting()["release_invoked_bytes"] > 0
+    assert all(
+        item["lifecycle_state"] == "released_physical"
+        for item in cache.host_materialization_diagnostics()
+    )
+    assert all(
+        item["tensor_object_count_alive"] == 0
+        and item["storage_present"] is False
+        for item in cache.host_materialization_diagnostics()
+    )
+    with pytest.raises(RuntimeError, match="already released"):
+        cache.release_detached_host_materializations()
+
+
+def test_physical_gate_cannot_pass_from_tensor_counters_or_boundary_buffer():
+    from freetoken.research.host_reclamation import evaluate_physical_reclamation
+
+    boundary_transport = torch.empty(4096, dtype=torch.uint8)
+    before = {
+        "process_status_bytes": {"VmRSS": 1000},
+        "system_meminfo_bytes": {"MemAvailable": 1000},
+    }
+    after = {
+        "process_status_bytes": {"VmRSS": 1000},
+        "system_meminfo_bytes": {"MemAvailable": 1000},
+    }
+    result = evaluate_physical_reclamation(
+        staging_bytes=100,
+        before=before,
+        after=after,
+        live_source_tensor_bytes=0,
+        live_source_object_count=0,
+        live_storage_owner_count=0,
+        worker_alive=True,
+    )
+    assert boundary_transport.numel() == 4096
+    assert result["tensor_counters_sufficient_without_physical_signals"] is False
+    assert result["passed"] is False

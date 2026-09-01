@@ -12,13 +12,16 @@ contiguous cache) paths both rely on:
   bank, bypassing the page cache, with many concurrent ``preadv`` on one fd (scales to the
   device's queue-depth ceiling even for a single file).
 
-The mmaps are held for the process lifetime (the banks live as long as the offload cache).
+Serving banks are registered as explicit host materializations. Ordinary offload keeps
+them attached for the cache lifetime; final-residency research paths may classify them
+as optional reusable materialization or physically reclaim them.
 """
 
 from __future__ import annotations
 
 import contextlib
 import ctypes
+import itertools
 import math
 import mmap
 import os
@@ -26,6 +29,7 @@ import queue
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from enum import Enum
+from typing import Self
 
 import torch
 
@@ -50,8 +54,21 @@ class HostResidency(str, Enum):
 
 _DEFAULT_CHUNK = 8 << 20
 
-# Hold the mmaps for the process lifetime; the offload cache reads from these banks forever.
-_LIVE_BUFFERS: list[mmap.mmap] = []
+
+class HostMaterializationState(str, Enum):
+    ATTACHED_REQUIRED = "attached_required"
+    RETAINED_OPTIONAL = "retained_optional"
+    RELEASED_PHYSICAL = "released_physical"
+
+
+class HostMaterializationPolicy(str, Enum):
+    RETAIN_REUSABLE_SOURCE = "retain_reusable_source"
+    RELEASE_AFTER_FINAL_RESIDENCY = "release_after_final_residency"
+
+
+_ALLOCATION_IDS = itertools.count(1)
+_LIVE_MATERIALIZATIONS: dict[int, HostBank] = {}
+_STORAGE_OWNERS: dict[int, int] = {}
 
 def _env_born_pinned() -> bool | None:
     """``FREETOKEN_BANK_CUDA_ALLOC`` tri-state: unset -> ``None`` (default applies), else the parsed boolean."""
@@ -79,7 +96,20 @@ class HostBank:
 
     The buffer is rounded up to the O_DIRECT block; ``tensor`` views exactly ``nbytes``. ``backing=None`` follows ``FREETOKEN_BANK_CUDA_ALLOC``."""
 
-    __slots__ = ("tensor", "addr", "nbytes", "_buf", "_pinned", "_locked")
+    __slots__ = (
+        "_allocation_id",
+        "_backing",
+        "_buf",
+        "_locked",
+        "_pinned",
+        "_release_invocations",
+        "_state",
+        "_storage_keys",
+        "addr",
+        "allocation_bytes",
+        "nbytes",
+        "tensor",
+    )
 
     def __init__(self, shape: tuple[int, ...], dtype: torch.dtype,
                  *, backing: str | None = None):
@@ -89,9 +119,14 @@ class HostBank:
             born = _env_born_pinned() and (plan is None or not plan.has_unpinned)
             backing = "cuda" if born else "mmap"
         assert backing in ("mmap", "cuda"), backing
+        self._backing = backing
+        self._state = HostMaterializationState.ATTACHED_REQUIRED
+        self._release_invocations = 0
+        self._allocation_id = next(_ALLOCATION_IDS)
         elsize = torch.empty((), dtype=dtype).element_size()
         self.nbytes = math.prod(shape) * elsize
         asize = ((self.nbytes + _BLK - 1) // _BLK) * _BLK
+        self.allocation_bytes = asize + (_BLK if backing == "cuda" else 0)
         if backing == "cuda":
             from freetoken.kernel.pinned import alloc_pinned_tensor
 
@@ -106,11 +141,83 @@ class HostBank:
             self._pinned = True  # born pinned+mapped; pin() is a no-op
         else:
             self._buf = mmap.mmap(-1, asize)  # lazy: address space only, no resident pages yet
-            _LIVE_BUFFERS.append(self._buf)
             self.addr = ctypes.addressof(ctypes.c_char.from_buffer(self._buf))
             self._pinned = False
         self.tensor = torch.frombuffer(self._buf, dtype=dtype, count=self.nbytes // elsize).view(*shape)
         self._locked = False
+        self._storage_keys = {
+            self.tensor.data_ptr(), self.tensor.untyped_storage().data_ptr()
+        }
+        _LIVE_MATERIALIZATIONS[self._allocation_id] = self
+        for key in self._storage_keys:
+            _STORAGE_OWNERS[key] = self._allocation_id
+
+    @property
+    def allocation_id(self) -> str:
+        """Process-local diagnostic identity; deliberately not a raw address."""
+        return f"host-materialization-{self._allocation_id}"
+
+    @property
+    def lifecycle_state(self) -> HostMaterializationState:
+        return self._state
+
+    @property
+    def allocation_mechanism(self) -> str:
+        return "cudaHostAlloc" if self._backing == "cuda" else "mmap+cudaHostRegister"
+
+    def diagnostics(self) -> dict[str, object]:
+        """Pointer-free ownership and lifecycle evidence."""
+        return {
+            "allocation_id": self.allocation_id,
+            "requested_bytes": self.nbytes,
+            "allocation_bytes": self.allocation_bytes,
+            "allocation_mechanism": self.allocation_mechanism,
+            "owning_python_class": type(self).__name__,
+            "owner_tensor_object_present": self.tensor is not None,
+            "storage_present": self._buf is not None,
+            "registered_or_pinned": self._pinned,
+            "locked": self._locked,
+            "lifecycle_state": self._state.value,
+            "release_invocation_count": self._release_invocations,
+        }
+
+    def mark_retained_optional(self) -> None:
+        if self._state is HostMaterializationState.RELEASED_PHYSICAL:
+            raise RuntimeError("cannot retain a physically released host materialization")
+        self._state = HostMaterializationState.RETAINED_OPTIONAL
+
+    def cede_tensor_ownership(self) -> None:
+        """Leave Tensor lifetime to the loader/cache while retaining storage ownership."""
+        self.tensor = None
+
+    def release_physical(self) -> int:
+        """Deregister and discard pages after every execution owner has detached."""
+        self._release_invocations += 1
+        if self._state is HostMaterializationState.RELEASED_PHYSICAL:
+            raise RuntimeError("host materialization is already physically released")
+        if self._backing == "mmap" and self._pinned:
+            from freetoken.kernel.pinned import host_unregister
+
+            host_unregister(self.addr)
+            self._pinned = False
+        if self._locked:
+            _os_unlock(self.addr, self.allocation_bytes)
+            self._locked = False
+        for key in self._storage_keys:
+            _STORAGE_OWNERS.pop(key, None)
+        self._storage_keys = set()
+        self.tensor = None
+        if self._backing == "mmap":
+            self._buf.madvise(mmap.MADV_DONTNEED)
+            self._buf.close()
+            self._buf = None
+        else:
+            # The NumPy view owns the from-blob Tensor chain whose deleter calls
+            # cudaFreeHost. The cache permits this only after external source Tensor
+            # objects are dead.
+            self._buf = None
+        self._state = HostMaterializationState.RELEASED_PHYSICAL
+        return self.allocation_bytes
 
     @property
     def residency(self) -> HostResidency:
@@ -197,6 +304,38 @@ def _os_lock(addr: int, nbytes: int) -> None:
     _os_locked_total += nbytes
 
 
+def _os_unlock(addr: int, nbytes: int) -> None:
+    global _os_locked_total
+    libc = ctypes.CDLL(None, use_errno=True)
+    if libc.munlock(ctypes.c_void_p(addr), ctypes.c_size_t(nbytes)):
+        err = ctypes.get_errno()
+        raise OSError(err, f"munlock({nbytes}): {os.strerror(err)}")
+    _os_locked_total = max(0, _os_locked_total - nbytes)
+
+
+def materializations_for_tensors(
+    tensors: dict[str, list[torch.Tensor]],
+) -> list[HostBank]:
+    """Resolve explicit HostBank storage owners without publishing raw addresses."""
+    found: dict[int, HostBank] = {}
+    for per_layer in tensors.values():
+        for tensor in per_layer:
+            owner = materialization_for_tensor(tensor)
+            if owner is not None:
+                found[owner._allocation_id] = owner
+    return list(found.values())
+
+
+def materialization_for_tensor(tensor: torch.Tensor) -> HostBank | None:
+    keys = (tensor.untyped_storage().data_ptr(), tensor.data_ptr())
+    allocation_id = next(
+        (_STORAGE_OWNERS[key] for key in keys if key in _STORAGE_OWNERS), None
+    )
+    return (
+        None if allocation_id is None else _LIVE_MATERIALIZATIONS[allocation_id]
+    )
+
+
 def alloc_banks(specs: dict[str, tuple[tuple[int, ...], torch.dtype]]) -> dict[str, HostBank]:
     """Allocate (lazy, unpinned) host banks from ``{name: (shape, dtype)}``."""
     return {name: HostBank(shape, dtype) for name, (shape, dtype) in specs.items()}
@@ -219,7 +358,7 @@ class _ResidencyPlan:
 
     Installed by ``load_expert_banks`` around the provider dispatch so every loader honors --moe-cpu-layers without a new parameter in each signature. ``applied`` flips once a settle point consults the plan."""
 
-    __slots__ = ("labels", "applied", "has_unpinned", "actual")
+    __slots__ = ("actual", "applied", "has_unpinned", "labels")
 
     def __init__(self, labels: list[str]):
         self.labels = list(labels)
@@ -311,7 +450,7 @@ class PinPipeline:
                 _settle(bank, residency)
                 if plan is not None and residency == HostResidency.LOCKED.value:
                     plan.record(layer_id, bank.residency.value)
-            except BaseException as exc:  # surfaced by wait()/__exit__
+            except BaseException as exc:  # noqa: BLE001 - surfaced by wait()/__exit__
                 self._exc = exc
 
     def submit(self, bank: HostBank, residency: str = HostResidency.PINNED.value,
@@ -336,7 +475,7 @@ class PinPipeline:
         if self._exc is not None:
             raise self._exc
 
-    def __enter__(self) -> "PinPipeline":
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:
@@ -412,12 +551,16 @@ def read_file_into(buf: memoryview | mmap.mmap, path: str, *, workers: int = 8,
 
 __all__ = [
     "HostBank",
+    "HostMaterializationPolicy",
+    "HostMaterializationState",
     "HostResidency",
     "LayerCompletionTracker",
     "PinPipeline",
     "alloc_banks",
     "alloc_layer_banks",
     "born_pinned_default",
+    "materialization_for_tensor",
+    "materializations_for_tensors",
     "pin_banks",
     "read_file_into",
     "requested_residency",

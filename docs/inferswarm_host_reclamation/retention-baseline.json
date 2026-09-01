@@ -1,0 +1,33 @@
+{
+  "classification": {
+    "allocation_mechanism": "anonymous mmap + cudaHostRegister",
+    "exact_owner": "HostBank storage retained by the module-global process-lifetime _LIVE_BUFFERS list after R2 tensor/source dictionaries were detached",
+    "finding": "accidental post-final-residency lifetime overreach of a deliberate ordinary-offload retention rule",
+    "history": [
+      {
+        "commit": "3af9d90ee5e7af9bbff1e16f4f1c6201f41fff25",
+        "fact": "introduced process-lifetime mmap retention for offload banks"
+      },
+      {
+        "commit": "83300b9f5e244c53912d270b34c139700b8bdd4e",
+        "fact": "introduced logical resident-only detach"
+      }
+    ],
+    "leak_classification": false,
+    "lifetime": "worker process lifetime",
+    "ordinary_offload_intent": "keep source banks attached so OffloadMoeCache.rebuild can resize GPU slot caches without rereading checkpoint storage",
+    "post_r2_detach_reusable": false,
+    "reason_not_reusable": "R2 discarded tensor/source registries; the surviving mmap list had no supported rematerialization owner or operation"
+  },
+  "observation": {
+    "block_a_post_realization_rss_shmem_approx_gib": 8.1,
+    "block_a_staging_bytes": 8636596224,
+    "block_b_post_realization_rss_shmem_approx_gib": 8.9,
+    "block_b_staging_bytes": 9545711616,
+    "host_staging_current_bytes": 0,
+    "unexplained_persistent_host_mirror_bytes": 0
+  },
+  "r2_disposition": "R2_LOCAL_SPLIT_EXECUTION_PASS",
+  "r2_merge_base": "8627f441c880398389042ce8c0a604f6c4321dfa",
+  "schema": "inferswarm.pre-r3.retention-baseline/1"
+}

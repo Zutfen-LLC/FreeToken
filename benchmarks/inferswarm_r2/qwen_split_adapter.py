@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import ClassVar
 
 import torch
+from freetoken.research.host_reclamation import snapshot_host_memory
 from freetoken.research.n0_model_block import (
     ModelBlockSpec,
     load_selective_qwen35_block,
@@ -108,7 +109,11 @@ class QwenSplitRuntime:
         if role not in ("a", "b"):
             raise ValueError("role must be a or b")
         self.role = role
+        self.host_staging_policy = adapter_data.get(
+            "host_staging_policy", "release_after_final_residency"
+        )
         self.device = torch.device("cuda:0")
+        self.memory_snapshots = {"P0_fresh_worker": snapshot_host_memory()}
         self.max_seq_len = int(adapter_data["runtime_capacity_tokens"])
         self.process_before = _status()
         self.vmstat_before = _vmstat()
@@ -144,6 +149,7 @@ class QwenSplitRuntime:
             safetensors.torch.load_file = whole_original
             nvfp4_banks.load_nvfp4_expert_source_banks = full_original
         self.block = self.loaded.block
+        self.memory_snapshots["P1_source_load_complete"] = snapshot_host_memory()
         if self.block.config.hidden_size != HIDDEN_SIZE:
             raise RuntimeError("pinned strategy hidden width changed")
         self.non_routed_bytes = _unique_tensor_bytes(
@@ -161,6 +167,9 @@ class QwenSplitRuntime:
         self.ctx, self.cache, self.state_ownership = self._setup_context()
         self.populate_count = 0
         self.populate_all_experts()
+        self.memory_snapshots[
+            "P2_gpu_population_sources_attached"
+        ] = snapshot_host_memory()
         self.routed_bytes = self.cache.expert_bank_tensor_bytes()
         before_graph = torch.cuda.memory_allocated(self.device)
         self.decode_graph = self._capture_decode_graph()
@@ -274,14 +283,27 @@ class QwenSplitRuntime:
     def detach_host_staging(self) -> dict:
         if self.detached:
             raise RuntimeError("host staging already detached")
-        self.detach_report = self.cache.detach_host_sources_for_full_residency()
+        self.detach_report = self.cache.detach_host_sources_for_full_residency(
+            self.host_staging_policy
+        )
+        self.memory_snapshots["P3_logical_detach_complete"] = snapshot_host_memory()
         released = self.loaded.release_expert_banks_after_residency(self.cache)
+        if self.host_staging_policy == "release_after_final_residency":
+            self.detach_report.update(
+                self.cache.release_detached_host_materializations()
+            )
         gc.collect()
         torch.cuda.synchronize(self.device)
+        self.memory_snapshots["P4_reference_cleanup_complete"] = (
+            snapshot_host_memory()
+        )
         dead = sum(ref() is None for ref in self.source_refs)
-        if released != self.host_source_bytes_before_release or dead != len(
-            self.source_refs
-        ):
+        expected_dead = (
+            len(self.source_refs)
+            if self.host_staging_policy == "release_after_final_residency"
+            else 0
+        )
+        if released != self.host_source_bytes_before_release or dead != expected_dead:
             raise RuntimeError("host routed staging did not release completely")
         if self.cache.host_source_tensor_bytes() != 0 or not self.cache.resident_only:
             raise RuntimeError("resident-only finalization failed")
@@ -453,8 +475,9 @@ class QwenSplitRuntime:
         graph.replays += 1
         return int(graph.token_output.item()), graph.logits_output
 
-    def report(self) -> dict:
+    def report(self, checkpoint: str = "P5_repeated_resident_decode") -> dict:
         torch.cuda.synchronize(self.device)
+        self.memory_snapshots[checkpoint] = snapshot_host_memory()
         stats = self.cache.decode_miss_stats()
         vm_after = _vmstat()
         return {
@@ -475,6 +498,13 @@ class QwenSplitRuntime:
             "graph_allocation_delta_bytes": self.graph_allocation_delta_bytes,
             "host_staging_before_release_bytes": self.host_source_bytes_before_release,
             "host_staging_current_bytes": self.cache.host_source_tensor_bytes(),
+            "host_materialization_accounting": (
+                self.cache.host_materialization_accounting()
+            ),
+            "host_materialization_allocations": (
+                self.cache.host_materialization_diagnostics()
+            ),
+            "host_lifecycle_snapshots": self.memory_snapshots,
             "unexplained_persistent_host_mirror_bytes": 0
             if self.detached and self.cache.host_source_tensor_bytes() == 0
             else self.cache.host_source_tensor_bytes(),
@@ -514,9 +544,18 @@ class QwenSplitResearchAdapter:
         "freetoken-captured-backend-device",
     }
 
-    def __init__(self, *, role: str, model_path: str):
+    def __init__(
+        self,
+        *,
+        role: str,
+        model_path: str,
+        host_staging_policy: str = "release_after_final_residency",
+        host_release_barrier=None,
+    ):
         self.role = role
         self.model_path = model_path
+        self.host_staging_policy = host_staging_policy
+        self.host_release_barrier = host_release_barrier
         self.plan = None
         self.runtime: QwenSplitRuntime | None = None
         self.runtime_authorities: list[dict] = []
@@ -537,7 +576,10 @@ class QwenSplitResearchAdapter:
             self.runtime = QwenSplitRuntime(
                 role=self.role,
                 model_path=self.model_path,
-                adapter_data=self.plan["adapter_data"],
+                adapter_data={
+                    **self.plan["adapter_data"],
+                    "host_staging_policy": self.host_staging_policy,
+                },
             )
         return self.runtime
 
@@ -576,7 +618,17 @@ class QwenSplitResearchAdapter:
         return record
 
     def release_materialization(self, item):
-        released = self._ensure().detach_host_staging()
+        runtime = self._ensure()
+        if self.host_release_barrier is not None:
+            self.host_release_barrier.wait()
+            runtime.memory_snapshots["P2_release_barrier"] = snapshot_host_memory()
+            self.host_release_barrier.wait()
+        released = runtime.detach_host_staging()
+        if self.host_release_barrier is not None:
+            self.host_release_barrier.wait()
+            runtime.memory_snapshots["P4_coordinated_release_complete"] = (
+                snapshot_host_memory()
+            )
         return {
             "observed_bytes_after_release": 0,
             "released_bytes": released["released_bytes"],

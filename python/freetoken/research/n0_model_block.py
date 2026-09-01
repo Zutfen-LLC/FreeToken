@@ -12,9 +12,9 @@ import os
 import re
 import struct
 from collections import defaultdict
+from collections.abc import Iterator
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
-from typing import Callable, Iterator
 
 import safetensors
 import torch
@@ -292,7 +292,7 @@ class SelectiveTensorReader:
 
 @dataclass
 class SelectiveBlockLoadResult:
-    block: "SelectiveQwen35Block"
+    block: SelectiveQwen35Block
     expert_banks: dict[str, list[torch.Tensor]]
     global_layer_ids: tuple[int, ...]
     allowed_keys: frozenset[str]
@@ -319,7 +319,11 @@ class SelectiveQwen35Block:
 
     def __init__(self, config, spec: ModelBlockSpec):
         from freetoken.kernel.triton.nvfp4_linear import Nvfp4LMHead
-        from freetoken.layers import GemmaRMSNorm, ParallelLMHead, VocabParallelEmbedding
+        from freetoken.layers import (
+            GemmaRMSNorm,
+            ParallelLMHead,
+            VocabParallelEmbedding,
+        )
         from freetoken.models.qwen3_5_moe.model import Qwen3_5DecoderLayer
 
         spec.validate(config.num_layers)
@@ -396,15 +400,15 @@ def load_selective_qwen35_block(
     device: torch.device,
 ) -> SelectiveBlockLoadResult:
     """Materialize a pinned-Qwen3.6 block and its block-local native expert banks."""
+    from freetoken.distributed import set_tp_info, try_get_tp_info
+    from freetoken.layers.rotary import set_rope_device
+    from freetoken.models.nvfp4_banks import load_nvfp4_expert_source_banks_for_layers
     from freetoken.models.qwen3_5_moe.config import parse_config
     from freetoken.models.qwen3_5_moe.weight import (
         _NVFP4_SOURCE_SPEC,
         iter_block_weights,
     )
-    from freetoken.models.nvfp4_banks import load_nvfp4_expert_source_banks_for_layers
-    from freetoken.distributed import set_tp_info, try_get_tp_info
     from freetoken.utils import cached_load_hf_config, torch_dtype
-    from freetoken.layers.rotary import set_rope_device
 
     if try_get_tp_info() is None:
         set_tp_info(rank=0, size=1)
@@ -472,7 +476,13 @@ def write_json_with_sha(path: str | os.PathLike[str], payload: dict) -> None:
 
 
 __all__ = [
-    "ModelBlockSpec", "SelectiveTensorReader", "checkpoint_census",
-    "SelectiveBlockLoadResult", "SelectiveQwen35Block", "freeze_two_block_plan",
-    "load_selective_qwen35_block", "validate_complement", "write_json_with_sha",
+    "ModelBlockSpec",
+    "SelectiveBlockLoadResult",
+    "SelectiveQwen35Block",
+    "SelectiveTensorReader",
+    "checkpoint_census",
+    "freeze_two_block_plan",
+    "load_selective_qwen35_block",
+    "validate_complement",
+    "write_json_with_sha",
 ]

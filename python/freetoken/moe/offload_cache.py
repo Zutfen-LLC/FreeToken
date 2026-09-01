@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import os
+import weakref
 from collections.abc import Iterator
 from dataclasses import dataclass
 
@@ -226,6 +227,16 @@ class OffloadMoeCache:
         # Explicit, one-way lifecycle used by the #48 research path. Ordinary
         # offload leaves this false and retains its host sources exactly as before.
         self._resident_only = False
+        self._host_materializations = []
+        self._host_materialization_tensor_refs: dict[
+            str, list[weakref.ReferenceType[torch.Tensor]]
+        ] = {}
+        self._source_tensor_refs: list[weakref.ReferenceType[torch.Tensor]] = []
+        self._retained_host_sources: dict[str, list[torch.Tensor]] = {}
+        self._host_materialization_policy: str | None = None
+        self._host_release_pending = False
+        self._host_release_invocation_count = 0
+        self._host_release_invoked_bytes = 0
         self._resident_slot_for_id: torch.Tensor | None = None
         self._resident_id_of_slot: torch.Tensor | None = None
         self._resident_layers_contiguous = False
@@ -379,6 +390,30 @@ class OffloadMoeCache:
         assert set(sources) == set(self.bank_schema), (
             f"banks {sorted(sources)} do not match the {self.quant_format!r} schema {self.bank_schema}"
         )
+        from freetoken.moe.host_banks import (
+            materialization_for_tensor,
+            materializations_for_tensors,
+        )
+
+        self._host_materializations = materializations_for_tensors(sources)
+        self._source_tensor_refs = [
+            weakref.ref(tensor)
+            for per_layer in sources.values()
+            for tensor in per_layer
+        ]
+        self._host_materialization_tensor_refs = {}
+        for per_layer in sources.values():
+            for tensor in per_layer:
+                owner = materialization_for_tensor(tensor)
+                if owner is not None:
+                    self._host_materialization_tensor_refs.setdefault(
+                        owner.allocation_id, []
+                    ).append(weakref.ref(tensor))
+        # The registry owns allocation lifetime, while loader/cache dictionaries own
+        # Tensor lifetime. This separation lets final residency prove the latter dead
+        # before destroying cudaHostAlloc storage.
+        for materialization in self._host_materializations:
+            materialization.cede_tensor_ownership()
         residency = layer_residency or [HostResidency.PINNED.value] * self.num_layers
         assert len(residency) == self.num_layers, (len(residency), self.num_layers)
         unpinned = frozenset(
@@ -794,14 +829,22 @@ class OffloadMoeCache:
             raise RuntimeError("slot_for_id and id_of_slot are not mutual inverses")
         return self.slot_for_id.detach().clone()
 
-    def detach_host_sources_for_full_residency(self) -> dict[str, int]:
-        """Finalize complete accelerator residency and irreversibly drop host banks.
+    def detach_host_sources_for_full_residency(
+        self, policy: str = "release_after_final_residency"
+    ) -> dict[str, int | str]:
+        """Finalize accelerator residency under an explicit host-source policy.
 
         Post-detach prefill is deliberately unsupported. The only supported model
         work is GPU decode through :meth:`map_resident_experts_to_slots`.
         """
+        from freetoken.moe.host_banks import HostMaterializationPolicy
+
         if self._resident_only:
             raise RuntimeError("cache is already finalized resident-only")
+        try:
+            lifecycle_policy = HostMaterializationPolicy(policy)
+        except ValueError as exc:
+            raise ValueError(f"unknown host materialization policy {policy!r}") from exc
         frozen_map = self._validate_full_residency()
         host_bytes = self.host_source_tensor_bytes()
 
@@ -815,6 +858,14 @@ class OffloadMoeCache:
             torch.arange(required, dtype=torch.int64),
         )
         self._resident_only = True
+        self._host_materialization_policy = lifecycle_policy.value
+        if lifecycle_policy is HostMaterializationPolicy.RETAIN_REUSABLE_SOURCE:
+            self._retained_host_sources = self.bank_sources
+            for materialization in self._host_materializations:
+                materialization.mark_retained_optional()
+        else:
+            self._retained_host_sources = {}
+            self._host_release_pending = True
         self.bank_sources = {}
         self.banks = []
         self.layer_residency = []
@@ -848,11 +899,99 @@ class OffloadMoeCache:
         self._batch_memcpy = None
 
         return {
+            "host_materialization_policy": lifecycle_policy.value,
             "host_source_bank_bytes_before_detach": host_bytes,
             "host_source_bank_bytes_after_detach": self.host_source_tensor_bytes(),
+            "persistent_optional_host_cache_bytes": (
+                host_bytes
+                if lifecycle_policy is HostMaterializationPolicy.RETAIN_REUSABLE_SOURCE
+                else 0
+            ),
+            "host_release_pending_bytes": (
+                host_bytes
+                if lifecycle_policy is HostMaterializationPolicy.RELEASE_AFTER_FINAL_RESIDENCY
+                else 0
+            ),
             "accelerator_expert_bank_bytes": self.expert_bank_tensor_bytes(),
             "resident_identity_count": self.num_layers * self.num_experts,
         }
+
+    def release_detached_host_materializations(self) -> dict[str, int]:
+        """Physically release the explicit storage owners of a RELEASE transition.
+
+        Loader aliases must be severed first. Registered mmap banks are unregistered
+        and madvised; born-pinned banks reach cudaFreeHost only after all source Tensor
+        objects are proven dead. Double release is an explicit error.
+        """
+        from freetoken.moe.host_banks import HostMaterializationPolicy
+
+        self._host_release_invocation_count += 1
+        if not self._resident_only:
+            raise RuntimeError("host release requires qualifying final residency")
+        if self._host_materialization_policy != (
+            HostMaterializationPolicy.RELEASE_AFTER_FINAL_RESIDENCY.value
+        ):
+            raise RuntimeError("host release was not selected for this finalization")
+        if not self._host_release_pending:
+            raise RuntimeError("detached host materializations are already released")
+        live = sum(reference() is not None for reference in self._source_tensor_refs)
+        if live:
+            raise RuntimeError(
+                f"cannot physically release host materialization while {live} source "
+                "Tensor objects remain alive"
+            )
+        if self.device.type == "cuda":
+            torch.cuda.synchronize(self.device)
+        released = sum(
+            materialization.release_physical()
+            for materialization in self._host_materializations
+        )
+        self._host_release_invoked_bytes = released
+        self._host_release_pending = False
+        return {
+            "release_invocation_count": self._host_release_invocation_count,
+            "source_tensor_objects_alive": 0,
+            "explicit_storage_owner_count": len(self._host_materializations),
+            "release_invoked_bytes": released,
+        }
+
+    def host_materialization_accounting(self) -> dict[str, int | str | None]:
+        """Internal resource facts; intentionally not a final planner schema."""
+        attached = self.host_source_tensor_bytes()
+        retained_storages = {
+            (
+                str(tensor.device),
+                tensor.untyped_storage().data_ptr(),
+                tensor.untyped_storage().nbytes(),
+            ): tensor.untyped_storage().nbytes()
+            for per_layer in self._retained_host_sources.values()
+            for tensor in per_layer
+        }
+        retained = sum(retained_storages.values())
+        return {
+            "lifecycle_policy": self._host_materialization_policy,
+            "required_persistent_host_bytes": attached if not self._resident_only else 0,
+            "optional_retained_host_cache_bytes": retained,
+            "reclaimable_host_cache_bytes": retained,
+            "transient_staging_bytes": 0 if self._resident_only else attached,
+            "release_pending": int(self._host_release_pending),
+            "release_invoked_bytes": self._host_release_invoked_bytes,
+        }
+
+    def host_materialization_diagnostics(self) -> list[dict[str, object]]:
+        records = []
+        for owner in self._host_materializations:
+            record = owner.diagnostics()
+            live = sum(
+                reference() is not None
+                for reference in self._host_materialization_tensor_refs.get(
+                    owner.allocation_id, []
+                )
+            )
+            record["tensor_object_count_alive"] = live
+            record["tensor_objects_remain"] = live > 0
+            records.append(record)
+        return records
 
     def map_resident_experts_to_slots(
         self, layer_id: int, expert_ids: torch.Tensor, *, record_routing: bool = True
@@ -1529,7 +1668,7 @@ class OffloadMoeCache:
         if int(valid.sum()) == 0:
             return {}
         slots_per_layer = self.cache_size / self.num_layers
-        C = max(1, int(round(slots_per_layer)))
+        C = max(1, round(slots_per_layer))
         sorted_f, _ = torch.sort(freq, dim=1, descending=True)
         oracle_hit = (sorted_f[:, :C].sum(dim=1)[valid] / total[valid]).mean().item()
         ws = (freq > 0).sum(dim=1).float()

@@ -1,0 +1,184 @@
+{
+  "future_r3_accounting_principle": {
+    "optional_retained_host_cache_bytes": "intentional and evictable",
+    "physically_available_host_bytes": "OS evidence, not tensor counters",
+    "reclaimable_host_cache_bytes": "optional bytes eligible for physical release",
+    "required_persistent_host_bytes": "execution-required, non-evictable",
+    "transient_staging_bytes": "materialization-time overlap"
+  },
+  "issue": "https://github.com/Zutfen-LLC/inferswarm/issues/53",
+  "limitations": [
+    "RETAIN has no post-finalization rematerialization API or timing proof.",
+    "Physical capacity proof is Linux /proc accounting on the frozen host.",
+    "The lifecycle policy and accounting remain internal research interfaces."
+  ],
+  "ownership": {
+    "allocation_mechanism": "anonymous mmap + cudaHostRegister",
+    "exact_owner": "HostBank storage retained by the module-global process-lifetime _LIVE_BUFFERS list after R2 tensor/source dictionaries were detached",
+    "finding": "accidental post-final-residency lifetime overreach of a deliberate ordinary-offload retention rule",
+    "history": [
+      {
+        "commit": "3af9d90ee5e7af9bbff1e16f4f1c6201f41fff25",
+        "fact": "introduced process-lifetime mmap retention for offload banks"
+      },
+      {
+        "commit": "83300b9f5e244c53912d270b34c139700b8bdd4e",
+        "fact": "introduced logical resident-only detach"
+      }
+    ],
+    "leak_classification": false,
+    "lifetime": "worker process lifetime",
+    "ordinary_offload_intent": "keep source banks attached so OffloadMoeCache.rebuild can resize GPU slot caches without rereading checkpoint storage",
+    "post_r2_detach_reusable": false,
+    "reason_not_reusable": "R2 discarded tensor/source registries; the surviving mmap list had no supported rematerialization owner or operation"
+  },
+  "passed": true,
+  "primitive_diagnostic_passed": true,
+  "r2_merge_base": "8627f441c880398389042ce8c0a604f6c4321dfa",
+  "release": {
+    "accounting": {
+      "a": {
+        "lifecycle_policy": "release_after_final_residency",
+        "optional_retained_host_cache_bytes": 0,
+        "reclaimable_host_cache_bytes": 0,
+        "release_invoked_bytes": 8636596224,
+        "release_pending": 0,
+        "required_persistent_host_bytes": 0,
+        "transient_staging_bytes": 0
+      },
+      "b": {
+        "lifecycle_policy": "release_after_final_residency",
+        "optional_retained_host_cache_bytes": 0,
+        "reclaimable_host_cache_bytes": 0,
+        "release_invoked_bytes": 9545711616,
+        "release_pending": 0,
+        "required_persistent_host_bytes": 0,
+        "transient_staging_bytes": 0
+      }
+    },
+    "correctness": {
+      "boundary_hashes_exact": true,
+      "exact_generated_tokens": true,
+      "nan_inf_zero": true,
+      "passed": true,
+      "resident_runtime_counters_passed": true,
+      "resource_identity_passed": true,
+      "selected_logits_byte_exact": true,
+      "selected_logits_within_r2_threshold": true
+    },
+    "participant_runtime_counters": {
+      "a": {
+        "decode_graph": {
+          "captures": 1,
+          "recaptures": 0,
+          "replays": 62
+        },
+        "fallbacks": 0,
+        "host_expert_fetches": 0,
+        "populate_count": 1,
+        "resident_source_accesses": 0,
+        "steady_model_state_movement_bytes": 0
+      },
+      "b": {
+        "decode_graph": {
+          "captures": 1,
+          "recaptures": 0,
+          "replays": 62
+        },
+        "fallbacks": 0,
+        "host_expert_fetches": 0,
+        "populate_count": 1,
+        "resident_source_accesses": 0,
+        "steady_model_state_movement_bytes": 0
+      }
+    },
+    "physical_reclamation": {
+      "combined": {
+        "measurement_basis": "min(sum participant VmRSS reductions, coordinated median system MemAvailable increase)",
+        "reclaimed_bytes": 18177527808,
+        "reclaimed_fraction_of_staging": 0.9997371053200692,
+        "staging_bytes": 18182307840,
+        "summed_process_rss_reclaimed_bytes": 18177527808,
+        "system_memavailable_after_bytes": 104683438080,
+        "system_memavailable_before_bytes": 85691170816,
+        "system_memavailable_increase_bytes": 18992267264
+      },
+      "minimum_fraction": 0.8,
+      "participants": {
+        "a": {
+          "process_rss_after_bytes": 1769586688,
+          "process_rss_before_bytes": 10403823616,
+          "process_rss_shmem_after_bytes": 37773312,
+          "process_rss_shmem_before_bytes": 8674369536,
+          "reclaimed_bytes": 8634236928,
+          "reclaimed_fraction_of_staging": 0.9997268257148061,
+          "source_storage_owners_alive": 0,
+          "source_tensor_bytes": 0,
+          "source_tensor_objects_alive": 0,
+          "staging_bytes": 8636596224,
+          "worker_alive": true
+        },
+        "b": {
+          "process_rss_after_bytes": 1783685120,
+          "process_rss_before_bytes": 11326976000,
+          "process_rss_shmem_after_bytes": 37773312,
+          "process_rss_shmem_before_bytes": 9583484928,
+          "reclaimed_bytes": 9543290880,
+          "reclaimed_fraction_of_staging": 0.9997464059153073,
+          "source_storage_owners_alive": 0,
+          "source_tensor_bytes": 0,
+          "source_tensor_objects_alive": 0,
+          "staging_bytes": 9545711616,
+          "worker_alive": true
+        }
+      },
+      "passed": true,
+      "policy": "release_after_final_residency",
+      "tensor_counters_alone_can_pass": false
+    },
+    "workers_remained_alive": true
+  },
+  "result": "HOST_STAGING_RECLAMATION_PASS",
+  "retain": {
+    "accounting": {
+      "a": {
+        "lifecycle_policy": "retain_reusable_source",
+        "optional_retained_host_cache_bytes": 8636596224,
+        "reclaimable_host_cache_bytes": 8636596224,
+        "release_invoked_bytes": 0,
+        "release_pending": 0,
+        "required_persistent_host_bytes": 0,
+        "transient_staging_bytes": 0
+      },
+      "b": {
+        "lifecycle_policy": "retain_reusable_source",
+        "optional_retained_host_cache_bytes": 9545711616,
+        "reclaimable_host_cache_bytes": 9545711616,
+        "release_invoked_bytes": 0,
+        "release_pending": 0,
+        "required_persistent_host_bytes": 0,
+        "transient_staging_bytes": 0
+      }
+    },
+    "correctness": {
+      "boundary_hashes_exact": true,
+      "exact_generated_tokens": true,
+      "nan_inf_zero": true,
+      "passed": true,
+      "resident_runtime_counters_passed": true,
+      "resource_identity_passed": true,
+      "selected_logits_byte_exact": true,
+      "selected_logits_within_r2_threshold": true
+    },
+    "post_finalization_rematerialization_supported": false,
+    "rematerialization_timing_seconds": null,
+    "timing_status": "not measured: no supported post-finalization destroy/rematerialize operation exists; retention benefit is proven only for ordinary OffloadMoeCache.rebuild before finalization"
+  },
+  "schema": "inferswarm.pre-r3.host-reclamation-result/1",
+  "verification": {
+    "inferswarm_r0_r1_r2_and_offload_targeted": "228 passed",
+    "lifecycle_and_ordinary_offload": "41 passed",
+    "r2_correctness_methodology_regressions": "28 passed",
+    "ruff": "passed on all changed Python paths"
+  }
+}

@@ -1,0 +1,473 @@
+{
+  "all_process_rss_reclaimed_at_least_95_percent": true,
+  "bounded_size_bytes": 536870912,
+  "global_page_cache_drop": false,
+  "python_gc_scope": "allocation primitive diagnostic only",
+  "results": [
+    {
+      "allocation_mechanism": "cudaHostAlloc",
+      "owner": null,
+      "primitive": "alloc_pinned_tensor",
+      "process_remained_alive": true,
+      "process_rss_reclaimed_bytes": 536862720,
+      "process_rss_reclaimed_fraction": 0.9999847412109375,
+      "process_rss_shmem_reclaimed_bytes": 536870912,
+      "release_invoked_bytes": 536870912,
+      "requested_bytes": 536870912,
+      "snapshots": {
+        "after_reference_drop_gc": {
+          "pid": 2077857,
+          "process_smaps_rollup_bytes": {
+            "Anonymous": 332025856,
+            "Locked": 0,
+            "Private_Clean": 72011776,
+            "Private_Dirty": 342618112,
+            "Pss": 525316096,
+            "Rss": 642277376,
+            "Shared_Clean": 227647488,
+            "Shared_Dirty": 0,
+            "Swap": 0,
+            "SwapPss": 0
+          },
+          "process_status_bytes": {
+            "RssAnon": 332025856,
+            "RssFile": 301862912,
+            "RssShmem": 8388608,
+            "VmHWM": 1177260032,
+            "VmLck": 0,
+            "VmRSS": 642277376,
+            "VmSwap": 0
+          },
+          "system_meminfo_bytes": {
+            "Cached": 50947624960,
+            "MemAvailable": 107630628864,
+            "MemFree": 80480575488,
+            "Mlocked": 0,
+            "Shmem": 23488798720,
+            "SwapFree": 12898529280
+          },
+          "worker_alive": true
+        },
+        "before": {
+          "pid": 2077857,
+          "process_smaps_rollup_bytes": {
+            "Anonymous": 298708992,
+            "Locked": 0,
+            "Private_Clean": 12288,
+            "Private_Dirty": 298708992,
+            "Pss": 408465408,
+            "Rss": 524484608,
+            "Shared_Clean": 225763328,
+            "Shared_Dirty": 0,
+            "Swap": 0,
+            "SwapPss": 0
+          },
+          "process_status_bytes": {
+            "RssAnon": 298708992,
+            "RssFile": 225775616,
+            "RssShmem": 0,
+            "VmHWM": 524484608,
+            "VmLck": 0,
+            "VmRSS": 524484608,
+            "VmSwap": 0
+          },
+          "system_meminfo_bytes": {
+            "Cached": 50939236352,
+            "MemAvailable": 108297396224,
+            "MemFree": 81147342848,
+            "Mlocked": 0,
+            "Shmem": 23480410112,
+            "SwapFree": 12898529280
+          },
+          "worker_alive": true
+        },
+        "populated": {
+          "pid": 2077857,
+          "process_smaps_rollup_bytes": {
+            "Anonymous": 332017664,
+            "Locked": 0,
+            "Private_Clean": 72011776,
+            "Private_Dirty": 879480832,
+            "Pss": 1062178816,
+            "Rss": 1179140096,
+            "Shared_Clean": 227647488,
+            "Shared_Dirty": 0,
+            "Swap": 0,
+            "SwapPss": 0
+          },
+          "process_status_bytes": {
+            "RssAnon": 332017664,
+            "RssFile": 301862912,
+            "RssShmem": 545259520,
+            "VmHWM": 1179140096,
+            "VmLck": 0,
+            "VmRSS": 1179140096,
+            "VmSwap": 0
+          },
+          "system_meminfo_bytes": {
+            "Cached": 51484495872,
+            "MemAvailable": 107620880384,
+            "MemFree": 80470827008,
+            "Mlocked": 0,
+            "Shmem": 24025669632,
+            "SwapFree": 12898529280
+          },
+          "worker_alive": true
+        }
+      },
+      "system_memavailable_delta_bytes": 9748480
+    },
+    {
+      "allocation_mechanism": "cudaMallocHost",
+      "owner": null,
+      "primitive": "create_pinned_tensor_like",
+      "process_remained_alive": true,
+      "process_rss_reclaimed_bytes": 536866816,
+      "process_rss_reclaimed_fraction": 0.9999923706054688,
+      "process_rss_shmem_reclaimed_bytes": 536870912,
+      "release_invoked_bytes": 536870912,
+      "requested_bytes": 536870912,
+      "snapshots": {
+        "after_reference_drop_gc": {
+          "pid": 2077970,
+          "process_smaps_rollup_bytes": {
+            "Anonymous": 333238272,
+            "Locked": 0,
+            "Private_Clean": 72450048,
+            "Private_Dirty": 343830528,
+            "Pss": 526918656,
+            "Rss": 643829760,
+            "Shared_Clean": 227549184,
+            "Shared_Dirty": 0,
+            "Swap": 0,
+            "SwapPss": 0
+          },
+          "process_status_bytes": {
+            "RssAnon": 333238272,
+            "RssFile": 302202880,
+            "RssShmem": 8388608,
+            "VmHWM": 1178951680,
+            "VmLck": 0,
+            "VmRSS": 643829760,
+            "VmSwap": 0
+          },
+          "system_meminfo_bytes": {
+            "Cached": 50947624960,
+            "MemAvailable": 107136835584,
+            "MemFree": 79986814976,
+            "Mlocked": 0,
+            "Shmem": 23488798720,
+            "SwapFree": 12898529280
+          },
+          "worker_alive": true
+        },
+        "before": {
+          "pid": 2077970,
+          "process_smaps_rollup_bytes": {
+            "Anonymous": 298721280,
+            "Locked": 0,
+            "Private_Clean": 86016,
+            "Private_Dirty": 298721280,
+            "Pss": 408503296,
+            "Rss": 524472320,
+            "Shared_Clean": 225665024,
+            "Shared_Dirty": 0,
+            "Swap": 0,
+            "SwapPss": 0
+          },
+          "process_status_bytes": {
+            "RssAnon": 298717184,
+            "RssFile": 225751040,
+            "RssShmem": 0,
+            "VmHWM": 524468224,
+            "VmLck": 0,
+            "VmRSS": 524468224,
+            "VmSwap": 0
+          },
+          "system_meminfo_bytes": {
+            "Cached": 50939240448,
+            "MemAvailable": 107775262720,
+            "MemFree": 80625205248,
+            "Mlocked": 0,
+            "Shmem": 23480410112,
+            "SwapFree": 12898529280
+          },
+          "worker_alive": true
+        },
+        "populated": {
+          "pid": 2077970,
+          "process_smaps_rollup_bytes": {
+            "Anonymous": 333234176,
+            "Locked": 0,
+            "Private_Clean": 72450048,
+            "Private_Dirty": 880697344,
+            "Pss": 1063785472,
+            "Rss": 1180696576,
+            "Shared_Clean": 227549184,
+            "Shared_Dirty": 0,
+            "Swap": 0,
+            "SwapPss": 0
+          },
+          "process_status_bytes": {
+            "RssAnon": 333234176,
+            "RssFile": 302202880,
+            "RssShmem": 545259520,
+            "VmHWM": 1180696576,
+            "VmLck": 0,
+            "VmRSS": 1180696576,
+            "VmSwap": 0
+          },
+          "system_meminfo_bytes": {
+            "Cached": 51484495872,
+            "MemAvailable": 107086630912,
+            "MemFree": 79936577536,
+            "Mlocked": 0,
+            "Shmem": 24025669632,
+            "SwapFree": 12898529280
+          },
+          "worker_alive": true
+        }
+      },
+      "system_memavailable_delta_bytes": 50204672
+    },
+    {
+      "allocation_mechanism": "anonymous mmap + cudaHostRegister",
+      "owner": {
+        "allocation_bytes": 536870912,
+        "allocation_id": "host-materialization-1",
+        "allocation_mechanism": "mmap+cudaHostRegister",
+        "lifecycle_state": "released_physical",
+        "locked": false,
+        "owner_tensor_object_present": false,
+        "owning_python_class": "HostBank",
+        "registered_or_pinned": false,
+        "release_invocation_count": 1,
+        "requested_bytes": 536870912,
+        "storage_present": false
+      },
+      "primitive": "pin_after_fill",
+      "process_remained_alive": true,
+      "process_rss_reclaimed_bytes": 536788992,
+      "process_rss_reclaimed_fraction": 0.999847412109375,
+      "process_rss_shmem_reclaimed_bytes": 536870912,
+      "release_invoked_bytes": 536870912,
+      "requested_bytes": 536870912,
+      "snapshots": {
+        "after_reference_drop_gc": {
+          "pid": 2078079,
+          "process_smaps_rollup_bytes": {
+            "Anonymous": 433537024,
+            "Locked": 0,
+            "Private_Clean": 126672896,
+            "Private_Dirty": 444129280,
+            "Pss": 681650176,
+            "Rss": 799145984,
+            "Shared_Clean": 228343808,
+            "Shared_Dirty": 0,
+            "Swap": 0,
+            "SwapPss": 0
+          },
+          "process_status_bytes": {
+            "RssAnon": 433537024,
+            "RssFile": 357220352,
+            "RssShmem": 8388608,
+            "VmHWM": 1333907456,
+            "VmLck": 0,
+            "VmRSS": 799145984,
+            "VmSwap": 0
+          },
+          "system_meminfo_bytes": {
+            "Cached": 50947624960,
+            "MemAvailable": 106862718976,
+            "MemFree": 79712763904,
+            "Mlocked": 0,
+            "Shmem": 23488798720,
+            "SwapFree": 12898529280
+          },
+          "worker_alive": true
+        },
+        "before": {
+          "pid": 2078079,
+          "process_smaps_rollup_bytes": {
+            "Anonymous": 298778624,
+            "Locked": 0,
+            "Private_Clean": 155648,
+            "Private_Dirty": 298778624,
+            "Pss": 408652800,
+            "Rss": 524652544,
+            "Shared_Clean": 225718272,
+            "Shared_Dirty": 0,
+            "Swap": 0,
+            "SwapPss": 0
+          },
+          "process_status_bytes": {
+            "RssAnon": 298774528,
+            "RssFile": 225873920,
+            "RssShmem": 0,
+            "VmHWM": 524648448,
+            "VmLck": 0,
+            "VmRSS": 524648448,
+            "VmSwap": 0
+          },
+          "system_meminfo_bytes": {
+            "Cached": 50939236352,
+            "MemAvailable": 107289141248,
+            "MemFree": 80139128832,
+            "Mlocked": 0,
+            "Shmem": 23480410112,
+            "SwapFree": 12898529280
+          },
+          "worker_alive": true
+        },
+        "populated": {
+          "pid": 2078079,
+          "process_smaps_rollup_bytes": {
+            "Anonymous": 433537024,
+            "Locked": 0,
+            "Private_Clean": 126607360,
+            "Private_Dirty": 981000192,
+            "Pss": 1218455552,
+            "Rss": 1335951360,
+            "Shared_Clean": 228343808,
+            "Shared_Dirty": 0,
+            "Swap": 0,
+            "SwapPss": 0
+          },
+          "process_status_bytes": {
+            "RssAnon": 433520640,
+            "RssFile": 357154816,
+            "RssShmem": 545259520,
+            "VmHWM": 1335934976,
+            "VmLck": 0,
+            "VmRSS": 1335934976,
+            "VmSwap": 0
+          },
+          "system_meminfo_bytes": {
+            "Cached": 51484499968,
+            "MemAvailable": 106538729472,
+            "MemFree": 79388708864,
+            "Mlocked": 0,
+            "Shmem": 24025669632,
+            "SwapFree": 12898529280
+          },
+          "worker_alive": true
+        }
+      },
+      "system_memavailable_delta_bytes": 323989504
+    },
+    {
+      "allocation_mechanism": "ordinary CPU allocation",
+      "owner": null,
+      "primitive": "ordinary_pageable",
+      "process_remained_alive": true,
+      "process_rss_reclaimed_bytes": 536875008,
+      "process_rss_reclaimed_fraction": 1.0000076293945312,
+      "process_rss_shmem_reclaimed_bytes": 0,
+      "release_invoked_bytes": 536870912,
+      "requested_bytes": 536870912,
+      "snapshots": {
+        "after_reference_drop_gc": {
+          "pid": 2078236,
+          "process_smaps_rollup_bytes": {
+            "Anonymous": 331997184,
+            "Locked": 0,
+            "Private_Clean": 71962624,
+            "Private_Dirty": 342589440,
+            "Pss": 525190144,
+            "Rss": 642101248,
+            "Shared_Clean": 227549184,
+            "Shared_Dirty": 0,
+            "Swap": 0,
+            "SwapPss": 0
+          },
+          "process_status_bytes": {
+            "RssAnon": 331997184,
+            "RssFile": 301715456,
+            "RssShmem": 8388608,
+            "VmHWM": 1177735168,
+            "VmLck": 0,
+            "VmRSS": 642101248,
+            "VmSwap": 0
+          },
+          "system_meminfo_bytes": {
+            "Cached": 50947624960,
+            "MemAvailable": 107098992640,
+            "MemFree": 79949029376,
+            "Mlocked": 0,
+            "Shmem": 23488798720,
+            "SwapFree": 12898529280
+          },
+          "worker_alive": true
+        },
+        "before": {
+          "pid": 2078236,
+          "process_smaps_rollup_bytes": {
+            "Anonymous": 298704896,
+            "Locked": 0,
+            "Private_Clean": 86016,
+            "Private_Dirty": 298704896,
+            "Pss": 408486912,
+            "Rss": 524455936,
+            "Shared_Clean": 225665024,
+            "Shared_Dirty": 0,
+            "Swap": 0,
+            "SwapPss": 0
+          },
+          "process_status_bytes": {
+            "RssAnon": 298704896,
+            "RssFile": 225751040,
+            "RssShmem": 0,
+            "VmHWM": 524455936,
+            "VmLck": 0,
+            "VmRSS": 524455936,
+            "VmSwap": 0
+          },
+          "system_meminfo_bytes": {
+            "Cached": 50939236352,
+            "MemAvailable": 107178811392,
+            "MemFree": 80028856320,
+            "Mlocked": 0,
+            "Shmem": 23480410112,
+            "SwapFree": 12898529280
+          },
+          "worker_alive": true
+        },
+        "populated": {
+          "pid": 2078236,
+          "process_smaps_rollup_bytes": {
+            "Anonymous": 868872192,
+            "Locked": 0,
+            "Private_Clean": 71962624,
+            "Private_Dirty": 879464448,
+            "Pss": 1062065152,
+            "Rss": 1178976256,
+            "Shared_Clean": 227549184,
+            "Shared_Dirty": 0,
+            "Swap": 0,
+            "SwapPss": 0
+          },
+          "process_status_bytes": {
+            "RssAnon": 868872192,
+            "RssFile": 301715456,
+            "RssShmem": 8388608,
+            "VmHWM": 1178976256,
+            "VmLck": 0,
+            "VmRSS": 1178976256,
+            "VmSwap": 0
+          },
+          "system_meminfo_bytes": {
+            "Cached": 50947624960,
+            "MemAvailable": 106605875200,
+            "MemFree": 79455920128,
+            "Mlocked": 0,
+            "Shmem": 23488798720,
+            "SwapFree": 12898529280
+          },
+          "worker_alive": true
+        }
+      },
+      "system_memavailable_delta_bytes": 493117440
+    }
+  ],
+  "schema": "inferswarm.pre-r3.allocation-primitives/1"
+}
