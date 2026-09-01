@@ -95,23 +95,23 @@
     "physical_reclamation": {
       "combined": {
         "measurement_basis": "min(sum participant VmRSS reductions, coordinated median system MemAvailable increase)",
-        "reclaimed_bytes": 18177572864,
-        "reclaimed_fraction_of_staging": 0.9997395833333333,
+        "reclaimed_bytes": 18177527808,
+        "reclaimed_fraction_of_staging": 0.9997371053200692,
         "staging_bytes": 18182307840,
-        "summed_process_rss_reclaimed_bytes": 18177572864,
-        "system_memavailable_after_bytes": 104747706368,
-        "system_memavailable_before_bytes": 85653577728,
-        "system_memavailable_increase_bytes": 19094128640
+        "summed_process_rss_reclaimed_bytes": 18177527808,
+        "system_memavailable_after_bytes": 104683438080,
+        "system_memavailable_before_bytes": 85691170816,
+        "system_memavailable_increase_bytes": 18992267264
       },
       "minimum_fraction": 0.8,
       "participants": {
         "a": {
-          "process_rss_after_bytes": 1770385408,
-          "process_rss_before_bytes": 10404642816,
+          "process_rss_after_bytes": 1769586688,
+          "process_rss_before_bytes": 10403823616,
           "process_rss_shmem_after_bytes": 37773312,
           "process_rss_shmem_before_bytes": 8674369536,
-          "reclaimed_bytes": 8634257408,
-          "reclaimed_fraction_of_staging": 0.999729197019365,
+          "reclaimed_bytes": 8634236928,
+          "reclaimed_fraction_of_staging": 0.9997268257148061,
           "source_storage_owners_alive": 0,
           "source_tensor_bytes": 0,
           "source_tensor_objects_alive": 0,
@@ -119,12 +119,12 @@
           "worker_alive": true
         },
         "b": {
-          "process_rss_after_bytes": 1785704448,
-          "process_rss_before_bytes": 11329019904,
+          "process_rss_after_bytes": 1783685120,
+          "process_rss_before_bytes": 11326976000,
           "process_rss_shmem_after_bytes": 37773312,
           "process_rss_shmem_before_bytes": 9583484928,
-          "reclaimed_bytes": 9543315456,
-          "reclaimed_fraction_of_staging": 0.9997489804745427,
+          "reclaimed_bytes": 9543290880,
+          "reclaimed_fraction_of_staging": 0.9997464059153073,
           "source_storage_owners_alive": 0,
           "source_tensor_bytes": 0,
           "source_tensor_objects_alive": 0,
@@ -178,6 +178,7 @@
   "verification": {
     "inferswarm_r0_r1_r2_and_offload_targeted": "228 passed",
     "lifecycle_and_ordinary_offload": "41 passed",
-    "ruff": "pending final tree run"
+    "r2_correctness_methodology_regressions": "28 passed",
+    "ruff": "passed on all changed Python paths"
   }
 }

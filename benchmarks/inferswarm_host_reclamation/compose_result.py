@@ -136,7 +136,8 @@ def main(argv: list[str] | None = None) -> int:
         "verification": {
             "lifecycle_and_ordinary_offload": "41 passed",
             "inferswarm_r0_r1_r2_and_offload_targeted": "228 passed",
-            "ruff": "pending final tree run",
+            "r2_correctness_methodology_regressions": "28 passed",
+            "ruff": "passed on all changed Python paths",
         },
         "limitations": [
             "RETAIN has no post-finalization rematerialization API or timing proof.",

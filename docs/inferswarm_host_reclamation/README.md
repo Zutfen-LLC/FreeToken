@@ -1,7 +1,9 @@
 # Pre-R3 host-staging lifecycle proof
 
-Canonical issue: [InferSwarm #53](https://github.com/Zutfen-LLC/inferswarm/issues/53)  
-Exact FreeToken base: `8627f441c880398389042ce8c0a604f6c4321dfa`  
+Canonical issue: [InferSwarm #53](https://github.com/Zutfen-LLC/inferswarm/issues/53)
+
+Exact FreeToken base: `8627f441c880398389042ce8c0a604f6c4321dfa`
+
 Disposition: `HOST_STAGING_RECLAMATION_PASS`
 
 This is a capacity-accounting prerequisite, not R3.
@@ -51,12 +53,12 @@ system-available increase.
 
 | Participant | Staging bytes | RSS before | RSS after | Reclaimed bytes | Fraction |
 |---|---:|---:|---:|---:|---:|
-| Block A | 8,636,596,224 | 10,404,642,816 | 1,770,385,408 | 8,634,257,408 | 99.973% |
-| Block B | 9,545,711,616 | 11,329,019,904 | 1,785,704,448 | 9,543,315,456 | 99.975% |
-| Combined conservative | 18,182,307,840 | — | — | 18,177,572,864 | 99.974% |
+| Block A | 8,636,596,224 | 10,403,823,616 | 1,769,586,688 | 8,634,236,928 | 99.973% |
+| Block B | 9,545,711,616 | 11,326,976,000 | 1,783,685,120 | 9,543,290,880 | 99.975% |
+| Combined conservative | 18,182,307,840 | — | — | 18,177,527,808 | 99.974% |
 
-Coordinated system `MemAvailable` increased from 85,653,577,728 to 104,747,706,368
-bytes, a 19,094,128,640-byte increase. Both processes remained alive for resident W2/W4
+Coordinated system `MemAvailable` increased from 85,691,170,816 to 104,683,438,080
+bytes, an 18,992,267,264-byte increase. Both processes remained alive for resident W2/W4
 execution. Their final non-staging `RssShmem` was 37,773,312 bytes each, including the
 retained boundary transport/runtime mappings.
 
