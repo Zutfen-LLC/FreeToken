@@ -1,0 +1,235 @@
+{
+  "candidate_evaluation_authorized": true,
+  "canonical_reference": "reference-v2-session-a.json",
+  "comparisons": [
+    {
+      "class_id": "W1",
+      "generated_token_ids_exact": true,
+      "layer_18_seam_exact": null,
+      "prompt_token_ids_exact": true,
+      "selected_logits": [
+        {
+          "atol": 0.002,
+          "exact": true,
+          "generated_step": 0,
+          "left_float32_sha256": "7f1c44ba3d43285dd1b283f0deaf9c128690a57c8461f8ee697d1c3a3fe01a34",
+          "max_absolute_deviation": 0.0,
+          "max_relative_deviation": 0.0,
+          "right_float32_sha256": "7f1c44ba3d43285dd1b283f0deaf9c128690a57c8461f8ee697d1c3a3fe01a34",
+          "rtol": 0.002,
+          "within_threshold": true
+        },
+        {
+          "atol": 0.002,
+          "exact": true,
+          "generated_step": 1,
+          "left_float32_sha256": "595462cbed297f9cece20fb739163144a9e598ae83a9f7f5962b3a5ee5a25713",
+          "max_absolute_deviation": 0.0,
+          "max_relative_deviation": 0.0,
+          "right_float32_sha256": "595462cbed297f9cece20fb739163144a9e598ae83a9f7f5962b3a5ee5a25713",
+          "rtol": 0.002,
+          "within_threshold": true
+        },
+        {
+          "atol": 0.002,
+          "exact": true,
+          "generated_step": 15,
+          "left_float32_sha256": "9e51587178bf8a48a779c30e7661c522067f073d495fc5ec872b95078450d378",
+          "max_absolute_deviation": 0.0,
+          "max_relative_deviation": 0.0,
+          "right_float32_sha256": "9e51587178bf8a48a779c30e7661c522067f073d495fc5ec872b95078450d378",
+          "rtol": 0.002,
+          "within_threshold": true
+        },
+        {
+          "atol": 0.002,
+          "exact": true,
+          "generated_step": 31,
+          "left_float32_sha256": "b0536f64c011a4a82338a5bd813398fec0afbe1dbb9b662253e116785f9c71c6",
+          "max_absolute_deviation": 0.0,
+          "max_relative_deviation": 0.0,
+          "right_float32_sha256": "b0536f64c011a4a82338a5bd813398fec0afbe1dbb9b662253e116785f9c71c6",
+          "rtol": 0.002,
+          "within_threshold": true
+        }
+      ]
+    },
+    {
+      "class_id": "W2",
+      "generated_token_ids_exact": true,
+      "layer_18_seam_exact": true,
+      "prompt_token_ids_exact": true,
+      "selected_logits": [
+        {
+          "atol": 0.002,
+          "exact": true,
+          "generated_step": 0,
+          "left_float32_sha256": "e9b7a49752014f6ea5d4fe3abe9c6cdb88dbde199d064a64ac9888fd2b9400aa",
+          "max_absolute_deviation": 0.0,
+          "max_relative_deviation": 0.0,
+          "right_float32_sha256": "e9b7a49752014f6ea5d4fe3abe9c6cdb88dbde199d064a64ac9888fd2b9400aa",
+          "rtol": 0.002,
+          "within_threshold": true
+        },
+        {
+          "atol": 0.002,
+          "exact": true,
+          "generated_step": 1,
+          "left_float32_sha256": "7d92bb5e2f1d76675261d73aa81a85e110b5e7a33ff8512e5e876567e03c1014",
+          "max_absolute_deviation": 0.0,
+          "max_relative_deviation": 0.0,
+          "right_float32_sha256": "7d92bb5e2f1d76675261d73aa81a85e110b5e7a33ff8512e5e876567e03c1014",
+          "rtol": 0.002,
+          "within_threshold": true
+        },
+        {
+          "atol": 0.002,
+          "exact": true,
+          "generated_step": 15,
+          "left_float32_sha256": "3c61b61bd57c975f9d70e736551e77bd6cf6f401a614a3376b0062f50388449c",
+          "max_absolute_deviation": 0.0,
+          "max_relative_deviation": 0.0,
+          "right_float32_sha256": "3c61b61bd57c975f9d70e736551e77bd6cf6f401a614a3376b0062f50388449c",
+          "rtol": 0.002,
+          "within_threshold": true
+        },
+        {
+          "atol": 0.002,
+          "exact": true,
+          "generated_step": 31,
+          "left_float32_sha256": "6a2a21eafa02924c03fae7affdd72e937bea51083915bc93f6777bd8fbfb9744",
+          "max_absolute_deviation": 0.0,
+          "max_relative_deviation": 0.0,
+          "right_float32_sha256": "6a2a21eafa02924c03fae7affdd72e937bea51083915bc93f6777bd8fbfb9744",
+          "rtol": 0.002,
+          "within_threshold": true
+        }
+      ]
+    },
+    {
+      "class_id": "W3",
+      "generated_token_ids_exact": true,
+      "layer_18_seam_exact": null,
+      "prompt_token_ids_exact": true,
+      "selected_logits": [
+        {
+          "atol": 0.002,
+          "exact": true,
+          "generated_step": 0,
+          "left_float32_sha256": "73290f55f6539bb1417e738e46120c1ae03a9a1b20b25640e2a7fbaa9258b86e",
+          "max_absolute_deviation": 0.0,
+          "max_relative_deviation": 0.0,
+          "right_float32_sha256": "73290f55f6539bb1417e738e46120c1ae03a9a1b20b25640e2a7fbaa9258b86e",
+          "rtol": 0.002,
+          "within_threshold": true
+        },
+        {
+          "atol": 0.002,
+          "exact": true,
+          "generated_step": 1,
+          "left_float32_sha256": "e699e4cc28747096f230a304d91f969c5caee5cd91a3123bbba192b6957173d5",
+          "max_absolute_deviation": 0.0,
+          "max_relative_deviation": 0.0,
+          "right_float32_sha256": "e699e4cc28747096f230a304d91f969c5caee5cd91a3123bbba192b6957173d5",
+          "rtol": 0.002,
+          "within_threshold": true
+        },
+        {
+          "atol": 0.002,
+          "exact": true,
+          "generated_step": 15,
+          "left_float32_sha256": "5c6b37a12d0877261868b315c4045111c082627e38f70fbc11ab53b638238ead",
+          "max_absolute_deviation": 0.0,
+          "max_relative_deviation": 0.0,
+          "right_float32_sha256": "5c6b37a12d0877261868b315c4045111c082627e38f70fbc11ab53b638238ead",
+          "rtol": 0.002,
+          "within_threshold": true
+        },
+        {
+          "atol": 0.002,
+          "exact": true,
+          "generated_step": 31,
+          "left_float32_sha256": "6ab0d0ce8945296ddc0924f1ae75f803205f000bb6fce2cb30d608b439a7503c",
+          "max_absolute_deviation": 0.0,
+          "max_relative_deviation": 0.0,
+          "right_float32_sha256": "6ab0d0ce8945296ddc0924f1ae75f803205f000bb6fce2cb30d608b439a7503c",
+          "rtol": 0.002,
+          "within_threshold": true
+        }
+      ]
+    },
+    {
+      "class_id": "W4",
+      "generated_token_ids_exact": true,
+      "layer_18_seam_exact": true,
+      "prompt_token_ids_exact": true,
+      "selected_logits": [
+        {
+          "atol": 0.002,
+          "exact": true,
+          "generated_step": 0,
+          "left_float32_sha256": "1737e67d9f9aa10f6858fd8b0d4bb7c5cb7fbdce7beedbddf3c5be585d8c51aa",
+          "max_absolute_deviation": 0.0,
+          "max_relative_deviation": 0.0,
+          "right_float32_sha256": "1737e67d9f9aa10f6858fd8b0d4bb7c5cb7fbdce7beedbddf3c5be585d8c51aa",
+          "rtol": 0.002,
+          "within_threshold": true
+        },
+        {
+          "atol": 0.002,
+          "exact": true,
+          "generated_step": 1,
+          "left_float32_sha256": "bcc26a2052a0c2b99adaaf59594642c7fe7e791fcd631473199993943c473859",
+          "max_absolute_deviation": 0.0,
+          "max_relative_deviation": 0.0,
+          "right_float32_sha256": "bcc26a2052a0c2b99adaaf59594642c7fe7e791fcd631473199993943c473859",
+          "rtol": 0.002,
+          "within_threshold": true
+        },
+        {
+          "atol": 0.002,
+          "exact": true,
+          "generated_step": 15,
+          "left_float32_sha256": "9d203eafa5a118428a0b8b6972e900cb54a779068926b1c84cae729e34cbf230",
+          "max_absolute_deviation": 0.0,
+          "max_relative_deviation": 0.0,
+          "right_float32_sha256": "9d203eafa5a118428a0b8b6972e900cb54a779068926b1c84cae729e34cbf230",
+          "rtol": 0.002,
+          "within_threshold": true
+        },
+        {
+          "atol": 0.002,
+          "exact": true,
+          "generated_step": 31,
+          "left_float32_sha256": "74be278376d5e406c08ce3d8b1ec9fbc4701fc33ca7087f5b19519db820d8b83",
+          "max_absolute_deviation": 0.0,
+          "max_relative_deviation": 0.0,
+          "right_float32_sha256": "74be278376d5e406c08ce3d8b1ec9fbc4701fc33ca7087f5b19519db820d8b83",
+          "rtol": 0.002,
+          "within_threshold": true
+        }
+      ]
+    }
+  ],
+  "corroborating_reference": "reference-v2-session-b.json",
+  "identity_exact": true,
+  "logit_consistency_passed": true,
+  "methodology": {
+    "document": "docs/implementation/r2-correctness-reference-methodology-v2.md",
+    "merge_commit": "b05be56317449fe59c1a9adaa8dc81ae14142737",
+    "repository": "Zutfen-LLC/inferswarm"
+  },
+  "schema": "inferswarm.r2.reference-v2-selection/1",
+  "seam_consistency_passed": true,
+  "selection_rule": "session-a-predeclared",
+  "self_consistency_passed": true,
+  "session_a": {
+    "artifact": "reference-v2-session-a.json",
+    "sha256": "e3f646b3a99c6736b66649eda2c2e8dc2568798c50b18bec7335ca040a490535"
+  },
+  "session_b": {
+    "artifact": "reference-v2-session-b.json",
+    "sha256": "3d228d646b6a7624032dd13247a9405536827e05c527aa5935b97d33e2da427f"
+  },
+  "token_consistency_passed": true
+}

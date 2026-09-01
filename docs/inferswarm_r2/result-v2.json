@@ -1,0 +1,195 @@
+{
+  "architectural_result": "R2_LOCAL_SPLIT_EXECUTION_PASS",
+  "backend_native": {
+    "participants": {
+      "a": {
+        "captures": 1,
+        "recaptures": 0,
+        "replays": 155
+      },
+      "b": {
+        "captures": 1,
+        "recaptures": 0,
+        "replays": 155
+      }
+    },
+    "passed": true
+  },
+  "boundary": {
+    "all_checksums_matched": true,
+    "decode_payload_bytes": 8192,
+    "prefill_chunk_payload_bytes": 524288,
+    "steady_state_model_state_movement_bytes": 0
+  },
+  "corrected_frozen_methodology_result": "R2_LOCAL_SPLIT_EXECUTION_PASS",
+  "correctness": {
+    "acceptance_gates": {
+      "backend_native": true,
+      "boundary": true,
+      "host_mirror": true,
+      "model_state_movement": true,
+      "numerical_health": true,
+      "ownership": true,
+      "plan": true,
+      "resource_identity": true,
+      "selected_logits": true,
+      "session_isolation": true,
+      "tokens": true
+    },
+    "artifact": "correctness-v2.json",
+    "artifact_sha256": "91a56c6f6a474128a839668ead878146d7344e0deaca99ce16f09d8f2c4bbb10",
+    "inf_count": 0,
+    "max_absolute_deviation": 0.0,
+    "max_relative_deviation": 0.0,
+    "nan_count": 0,
+    "reference": {
+      "canonical_artifact": "reference-v2-session-a.json",
+      "canonical_artifact_sha256": "e3f646b3a99c6736b66649eda2c2e8dc2568798c50b18bec7335ca040a490535",
+      "corroborating_artifact_sha256": "3d228d646b6a7624032dd13247a9405536827e05c527aa5935b97d33e2da427f",
+      "selection_artifact": "reference-v2-selection.json",
+      "selection_artifact_sha256": "a10baa75e378f7c8f180e5e564877c6f471a56739bc04a29f61c0d9034afbb2f",
+      "selection_rule": "session-a-predeclared"
+    },
+    "threshold": {
+      "atol": 0.002,
+      "rtol": 0.002
+    },
+    "workloads": [
+      {
+        "class_id": "W1",
+        "exact_generated_tokens": true,
+        "selected_logits_within_threshold": true
+      },
+      {
+        "class_id": "W2",
+        "exact_generated_tokens": true,
+        "selected_logits_within_threshold": true
+      },
+      {
+        "class_id": "W3",
+        "exact_generated_tokens": true,
+        "selected_logits_within_threshold": true
+      },
+      {
+        "class_id": "W4",
+        "exact_generated_tokens": true,
+        "selected_logits_within_threshold": true
+      }
+    ]
+  },
+  "diagnosis": "REFERENCE_GEOMETRY_MISMATCH",
+  "historical_original_comparator_result": "R2_LOCAL_SPLIT_EXECUTION_BLOCKED_CORRECTNESS",
+  "history_preserved": {
+    "correctness_artifact_sha256": "c54c0970c483d7a31e67efd80724d5b4ec3b46754482995b6f196b0bad64f6ea",
+    "historical_verdict": "R2_LOCAL_SPLIT_EXECUTION_BLOCKED_CORRECTNESS",
+    "result_artifact_sha256": "19bd1c16801e910b3181e4b1441358b0baf09c09407fd4358db2cb730797be53"
+  },
+  "host_mirror": {
+    "participants": {
+      "a": 0,
+      "b": 0
+    },
+    "passed": true
+  },
+  "methodology": {
+    "document": "docs/implementation/r2-correctness-reference-methodology-v2.md",
+    "merge_commit": "b05be56317449fe59c1a9adaa8dc81ae14142737",
+    "repository": "Zutfen-LLC/inferswarm"
+  },
+  "passed": true,
+  "performance": {
+    "artifact_sha256": "5b7239b12ce674274d8fc8dd95857dc8e738bb0e743cf57ba606a40f193df837",
+    "exact_scope": "this frozen plan, hardware, software lineage, and topology",
+    "median_split_over_baseline_decode_throughput": 0.9122201965705241,
+    "performance_sensitive_executable_code_changed": false,
+    "placement_assessment": "PERFORMANCE_NEGATIVE",
+    "rerun_in_v2": false,
+    "status": "PREVIOUSLY_MEASURED_MATCHED_PERFORMANCE_EVIDENCE",
+    "ttft_disposition": "dramatically lower for the resident split, especially for long prompts"
+  },
+  "plan": {
+    "digest": "sha256:6128dd6705d6d692df3d5fc11cc130dba5c010cfff40c0e4c5ec7c19e1b78ff0",
+    "file_sha256": "8a09a1b5a885ca0e3908e467c610172663ef90b1c8b1b2ff6826fc8c45c206cc",
+    "split": {
+      "block_a": [
+        0,
+        19
+      ],
+      "block_b": [
+        19,
+        40
+      ]
+    }
+  },
+  "schema": "inferswarm.r2.result-v2/1",
+  "scope": {
+    "automatic_planning": false,
+    "dynamic_epochs": false,
+    "future_public_apis": false,
+    "general_multi_gpu_scaling": false,
+    "network_execution": false,
+    "one_frozen_doctrine_shaped_local_split_plan": true,
+    "optimal_placement": false,
+    "other_model_architectures": false
+  },
+  "state_ownership": {
+    "a": {
+      "kv_cache_allocated_bytes": 140509184,
+      "kv_global_layer_ids": [
+        3,
+        7,
+        11,
+        15
+      ],
+      "linear_global_layer_ids": [
+        0,
+        1,
+        2,
+        4,
+        5,
+        6,
+        8,
+        9,
+        10,
+        12,
+        13,
+        14,
+        16,
+        17,
+        18
+      ],
+      "linear_recurrent_allocated_bytes": 32194560,
+      "total_block_local_state_bytes": 172703744
+    },
+    "b": {
+      "kv_cache_allocated_bytes": 210763776,
+      "kv_global_layer_ids": [
+        19,
+        23,
+        27,
+        31,
+        35,
+        39
+      ],
+      "linear_global_layer_ids": [
+        20,
+        21,
+        22,
+        24,
+        25,
+        26,
+        28,
+        29,
+        30,
+        32,
+        33,
+        34,
+        36,
+        37,
+        38
+      ],
+      "linear_recurrent_allocated_bytes": 32194560,
+      "total_block_local_state_bytes": 242958336
+    }
+  }
+}

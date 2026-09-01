@@ -8,11 +8,21 @@ the exact accepted R1 merge commit
 
 ## Review status
 
-`R2_LOCAL_SPLIT_EXECUTION_PASS` is **not declared**. The execution proof produced
-the exact 32-token sequence for W1-W4, but W1, W3, and W4 selected logits exceeded
-the existing canonical `rtol=2e-3, atol=2e-3` threshold. Maximum absolute deviation
-was 1.25; NaN and Inf counts were zero. The committed result therefore says
-`R2_LOCAL_SPLIT_EXECUTION_BLOCKED_CORRECTNESS` pending diagnosis and review.
+The historical original-comparator result remains
+`R2_LOCAL_SPLIT_EXECUTION_BLOCKED_CORRECTNESS`: the execution proof produced the
+exact 32-token sequence for W1-W4, but W1, W3, and W4 selected logits exceeded the
+existing canonical `rtol=2e-3, atol=2e-3` threshold. Maximum absolute deviation was
+1.25; NaN and Inf counts were zero. The original evidence files below remain
+byte-for-byte unchanged.
+
+The corrected methodology was frozen and merged in InferSwarm at
+`b05be56317449fe59c1a9adaa8dc81ae14142737` before the new physical evaluation.
+Two independent one-GPU reference sessions using the frozen candidate geometry
+were byte-exact for W1-W4 tokens, all selected logits, and W2/W4 layer-18 seam
+hashes. The predeclared selector chose session A. A fresh unchanged split candidate
+then matched A byte-exactly and passed every retained architectural gate. The new
+review result is `R2_LOCAL_SPLIT_EXECUTION_PASS`; diagnosis:
+`REFERENCE_GEOMETRY_MISMATCH`.
 
 The separate measured placement assessment is `PERFORMANCE_NEGATIVE`: median split
 decode throughput was 0.9122 times the matched baseline across workload medians.
@@ -58,6 +68,24 @@ idle discovery records may show the devices' power-managed Gen1 state.
   graph counters, ownership, residency, and the correctness blocker.
 - `benchmark.json`: raw warmup/five-repetition A/B timings and summaries.
 - `result.json`: compact review-facing synthesis of all retained artifacts.
+- `reference-v2-session-a.json`: canonical corrected-methodology reference;
+  SHA-256 `e3f646b3a99c6736b66649eda2c2e8dc2568798c50b18bec7335ca040a490535`.
+- `reference-v2-session-b.json`: independent corroborating reference;
+  SHA-256 `3d228d646b6a7624032dd13247a9405536827e05c527aa5935b97d33e2da427f`.
+- `reference-v2-selection.json`: mechanical byte-exact A/B self-consistency pass
+  and predeclared session-A selection; SHA-256
+  `a10baa75e378f7c8f180e5e564877c6f471a56739bc04a29f61c0d9034afbb2f`.
+- `correctness-v2.json`: fresh unchanged candidate comparison and complete
+  architectural gates; SHA-256
+  `91a56c6f6a474128a839668ead878146d7344e0deaca99ce16f09d8f2c4bbb10`.
+- `result-v2.json`: corrected frozen-methodology disposition; SHA-256
+  `e999a701bfed891a188ae98108241ee58adf31752e44f4e5e2662acd7acde277`.
 
 Each retained JSON has a sibling `.sha256`. Startup/materialization is reported
 separately from inference. No retired N1 result is included as R2 physical evidence.
+
+No v2 performance campaign was run. The unchanged historical benchmark remains
+`PREVIOUSLY_MEASURED_MATCHED_PERFORMANCE_EVIDENCE` for the same execution path and
+retains `PERFORMANCE_NEGATIVE`: median split/baseline decode throughput was
+approximately 0.9122, while TTFT was dramatically lower for the resident split,
+especially for long prompts.
