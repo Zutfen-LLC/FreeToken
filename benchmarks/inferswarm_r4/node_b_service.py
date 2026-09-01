@@ -19,6 +19,7 @@ import hashlib
 import json
 import os
 import socket
+import subprocess
 import time
 from pathlib import Path
 
@@ -98,6 +99,26 @@ def serve(
     )
 
     plan = load_r4_plan(Path(plan_path))
+    # fail closed: the running producer must be the plan's frozen producer
+    repo_root = Path(__file__).resolve().parents[2]
+    running_sha = subprocess.check_output(
+        [
+            "git",
+            "-c",
+            f"safe.directory={repo_root}",
+            "-C",
+            str(repo_root),
+            "rev-parse",
+            "HEAD",
+        ],
+        text=True,
+    ).strip()
+    plan_producer = plan.get("provenance", {}).get("r4", {}).get("producer_sha")
+    if plan_producer and running_sha != plan_producer:
+        raise RuntimeError(
+            f"Node B running producer {running_sha!r} != plan's frozen producer "
+            f"{plan_producer!r}; canonical execution refuses to proceed"
+        )
     execution_id = "exec.block-b"
     r1_plan = plan["participant_r1_plans"][execution_id]
     validate_participant(
@@ -108,8 +129,6 @@ def serve(
         materialization_ids=[item["id"] for item in r1_plan["materializations"]],
     )
     verify_checkpoint_revision(model_path, MODEL_REVISION)
-    import subprocess
-
     gpu_row = subprocess.check_output(
         [
             "nvidia-smi",
@@ -121,6 +140,28 @@ def serve(
     found = any(GPU_B_UUID in line for line in gpu_row.splitlines())
     if not found:
         raise RuntimeError(f"frozen GPU {GPU_B_UUID} not visible on Node B")
+    # frozen GPU BDF: refuse silent card selection / PCI drift
+    frozen_identity = plan.get("frozen_gpu_identity", {}).get("node.inferswarm03")
+    if frozen_identity:
+        actual_bdf = None
+        for line in gpu_row.splitlines():
+            if GPU_B_UUID in line:
+                actual_bdf = line.rsplit(",", 1)[1].strip()
+        if actual_bdf != frozen_identity.get("pci_bdf"):
+            raise RuntimeError(
+                f"frozen GPU BDF drift on Node B: {actual_bdf!r} != "
+                f"frozen {frozen_identity.get('pci_bdf')!r}"
+            )
+    # issue #57: MemAvailable >= 12 GiB and DMI physical RAM >= 16 GiB
+    # measured immediately before Block-B heavyweight realization
+    from benchmarks.inferswarm_r4.r4_preflight_gate import (
+        require_block_b_host_ram,
+        require_no_swap_reliance,
+    )
+    from benchmarks.inferswarm_r4.node_preflight import _memory as _probe_memory
+
+    pre_realization_memory = _probe_memory()
+    host_ram_gate = require_block_b_host_ram(pre_realization_memory)
     environment = {
         "model_repository": plan["model"]["repository"],
         "model_revision": plan["model"]["revision"],
@@ -164,6 +205,8 @@ def serve(
                     "listen": [listen_host, listen_port],
                     "diagnostic": diagnostic,
                     "pid": os.getpid(),
+                    "producer_freetoken_sha": running_sha,
+                    "host_ram_gate": host_ram_gate,
                     "realization": {
                         "validation": realized.validation,
                         "reconciliation": realized.reconciliation,
@@ -339,8 +382,18 @@ def serve(
             final_report = {
                 "schema": "inferswarm.r4.node-b-final-report/1",
                 "plan_digest": plan["digest"],
+                "producer_freetoken_sha": running_sha,
                 "diagnostic": diagnostic,
                 "stats": stats,
+                "host_ram_gate": host_ram_gate,
+                "memory_lifecycle": {
+                    "pre_realization": pre_realization_memory,
+                    "post_release": _probe_memory(),
+                    "swap_reliance": require_no_swap_reliance(
+                        pre_realization_memory["swap_activity"],
+                        _probe_memory()["swap_activity"],
+                    ),
+                },
                 "runtime": runtime.report("P5_post_run"),
             }
             Path(

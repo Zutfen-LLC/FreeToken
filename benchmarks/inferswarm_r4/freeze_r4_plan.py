@@ -37,11 +37,17 @@ def main(argv: list[str] | None = None) -> int:
     r2_plan = json.loads(args.r2_plan.read_text())
     node_a = json.loads(args.node_a_profile.read_text())
     node_b = json.loads(args.node_b_profile.read_text())
+    if not args.implementation_commit:
+        raise SystemExit(
+            "--implementation-commit (the exact producer SHA) is required; "
+            "the frozen plan must carry producer provenance"
+        )
     plan = build_r4_plan(
         r2_plan,
         node_a_hardware=node_a,
         node_b_hardware=node_b,
         link_freeze=CANONICAL_LINK,
+        producer_sha=args.implementation_commit,
     )
     args.out_dir.mkdir(parents=True, exist_ok=True)
     write_json_with_sha(args.out_dir / "r4-frozen-plan.json", plan)

@@ -103,6 +103,28 @@ def run_arm(
     from freetoken.research.r2_local_split import validate_participant
 
     diagnostic = arm == "diagnostic"
+    # fail closed: the running producer must be the plan's frozen producer
+    import subprocess
+
+    repo_root = Path(__file__).resolve().parents[2]
+    running_sha = subprocess.check_output(
+        [
+            "git",
+            "-c",
+            f"safe.directory={repo_root}",
+            "-C",
+            str(repo_root),
+            "rev-parse",
+            "HEAD",
+        ],
+        text=True,
+    ).strip()
+    plan_producer = plan.get("provenance", {}).get("r4", {}).get("producer_sha")
+    if plan_producer and running_sha != plan_producer:
+        raise RuntimeError(
+            f"running producer {running_sha!r} != plan's frozen producer "
+            f"{plan_producer!r}; canonical execution refuses to proceed"
+        )
     execution_id = "exec.block-a"
     r1_plan = plan["participant_r1_plans"][execution_id]
     from benchmarks.inferswarm_r4.r4_plan import GPU_A_UUID, MODEL_REVISION
@@ -136,9 +158,21 @@ def run_arm(
         "arm": arm,
         "diagnostic_transfer": diagnostic,
         "class_ids": class_ids,
-        "producer_freetoken_sha": plan.get("provenance", {})
-        .get("r4", {})
-        .get("producer_sha"),
+        "producer_freetoken_sha": running_sha,
+        "plan_digest": plan["digest"],
+        "node_identity": {
+            "node_a": {
+                "node_id": "node.inferswarm01",
+                "hostname": "inferswarm01",
+                "role": "block-a",
+            },
+            "node_b": {
+                "node_id": "node.inferswarm03",
+                "hostname": "inferswarm03",
+                "role": "block-b",
+            },
+            "peer": f"{peer_host}:{peer_port}",
+        },
         "sessions": [],
         "realization": {
             "validation": realized.validation,

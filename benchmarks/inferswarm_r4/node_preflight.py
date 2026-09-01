@@ -35,6 +35,106 @@ def _run(command: list[str], ethtool_path: str = DEFAULT_ETHTOOL) -> str:
         return f"<failed: {exc}>"
 
 
+def _logical_cpu_count() -> int:
+    """Count online logical CPUs from sysfs (handles ranges like 0-7)."""
+
+    total = 0
+    for part in Path("/sys/devices/system/cpu/online").read_text().strip().split(","):
+        if "-" in part:
+            lo, hi = part.split("-")
+            total += int(hi) - int(lo) + 1
+        elif part.strip():
+            total += 1
+    return total
+
+
+def _cpu_topology() -> dict[str, Any]:
+    """Correct CPU topology: physical cores deduplicated across threads.
+
+    Uses (physical_id, core_id) pairs from /proc/cpuinfo so hyperthreads do
+    not inflate the physical count (the previous `grep -c '^core id'`
+    implementation reported threads as cores and a broken logical count).
+    Falls back to lscpu parsing when cpuinfo lacks topology fields.
+    """
+
+    model = None
+    pairs: set[tuple[str, str]] = set()
+    processor_count = 0
+    current: dict[str, str] = {}
+    try:
+        lines = Path("/proc/cpuinfo").read_text().splitlines()
+    except OSError:
+        lines = []
+    for line in lines:
+        if not line.strip():
+            if current:
+                processor_count += 1
+                if "physical id" in current and "core id" in current:
+                    pairs.add((current["physical id"], current["core id"]))
+            current = {}
+            continue
+        key, _, value = line.partition(":")
+        key = key.strip()
+        if key == "model name":
+            model = value.strip()
+        elif key in ("physical id", "core id"):
+            current[key] = value.strip()
+    if current:
+        processor_count += 1
+        if "physical id" in current and "core id" in current:
+            pairs.add((current["physical id"], current["core id"]))
+    physical = len(pairs) if pairs else None
+    logical = _logical_cpu_count() or processor_count or None
+    if physical is None:
+        # lscpu fallback
+        output = _run(["lscpu"])
+        if not output.startswith("<failed"):
+            sockets = cores = None
+            for line in output.splitlines():
+                if line.startswith("Socket(s):"):
+                    sockets = int(line.split(":")[1])
+                elif line.startswith("Core(s) per socket:"):
+                    cores = int(line.split(":")[1])
+                elif line.startswith("CPU(s):") and physical is None:
+                    pass
+            if sockets and cores:
+                physical = sockets * cores
+    return {
+        "model": model,
+        "physical_cores": physical,
+        "logical_cpus": logical,
+    }
+
+
+DMI_MEMORY_DEVICE_SIZE = re.compile(r"^\s*Size:\s*(\d+)\s*([MG]B)\s*$", re.MULTILINE)
+
+
+def _physical_installed_ram_bytes() -> int | None:
+    """Physically installed RAM from DMI (dmidecode), not /proc/meminfo.
+
+    Linux MemTotal excludes firmware/hardware reservations (a 16 GiB machine
+    commonly reports ~15.48 GiB), so issue #57's 16 GiB installed-RAM
+    requirement must be proven from DMI memory-device sizes.
+    """
+
+    output = _run(["sudo", "-n", "dmidecode", "-t", "memory"])
+    if output.startswith("<failed"):
+        return None
+    total = 0
+    blocks = output.split("Memory Device")
+    for block in blocks[1:]:
+        found = False
+        for size, unit in DMI_MEMORY_DEVICE_SIZE.findall(block):
+            if unit == "GB":
+                total += int(size) * 1024**3
+            else:
+                total += int(size) * 1024**2
+            found = True
+        # blocks without a Size line (empty sockets) contribute nothing
+        _ = found
+    return total or None
+
+
 def _memory() -> dict[str, Any]:
     info = {}
     for line in Path("/proc/meminfo").read_text().splitlines():
@@ -57,10 +157,22 @@ def _memory() -> dict[str, Any]:
         "mem_total_kib": info.get("MemTotal"),
         "mem_available_kib": info.get("MemAvailable"),
         "mem_free_kib": info.get("MemFree"),
+        # issue #57 separates physical installed RAM (DMI) from Linux-visible
+        # MemTotal (excludes firmware/hardware reservations)
+        "physical_installed_ram_bytes": _physical_installed_ram_bytes(),
+        "mem_total_bytes": (
+            info.get("MemTotal") * 1024 if info.get("MemTotal") is not None else None
+        ),
+        "mem_available_bytes": (
+            info.get("MemAvailable") * 1024
+            if info.get("MemAvailable") is not None
+            else None
+        ),
         "swap_total_kib": info.get("SwapTotal"),
         "swap_free_kib": info.get("SwapFree"),
         "swap_activity": vmstat,
         "swaps": swap_lines.strip(),
+        "measured_at_unix": time.time(),
     }
 
 
@@ -78,6 +190,9 @@ def _gpus() -> list[dict[str, str]]:
             )
         )
         item["memory_total_bytes"] = str(int(item["memory.total"]) * 1024 * 1024)
+        # normalized BDF key: profiles historically recorded only the raw
+        # nvidia-smi `pci.bus_id` while R4 code expects `pci_bus_id`
+        item["pci_bus_id"] = item["pci.bus_id"]
         records.append(item)
     return records
 
@@ -117,13 +232,7 @@ def capture_node_profile(
         "hostname": _run(["hostname"]).strip(),
         "os_release": _run(["cat", "/etc/os-release"]).strip(),
         "kernel": _run(["uname", "-r"]).strip(),
-        "cpu": {
-            "model": _grep_first("/proc/cpuinfo", "model name"),
-            "physical_cores": int(
-                _run(["sh", "-c", "grep -c '^core id' /proc/cpuinfo"]) or 0
-            ),
-            "logical_cores": len(Path("/sys/devices/system/cpu/online").read_text().split(",")),
-        },
+        "cpu": _cpu_topology(),
         "memory": _memory(),
         "gpus": _gpus(),
         "gpu_topology": _run(["nvidia-smi", "topo", "-m"]),

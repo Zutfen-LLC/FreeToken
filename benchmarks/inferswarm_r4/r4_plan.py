@@ -30,6 +30,8 @@ R4_PLAN_SCHEMA = "inferswarm.r4.two-node-split-plan/1"
 NETWORK_TRANSPORT_KIND = "persistent-tcp-ethernet"
 NODE_A_ID = "node.inferswarm01"
 NODE_B_ID = "node.inferswarm03"
+NODE_A_HOSTNAME = "inferswarm01"
+NODE_B_HOSTNAME = "inferswarm03"
 GPU_A_UUID = "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099"
 GPU_B_UUID = "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176"
 MODEL_REPOSITORY = "nvidia/Qwen3.6-35B-A3B-NVFP4"
@@ -60,6 +62,7 @@ def build_r4_plan(
     node_a_hardware: dict[str, Any],
     node_b_hardware: dict[str, Any],
     link_freeze: dict[str, Any],
+    producer_sha: str | None = None,
 ) -> dict[str, Any]:
     """Derive the R4 plan from the accepted R2 frozen plan.
 
@@ -109,10 +112,19 @@ def build_r4_plan(
     plan["provenance"] = deepcopy(plan.get("provenance", {}))
     plan["provenance"]["r4"] = {
         "derived_from_r2_plan_digest": ACCEPTED_R2_PLAN_DIGEST,
+        "producer_sha": producer_sha,
+        "node_a_hostname": NODE_A_HOSTNAME,
+        "node_b_hostname": NODE_B_HOSTNAME,
         "node_a_hardware_digest": node_a_hardware.get("digest"),
         "node_b_hardware_digest": node_b_hardware.get("digest"),
         "link_freeze_digest": freeze_generic(link_freeze)["digest"],
         "variable_changed": "node-network-locality-only",
+    }
+    gpu_a_bdf = gpu_a.get("pci_bus_id") or gpu_a.get("pci.bus_id")
+    gpu_b_bdf = gpu_b.get("pci_bus_id") or gpu_b.get("pci.bus_id")
+    plan["frozen_gpu_identity"] = {
+        NODE_A_ID: {"uuid": GPU_A_UUID, "pci_bdf": gpu_a_bdf},
+        NODE_B_ID: {"uuid": GPU_B_UUID, "pci_bdf": gpu_b_bdf},
     }
     frozen = freeze_plan(plan)
     return frozen
