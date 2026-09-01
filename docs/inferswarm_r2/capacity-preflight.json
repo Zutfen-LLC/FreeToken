@@ -1,0 +1,62 @@
+{
+  "candidate_boundary": 19,
+  "component_provenance": {
+    "checkpoint_census_sha256": "07448253cf72c9209a28217c12c76dfe12ae749f9656e0a1f66b35eb1f4e72c2",
+    "graph_backend": "fresh pre-retained two-process realization observation from accepted R1 lineage",
+    "mutable": "capacity-only projection from historical N1 component measurements; retained R2 observes actual bytes",
+    "non_routed_and_routed": "fresh selective component inspection from accepted R1 lineage"
+  },
+  "components": {
+    "a": {
+      "graph_backend": 362554728,
+      "mutable": 172703744,
+      "non_routed": 1689347736,
+      "routed": 8636596224
+    },
+    "b": {
+      "graph_backend": 362523480,
+      "mutable": 242958336,
+      "non_routed": 1019085480,
+      "routed": 9545711616
+    }
+  },
+  "passed_with_explicit_safety": true,
+  "projected_required_bytes": {
+    "gpu-a.vram": 10861202432,
+    "gpu-b.vram": 11170278912
+  },
+  "remaining_after_required_bytes": {
+    "gpu-a.vram": 2023699456,
+    "gpu-b.vram": 1714622976
+  },
+  "safety_headroom_bytes": 536870912,
+  "schema": "inferswarm.r2.capacity-preflight/1",
+  "selected_gpu_records": [
+    {
+      "capacity_bytes": 12884901888,
+      "compute_cap": "8.6",
+      "driver_version": "610.57.04",
+      "index": "0",
+      "memory.total": "12288",
+      "name": "NVIDIA GeForce RTX 3060",
+      "pci.bus_id": "00000000:02:00.0",
+      "pcie.link.gen.current": "1",
+      "pcie.link.width.current": "16",
+      "uuid": "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099"
+    },
+    {
+      "capacity_bytes": 12884901888,
+      "compute_cap": "8.6",
+      "driver_version": "610.57.04",
+      "index": "1",
+      "memory.total": "12288",
+      "name": "NVIDIA GeForce RTX 3060",
+      "pci.bus_id": "00000000:03:00.0",
+      "pcie.link.gen.current": "1",
+      "pcie.link.width.current": "16",
+      "uuid": "GPU-d5c05739-96c1-7e49-89b6-bf54c2121c55"
+    }
+  ],
+  "selection_rule": "minimize max(block_A_owned_bytes, block_B_owned_bytes); tie-break lowest boundary",
+  "status": "N0_SPLIT_FITS"
+}

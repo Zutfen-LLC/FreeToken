@@ -1,7 +1,8 @@
 import os
-from typing import TYPE_CHECKING, Tuple
+from typing import TYPE_CHECKING
 
 import torch
+
 from freetoken.core import get_global_ctx
 from freetoken.distributed import DistributedCommunicator, get_tp_info
 from freetoken.moe import is_offload_moe_backend
@@ -22,7 +23,7 @@ if TYPE_CHECKING:
 # is computed outside the MoE layer. Such models call ``routed_forward`` (offload) or
 # ``_run_experts`` (dense) with a precomputed routing instead of going through the
 # generic softmax+top-k path.
-TopK = Tuple[torch.Tensor, torch.Tensor]
+TopK = tuple[torch.Tensor, torch.Tensor]
 
 # Hybrid decode overlaps the CPU overflow GEMV behind the GPU PCIe fetch + GEMM by
 # default. Set FREETOKEN_HYBRID_OVERLAP=0 to force the serial path (CPU sync before the
@@ -471,7 +472,35 @@ class OffloadMoELayer(MoELayer):
         cache = self.offload_cache
         assert cache is not None
         if cache.resident_only:
-            cache._reject_if_resident_only("prefill")
+            # Canonically populated full residency exposes layer-local aliases of
+            # the accelerator banks, preserving the ordinary backend-native prefill
+            # kernel and its raw local expert ids without any host source/copy.
+            views = cache.resident_prefill_layer_views(self.layer_id)
+            if views is not None:
+                return self._expert_gemm(
+                    cache,
+                    hidden_states,
+                    topk_weights,
+                    topk_ids,
+                    views=views,
+                    n=self.num_experts,
+                    alphas=cache.alphas_for_layer(self.layer_id),
+                    is_prefill=True,
+                )
+            # A legal non-contiguous frozen slot map cannot form E-row aliases.
+            # Map identities explicitly and use the slot-addressed accelerator
+            # kernel, which admits arbitrary batch rows.
+            cache.map_resident_experts_to_slots(self.layer_id, topk_ids)
+            return self._expert_gemm(
+                cache,
+                hidden_states,
+                topk_weights,
+                topk_ids,
+                views=cache.bank_views(),
+                n=None,
+                alphas=cache.alphas_for_slots(self.layer_id),
+                is_prefill=False,
+            )
         if cache.prefill_overlap:
             views = self._wait_prefill_overlap(cache)
             out = self._expert_gemm(
@@ -573,7 +602,14 @@ class OffloadMoELayer(MoELayer):
                 "InferSwarm route contributions require contiguous native NVFP4 decode inputs"
             )
 
-        gate_up_packed, gate_up_scale, gate_up_global, down_packed, down_scale, down_global = views
+        (
+            gate_up_packed,
+            gate_up_scale,
+            gate_up_global,
+            down_packed,
+            down_scale,
+            down_global,
+        ) = views
         hidden_size = hidden_states.shape[1]
         if gate_up_packed.ndim != 3 or down_packed.ndim != 3:
             raise RuntimeError(
