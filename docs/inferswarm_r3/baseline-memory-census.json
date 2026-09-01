@@ -1,0 +1,17 @@
+{
+  "candidate_shape": "s0.source-backed-single-offload",
+  "digest": "sha256:c53e38aac54a8806aa987568c7e111f5f21fe63f0cffc4995907be5d26a1ff04",
+  "implementation_commit": "012a37d3bb7dde2e53a42aedadab06364dba8a9a",
+  "mechanical_sources": [
+    "docs/inferswarm_r2/benchmark.json",
+    "docs/inferswarm_r2/baseline-config.json"
+  ],
+  "process_rss_is_not_the_feasibility_measure": true,
+  "required_persistent_host_source_bytes": 18182307840,
+  "required_persistent_vram_bytes": 10733223936,
+  "runtime_backend_allocations_included_in_vram_measurement": true,
+  "runtime_capacity_tokens": 17152,
+  "schema": "inferswarm.r3.baseline-memory-census/1",
+  "source_lifecycle": "ordinary offload; retained and required while serving",
+  "vram_safety_headroom_bytes": 536870912
+}

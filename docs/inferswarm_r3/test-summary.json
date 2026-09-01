@@ -1,0 +1,43 @@
+{
+  "schema": "inferswarm.r3.test-summary/1",
+  "implementation_commit": "012a37d3bb7dde2e53a42aedadab06364dba8a9a",
+  "commands": [
+    {
+      "command": "PYTHONPATH=python:benchmarks /home/zutfen/FreeToken-r2/.venv/bin/python -m pytest -q tests/research tests/moe/test_offload.py tests/moe/test_resident_only_cache.py tests/engine/test_runtime_report.py",
+      "passed": 178,
+      "failed": 0,
+      "deselected": 0
+    },
+    {
+      "command": "PYTHONPATH=python:benchmarks /home/zutfen/FreeToken-r2/.venv/bin/python -m pytest -q tests/kernels/test_pinned_tensor.py -k 'not host_device_ptr_is_identity_under_uva'",
+      "passed": 7,
+      "failed": 0,
+      "deselected": 1
+    }
+  ],
+  "total_passed": 185,
+  "total_failed": 0,
+  "total_deselected": 1,
+  "excluded_test": {
+    "node_id": "tests/kernels/test_pinned_tensor.py::test_host_device_ptr_is_identity_under_uva",
+    "separately_executed": true,
+    "observed_result": "FAILED",
+    "actual_failure": "RuntimeError: cudaHostGetDevicePointer failed (host memory must be pinned+mapped): invalid argument",
+    "reason": "The legacy assertion expects cudaHostGetDevicePointer to accept an unregistered pageable host pointer whenever UVA identity is reported. NVIDIA driver 610.57.04 rejects that unregistered pointer.",
+    "r3_relevance": "Outside R3 semantics: R3 S0 and S1 GPU movement paths use registered mapped host memory. No R3 test, R1/R2/#48/#53 regression, ordinary-offload regression, or resident-only regression is excluded; both fresh physical selected-shape executions passed.",
+    "test_was_not_modified_or_deleted": true
+  },
+  "environment": {
+    "platform": "Linux-6.12.105+deb13-amd64-x86_64-with-glibc2.41",
+    "python": "3.13.5",
+    "pytorch": "2.11.0+cu130",
+    "pytorch_cuda": "13.0",
+    "nvidia_driver": "610.57.04",
+    "gpu_compute_capability": "8.6"
+  },
+  "checks": {
+    "compileall_changed_paths": "PASS",
+    "git_diff_check_changed_paths": "PASS",
+    "ruff": "NOT_AVAILABLE_IN_ACCEPTED_TEST_ENVIRONMENT"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "digest": "sha256:c59e6acb44b65fcafc61f613339665544268af5eebf7268fd0aa3af319ce564b",
+  "excluded_compute_unit_ids": [
+    "gpu-b"
+  ],
+  "implementation_commit": "012a37d3bb7dde2e53a42aedadab06364dba8a9a",
+  "reservations_bytes": {},
+  "scenario": "C",
+  "schema": "inferswarm.r3.operator-policy/1"
+}

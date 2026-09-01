@@ -1,0 +1,14 @@
+{
+  "digest": "sha256:79162ce197bd379d20183c038693423e8da4a6d524f721bf1e114a448bd1c52d",
+  "direction": "MAXIMIZE",
+  "evidence_context": {
+    "workload_geometry": "W4-prompt121-generate32-prefill64-warm"
+  },
+  "id": "warm-decode-throughput",
+  "implementation_commit": "012a37d3bb7dde2e53a42aedadab06364dba8a9a",
+  "metric": "warm_decode_tok_s",
+  "schema": "inferswarm.r3.objective/1",
+  "startup_cost_included": false,
+  "statistic": "median",
+  "unit": "tok/s"
+}

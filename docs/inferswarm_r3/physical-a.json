@@ -1,0 +1,331 @@
+{
+  "compiled_plan_digest": "sha256:4718ceca0a59b0908d55a99cdf4007874ff36360fa37a82e76c564b0b8142ac4",
+  "correctness": {
+    "exact_generated_sequences": true,
+    "graph": {
+      "captures": 1,
+      "recaptures": 0,
+      "replays": 62
+    },
+    "inf_count": 0,
+    "max_absolute_deviation": 0.0,
+    "max_relative_deviation": 0.0,
+    "nan_count": 0,
+    "selected_logits_within_r2_v2_threshold": true,
+    "source_fetch_zero_not_required": true,
+    "source_lifecycle": "RETAIN_REQUIRED_SOURCE_BACKING",
+    "startup_materialization_seconds": 71.01837044299464,
+    "workloads": [
+      {
+        "class_id": "W2",
+        "exact_generated_sequence": true,
+        "generated_token_ids": [
+          9764,
+          393,
+          45,
+          283,
+          220,
+          24,
+          22,
+          853,
+          3,
+          321,
+          393,
+          35,
+          283,
+          220,
+          16,
+          22,
+          853,
+          12576,
+          198,
+          760,
+          2255,
+          393,
+          65,
+          3,
+          369,
+          449,
+          7308,
+          6826,
+          1056,
+          220,
+          24,
+          13
+        ],
+        "logit_checkpoints": [
+          {
+            "actual_float32_sha256": "e9b7a49752014f6ea5d4fe3abe9c6cdb88dbde199d064a64ac9888fd2b9400aa",
+            "actual_shape": [
+              1,
+              248320
+            ],
+            "atol": 0.002,
+            "exact": true,
+            "generated_step": 0,
+            "inf_count": 0,
+            "logical_row_element_count": 248320,
+            "max_absolute_deviation": 0.0,
+            "max_relative_deviation": 0.0,
+            "nan_count": 0,
+            "reference_float32_sha256": "e9b7a49752014f6ea5d4fe3abe9c6cdb88dbde199d064a64ac9888fd2b9400aa",
+            "reference_shape": [
+              1,
+              248320
+            ],
+            "rtol": 0.002,
+            "within_canonical_threshold": true
+          },
+          {
+            "actual_float32_sha256": "7d92bb5e2f1d76675261d73aa81a85e110b5e7a33ff8512e5e876567e03c1014",
+            "actual_shape": [
+              1,
+              248320
+            ],
+            "atol": 0.002,
+            "exact": true,
+            "generated_step": 1,
+            "inf_count": 0,
+            "logical_row_element_count": 248320,
+            "max_absolute_deviation": 0.0,
+            "max_relative_deviation": 0.0,
+            "nan_count": 0,
+            "reference_float32_sha256": "7d92bb5e2f1d76675261d73aa81a85e110b5e7a33ff8512e5e876567e03c1014",
+            "reference_shape": [
+              1,
+              248320
+            ],
+            "rtol": 0.002,
+            "within_canonical_threshold": true
+          },
+          {
+            "actual_float32_sha256": "3c61b61bd57c975f9d70e736551e77bd6cf6f401a614a3376b0062f50388449c",
+            "actual_shape": [
+              1,
+              248320
+            ],
+            "atol": 0.002,
+            "exact": true,
+            "generated_step": 15,
+            "inf_count": 0,
+            "logical_row_element_count": 248320,
+            "max_absolute_deviation": 0.0,
+            "max_relative_deviation": 0.0,
+            "nan_count": 0,
+            "reference_float32_sha256": "3c61b61bd57c975f9d70e736551e77bd6cf6f401a614a3376b0062f50388449c",
+            "reference_shape": [
+              1,
+              248320
+            ],
+            "rtol": 0.002,
+            "within_canonical_threshold": true
+          },
+          {
+            "actual_float32_sha256": "6a2a21eafa02924c03fae7affdd72e937bea51083915bc93f6777bd8fbfb9744",
+            "actual_shape": [
+              1,
+              248320
+            ],
+            "atol": 0.002,
+            "exact": true,
+            "generated_step": 31,
+            "inf_count": 0,
+            "logical_row_element_count": 248320,
+            "max_absolute_deviation": 0.0,
+            "max_relative_deviation": 0.0,
+            "nan_count": 0,
+            "reference_float32_sha256": "6a2a21eafa02924c03fae7affdd72e937bea51083915bc93f6777bd8fbfb9744",
+            "reference_shape": [
+              1,
+              248320
+            ],
+            "rtol": 0.002,
+            "within_canonical_threshold": true
+          }
+        ],
+        "ordinary_offload_source_access": {
+          "active_per_layer": 8.0,
+          "active_selections": 9920,
+          "cpu_per_layer": 0.0,
+          "decode_steps": 31,
+          "fetch_rate": 1.0,
+          "fetched_per_layer": 2.4274193548387095,
+          "fetches": 3010,
+          "hits": 6910,
+          "layer_calls": 1240,
+          "miss_rate": 0.3034274193548387,
+          "misses": 3010,
+          "missing_per_layer": 2.4274193548387095,
+          "prefill_hit_rows": 0,
+          "prefill_rows": 0
+        }
+      },
+      {
+        "class_id": "W4",
+        "exact_generated_sequence": true,
+        "generated_token_ids": [
+          8160,
+          579,
+          264,
+          7047,
+          1817,
+          25,
+          271,
+          16,
+          13,
+          220,
+          2972,
+          15771,
+          2598,
+          2570,
+          11033,
+          64700,
+          198,
+          256,
+          471,
+          2972,
+          1905,
+          64700,
+          60545,
+          12834,
+          2109,
+          369,
+          7262,
+          3315,
+          18394,
+          5861,
+          36,
+          318
+        ],
+        "logit_checkpoints": [
+          {
+            "actual_float32_sha256": "1737e67d9f9aa10f6858fd8b0d4bb7c5cb7fbdce7beedbddf3c5be585d8c51aa",
+            "actual_shape": [
+              1,
+              248320
+            ],
+            "atol": 0.002,
+            "exact": true,
+            "generated_step": 0,
+            "inf_count": 0,
+            "logical_row_element_count": 248320,
+            "max_absolute_deviation": 0.0,
+            "max_relative_deviation": 0.0,
+            "nan_count": 0,
+            "reference_float32_sha256": "1737e67d9f9aa10f6858fd8b0d4bb7c5cb7fbdce7beedbddf3c5be585d8c51aa",
+            "reference_shape": [
+              1,
+              248320
+            ],
+            "rtol": 0.002,
+            "within_canonical_threshold": true
+          },
+          {
+            "actual_float32_sha256": "bcc26a2052a0c2b99adaaf59594642c7fe7e791fcd631473199993943c473859",
+            "actual_shape": [
+              1,
+              248320
+            ],
+            "atol": 0.002,
+            "exact": true,
+            "generated_step": 1,
+            "inf_count": 0,
+            "logical_row_element_count": 248320,
+            "max_absolute_deviation": 0.0,
+            "max_relative_deviation": 0.0,
+            "nan_count": 0,
+            "reference_float32_sha256": "bcc26a2052a0c2b99adaaf59594642c7fe7e791fcd631473199993943c473859",
+            "reference_shape": [
+              1,
+              248320
+            ],
+            "rtol": 0.002,
+            "within_canonical_threshold": true
+          },
+          {
+            "actual_float32_sha256": "9d203eafa5a118428a0b8b6972e900cb54a779068926b1c84cae729e34cbf230",
+            "actual_shape": [
+              1,
+              248320
+            ],
+            "atol": 0.002,
+            "exact": true,
+            "generated_step": 15,
+            "inf_count": 0,
+            "logical_row_element_count": 248320,
+            "max_absolute_deviation": 0.0,
+            "max_relative_deviation": 0.0,
+            "nan_count": 0,
+            "reference_float32_sha256": "9d203eafa5a118428a0b8b6972e900cb54a779068926b1c84cae729e34cbf230",
+            "reference_shape": [
+              1,
+              248320
+            ],
+            "rtol": 0.002,
+            "within_canonical_threshold": true
+          },
+          {
+            "actual_float32_sha256": "74be278376d5e406c08ce3d8b1ec9fbc4701fc33ca7087f5b19519db820d8b83",
+            "actual_shape": [
+              1,
+              248320
+            ],
+            "atol": 0.002,
+            "exact": true,
+            "generated_step": 31,
+            "inf_count": 0,
+            "logical_row_element_count": 248320,
+            "max_absolute_deviation": 0.0,
+            "max_relative_deviation": 0.0,
+            "nan_count": 0,
+            "reference_float32_sha256": "74be278376d5e406c08ce3d8b1ec9fbc4701fc33ca7087f5b19519db820d8b83",
+            "reference_shape": [
+              1,
+              248320
+            ],
+            "rtol": 0.002,
+            "within_canonical_threshold": true
+          }
+        ],
+        "ordinary_offload_source_access": {
+          "active_per_layer": 8.0,
+          "active_selections": 9920,
+          "cpu_per_layer": 0.0,
+          "decode_steps": 31,
+          "fetch_rate": 1.0,
+          "fetched_per_layer": 2.462096774193548,
+          "fetches": 3053,
+          "hits": 6867,
+          "layer_calls": 1240,
+          "miss_rate": 0.3077620967741935,
+          "misses": 3053,
+          "missing_per_layer": 2.462096774193548,
+          "prefill_hit_rows": 0,
+          "prefill_rows": 0
+        }
+      }
+    ]
+  },
+  "decision_digest": "sha256:bbc82f52ab26ccba14d943ed393cdb4c87f92e4b2442b69a8001f9c4108abd85",
+  "decision_frozen_and_environment_validated_before_materialization": true,
+  "implementation_commit": "012a37d3bb7dde2e53a42aedadab06364dba8a9a",
+  "passed": true,
+  "scenario": "A",
+  "schema": "inferswarm.r3.physical-selected-execution/1",
+  "selected_candidate_id": "s0.source-backed-single-offload[whole-model-slot=gpu-a]",
+  "selected_mapping": {
+    "whole-model-slot": "gpu-a"
+  },
+  "selected_resources": [
+    {
+      "compute_unit_id": "gpu-a",
+      "memory_resource_id": "gpu-a.vram",
+      "slot_id": "whole-model-slot",
+      "stable_device_id": "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099"
+    }
+  ],
+  "workloads": [
+    "W2",
+    "W4"
+  ]
+}

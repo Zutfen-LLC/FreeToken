@@ -1,0 +1,8 @@
+{
+  "digest": "sha256:3558ba98a260124c681549e0cb093bb5ed4d81e30ace179643c7e30a34a6153c",
+  "excluded_compute_unit_ids": [],
+  "implementation_commit": "012a37d3bb7dde2e53a42aedadab06364dba8a9a",
+  "reservations_bytes": {},
+  "scenario": "A",
+  "schema": "inferswarm.r3.operator-policy/1"
+}
