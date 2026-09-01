@@ -102,7 +102,7 @@ class NodeACoordinator:
             self.sock,
             {"protocol": WIRE_PROTOCOL_ID, "experiment_id": self.experiment_id},
         )
-        self._account_rx(reply_wire := encode_frame(reply))
+        self._account_rx(encode_frame(reply))
         if reply.get("op") != "HELLO_ACK":
             raise WireError(f"unexpected hello reply {reply.get('op')!r}")
         if not reply.get("runtime_ready"):

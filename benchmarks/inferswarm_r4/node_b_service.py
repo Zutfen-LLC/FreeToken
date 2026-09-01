@@ -183,18 +183,12 @@ def serve(
         nodelay_state = conn.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY)
         identity_sent = False
         while True:
-            identity = (
-                {"protocol": WIRE_PROTOCOL_ID, "experiment_id": experiment_id}
-                if session_id is None
-                else {
-                    "protocol": WIRE_PROTOCOL_ID,
-                    "experiment_id": experiment_id,
-                    "session_id": session_id,
-                }
-            )
+            identity = {"protocol": WIRE_PROTOCOL_ID, "experiment_id": experiment_id}
             header, payload = recv_frame(conn, identity)
             kind = header.get("kind")
             if kind == "hello":
+                # A hello re-establishes the session over the same persistent
+                # connection; the new id becomes the enforced session.
                 session_id = header["session_id"]
                 runtime.reset_session_state()
                 session_open = True
@@ -214,6 +208,10 @@ def serve(
                 continue
             if kind != "request" or not session_open:
                 raise WireError(f"unexpected frame kind {kind!r} before session")
+            if header.get("session_id") != session_id:
+                raise WireError(
+                    f"session_id mismatch: {header.get('session_id')!r} != {session_id!r}"
+                )
             op = header["op"]
             if op not in ("OPEN_SESSION", "BOUNDARY"):
                 raise WireError(f"unsupported request op {op!r}")

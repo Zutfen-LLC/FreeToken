@@ -458,3 +458,84 @@ def test_clean_arm_run_experiment_has_no_diagnostic_payload() -> None:
 
     source = inspect.getsource(run_experiment)
     assert "full_logits" not in source
+
+
+# 20. persistent connection reused across multiple sessions ------------------
+
+
+def test_persistent_connection_across_sessions() -> None:
+    parent, child = socket.socketpair()
+
+    def server() -> None:
+        session = None
+        try:
+            while True:
+                header, payload = recv_frame(child)
+                kind = header.get("kind")
+                if kind == "hello":
+                    session = header["session_id"]
+                    send_exact(
+                        child,
+                        encode_frame(
+                            {
+                                "kind": "response",
+                                "protocol": header["protocol"],
+                                "experiment_id": header["experiment_id"],
+                                "session_id": session,
+                                "op": "HELLO_ACK",
+                                "runtime_ready": True,
+                                "payload_len": 0,
+                            }
+                        ),
+                    )
+                elif kind == "request":
+                    if header.get("session_id") != session:
+                        raise WireError("session changed without hello")
+                    send_exact(
+                        child,
+                        encode_frame(
+                            {
+                                "kind": "response",
+                                "protocol": header["protocol"],
+                                "experiment_id": header["experiment_id"],
+                                "session_id": session,
+                                "op": "TOKEN_RESULT",
+                                "token_id": 1,
+                                "payload_len": 0,
+                            }
+                        ),
+                    )
+        except WireError:
+            pass
+
+    import threading
+
+    thread = threading.Thread(target=server, daemon=True)
+    thread.start()
+    try:
+        for session_id in (1000, 1001):
+            header = {
+                "kind": "hello",
+                "protocol": "inferswarm.r4.boundary-wire/1",
+                "experiment_id": "exp-x",
+                "session_id": session_id,
+                "payload_len": 0,
+            }
+            send_exact(parent, encode_frame(header))
+            reply, _ = recv_frame(parent)
+            assert reply["op"] == "HELLO_ACK"
+            request = {
+                "kind": "request",
+                "protocol": "inferswarm.r4.boundary-wire/1",
+                "experiment_id": "exp-x",
+                "session_id": session_id,
+                "op": "BOUNDARY",
+                "payload_len": 0,
+            }
+            send_exact(parent, encode_frame(request))
+            reply, _ = recv_frame(parent)
+            assert reply["op"] == "TOKEN_RESULT"
+    finally:
+        parent.close()
+        child.close()
+        thread.join(timeout=2)
