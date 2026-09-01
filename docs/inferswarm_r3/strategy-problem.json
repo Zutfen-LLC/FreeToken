@@ -1,0 +1,132 @@
+{
+  "digest": "sha256:193ba70caffa4ec42e58ab9e62274e460a8e62668c305fb94a776392cd8f9c02",
+  "evidence_context": {
+    "model_revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce"
+  },
+  "implementation_commit": "f2ea03738a0162f1f26c57a90e548e2d22119a3b",
+  "model": {
+    "repository": "nvidia/Qwen3.6-35B-A3B-NVFP4",
+    "revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce"
+  },
+  "schema": "inferswarm.r3.qwen-planning-problem/1",
+  "shapes": [
+    {
+      "id": "s0.source-backed-single-offload",
+      "materializations": [
+        {
+          "bytes": 18182307840,
+          "id": "ordinary-offload-source",
+          "lifecycle": "PERSISTENT_REQUIRED",
+          "memory_kind": "system-ram"
+        }
+      ],
+      "slots": [
+        {
+          "id": "whole-model-slot",
+          "memory": {
+            "persistent_optional_bytes": 0,
+            "persistent_required_bytes": 10733223936,
+            "transient_peak_bytes": 0
+          },
+          "required_capabilities": [
+            "freetoken-offload-v1"
+          ]
+        }
+      ],
+      "strategy_payload": {
+        "baseline_config": "docs/inferswarm_r2/baseline-config.json",
+        "runtime": "ordinary-source-backed-offload"
+      }
+    },
+    {
+      "distinct_slot_groups": [
+        [
+          "opaque-slot-a",
+          "opaque-slot-b"
+        ]
+      ],
+      "id": "s1.resident-two-slot-split",
+      "materializations": [
+        {
+          "bytes": 8636596224,
+          "id": "slot-a-source-staging",
+          "lifecycle": "TRANSIENT_RELEASE_AFTER_FINALIZATION",
+          "memory_kind": "system-ram"
+        },
+        {
+          "bytes": 9545711616,
+          "id": "slot-b-source-staging",
+          "lifecycle": "TRANSIENT_RELEASE_AFTER_FINALIZATION",
+          "memory_kind": "system-ram"
+        },
+        {
+          "bytes": 524288,
+          "id": "registered-activation-buffer",
+          "lifecycle": "PERSISTENT_REQUIRED",
+          "memory_kind": "system-ram"
+        }
+      ],
+      "paths": [
+        {
+          "from_slot": "opaque-slot-a",
+          "id": "activation-boundary",
+          "required_capabilities": [
+            "registered-host-staging"
+          ],
+          "to_slot": "opaque-slot-b"
+        }
+      ],
+      "slots": [
+        {
+          "allowed_compute_unit_ids": [
+            "gpu-a"
+          ],
+          "id": "opaque-slot-a",
+          "memory": {
+            "persistent_optional_bytes": 0,
+            "persistent_required_bytes": 10861202432,
+            "transient_peak_bytes": 0
+          },
+          "required_capabilities": [
+            "freetoken-resident-block-v1"
+          ]
+        },
+        {
+          "allowed_compute_unit_ids": [
+            "gpu-b"
+          ],
+          "id": "opaque-slot-b",
+          "memory": {
+            "persistent_optional_bytes": 0,
+            "persistent_required_bytes": 11170278912,
+            "transient_peak_bytes": 0
+          },
+          "required_capabilities": [
+            "freetoken-resident-block-v1"
+          ]
+        }
+      ],
+      "strategy_payload": {
+        "accepted_r2_plan_digest": "sha256:6128dd6705d6d692df3d5fc11cc130dba5c010cfff40c0e4c5ec7c19e1b78ff0",
+        "boundary": {
+          "decode_bytes": 8192,
+          "dtype": "bfloat16",
+          "planes": 2,
+          "prefill_bytes": 524288,
+          "prefill_chunk_rows": 64
+        },
+        "host_staging_policy": "release_after_final_residency",
+        "opaque_unit_geometry": [
+          [
+            0,
+            19
+          ],
+          [
+            19,
+            40
+          ]
+        ]
+      }
+    }
+  ]
+}

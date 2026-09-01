@@ -1,0 +1,127 @@
+{
+  "context": {
+    "model_revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
+    "runtime_context": "accepted-r2-runtime-compatible-with-2fc64ae",
+    "topology_context": "gpu-a--registered-host-staging--gpu-b",
+    "workload_geometry": "W4-prompt121-generate32-prefill64-warm"
+  },
+  "digest": "sha256:ab504a3fdca223b79645fbf80be17f826811933d12a3d82460d78fda5a3d0c92",
+  "implementation_commit": "f2ea03738a0162f1f26c57a90e548e2d22119a3b",
+  "records": [
+    {
+      "confidence": "EXACT_CONTEXT",
+      "evidence_class": "MEASURED_ACCEPTED_R2_MATCHED_AB",
+      "freshness": "ACCEPTED_COMPATIBLE",
+      "id": "r2-w4-baseline-decode",
+      "mapping": {
+        "whole-model-slot": "gpu-a"
+      },
+      "metric": {
+        "name": "warm_decode_tok_s",
+        "statistic": "median",
+        "unit": "tok/s",
+        "value": 73.61368231952689
+      },
+      "provenance": {
+        "compatibility": "The 2fc64ae descendant changes only post-final-residency host-source ownership/reclamation. It preserves the accepted R2 model, mappings, topology, runtime/backend configuration, and measured warm execution paths; R2 steady-path metrics therefore remain applicable.",
+        "source_artifact": "docs/inferswarm_r2/benchmark.json",
+        "source_artifact_sha256": "5b7239b12ce674274d8fc8dd95857dc8e738bb0e743cf57ba606a40f193df837",
+        "source_freetoken_commit": "8627f441c880398389042ce8c0a604f6c4321dfa"
+      },
+      "required_context": {
+        "model_revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
+        "runtime_context": "accepted-r2-runtime-compatible-with-2fc64ae",
+        "topology_context": "gpu-a--registered-host-staging--gpu-b",
+        "workload_geometry": "W4-prompt121-generate32-prefill64-warm"
+      },
+      "shape_id": "s0.source-backed-single-offload"
+    },
+    {
+      "confidence": "EXACT_CONTEXT",
+      "evidence_class": "MEASURED_ACCEPTED_R2_MATCHED_AB",
+      "freshness": "ACCEPTED_COMPATIBLE",
+      "id": "r2-w4-split-decode",
+      "mapping": {
+        "opaque-slot-a": "gpu-a",
+        "opaque-slot-b": "gpu-b"
+      },
+      "metric": {
+        "name": "warm_decode_tok_s",
+        "statistic": "median",
+        "unit": "tok/s",
+        "value": 67.01495086043339
+      },
+      "provenance": {
+        "compatibility": "The 2fc64ae descendant changes only post-final-residency host-source ownership/reclamation. It preserves the accepted R2 model, mappings, topology, runtime/backend configuration, and measured warm execution paths; R2 steady-path metrics therefore remain applicable.",
+        "source_artifact": "docs/inferswarm_r2/benchmark.json",
+        "source_artifact_sha256": "5b7239b12ce674274d8fc8dd95857dc8e738bb0e743cf57ba606a40f193df837",
+        "source_freetoken_commit": "8627f441c880398389042ce8c0a604f6c4321dfa"
+      },
+      "required_context": {
+        "model_revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
+        "runtime_context": "accepted-r2-runtime-compatible-with-2fc64ae",
+        "topology_context": "gpu-a--registered-host-staging--gpu-b",
+        "workload_geometry": "W4-prompt121-generate32-prefill64-warm"
+      },
+      "shape_id": "s1.resident-two-slot-split"
+    },
+    {
+      "confidence": "EXACT_CONTEXT",
+      "evidence_class": "MEASURED_ACCEPTED_R2_MATCHED_AB",
+      "freshness": "ACCEPTED_COMPATIBLE",
+      "id": "r2-w4-baseline-ttft",
+      "mapping": {
+        "whole-model-slot": "gpu-a"
+      },
+      "metric": {
+        "name": "warm_ttft_ms",
+        "statistic": "median",
+        "unit": "ms",
+        "value": 3504.4774749985663
+      },
+      "provenance": {
+        "compatibility": "The 2fc64ae descendant changes only post-final-residency host-source ownership/reclamation. It preserves the accepted R2 model, mappings, topology, runtime/backend configuration, and measured warm execution paths; R2 steady-path metrics therefore remain applicable.",
+        "source_artifact": "docs/inferswarm_r2/benchmark.json",
+        "source_artifact_sha256": "5b7239b12ce674274d8fc8dd95857dc8e738bb0e743cf57ba606a40f193df837",
+        "source_freetoken_commit": "8627f441c880398389042ce8c0a604f6c4321dfa"
+      },
+      "required_context": {
+        "model_revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
+        "runtime_context": "accepted-r2-runtime-compatible-with-2fc64ae",
+        "topology_context": "gpu-a--registered-host-staging--gpu-b",
+        "workload_geometry": "W4-prompt121-generate32-prefill64-warm"
+      },
+      "shape_id": "s0.source-backed-single-offload"
+    },
+    {
+      "confidence": "EXACT_CONTEXT",
+      "evidence_class": "MEASURED_ACCEPTED_R2_MATCHED_AB",
+      "freshness": "ACCEPTED_COMPATIBLE",
+      "id": "r2-w4-split-ttft",
+      "mapping": {
+        "opaque-slot-a": "gpu-a",
+        "opaque-slot-b": "gpu-b"
+      },
+      "metric": {
+        "name": "warm_ttft_ms",
+        "statistic": "median",
+        "unit": "ms",
+        "value": 466.800324
+      },
+      "provenance": {
+        "compatibility": "The 2fc64ae descendant changes only post-final-residency host-source ownership/reclamation. It preserves the accepted R2 model, mappings, topology, runtime/backend configuration, and measured warm execution paths; R2 steady-path metrics therefore remain applicable.",
+        "source_artifact": "docs/inferswarm_r2/benchmark.json",
+        "source_artifact_sha256": "5b7239b12ce674274d8fc8dd95857dc8e738bb0e743cf57ba606a40f193df837",
+        "source_freetoken_commit": "8627f441c880398389042ce8c0a604f6c4321dfa"
+      },
+      "required_context": {
+        "model_revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
+        "runtime_context": "accepted-r2-runtime-compatible-with-2fc64ae",
+        "topology_context": "gpu-a--registered-host-staging--gpu-b",
+        "workload_geometry": "W4-prompt121-generate32-prefill64-warm"
+      },
+      "shape_id": "s1.resident-two-slot-split"
+    }
+  ],
+  "schema": "inferswarm.r3.evidence-catalog/1"
+}

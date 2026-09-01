@@ -1,0 +1,43 @@
+{
+  "adapter_data": {
+    "accepted_r2_plan_digest": "sha256:6128dd6705d6d692df3d5fc11cc130dba5c010cfff40c0e4c5ec7c19e1b78ff0",
+    "boundary": {
+      "decode_bytes": 8192,
+      "dtype": "bfloat16",
+      "planes": 2,
+      "prefill_bytes": 524288,
+      "prefill_chunk_rows": 64
+    },
+    "host_staging_policy": "release_after_final_residency",
+    "opaque_unit_geometry": [
+      [
+        0,
+        19
+      ],
+      [
+        19,
+        40
+      ]
+    ]
+  },
+  "candidate_id": "s1.resident-two-slot-split[opaque-slot-a=gpu-a,opaque-slot-b=gpu-b]",
+  "digest": "sha256:c6648b5118bc8ebc8a0e5ce42f2b3b3bc32d2c837ff1a98b21a5d686b161226a",
+  "implementation_commit": "f2ea03738a0162f1f26c57a90e548e2d22119a3b",
+  "input_digests": {
+    "evidence_catalog_digest": "sha256:ab504a3fdca223b79645fbf80be17f826811933d12a3d82460d78fda5a3d0c92",
+    "objective_digest": "sha256:b349b411f9f93c4a6d2fbe21c108eb766ed751a86448965b22cf66ec279ce5b5",
+    "policy_digest": "sha256:4b17c1541df0160ab0232d69ed83f040be0c8cc7d9effb8e2ec0d68cc3b94759",
+    "resource_snapshot_digest": "sha256:188a619d7cc2363ac7217d037bdfdc3a2ee8b3868dcfc32b3f8d536db7119946",
+    "strategy_problem_digest": "sha256:193ba70caffa4ec42e58ab9e62274e460a8e62668c305fb94a776392cd8f9c02"
+  },
+  "mapping": {
+    "opaque-slot-a": "gpu-a",
+    "opaque-slot-b": "gpu-b"
+  },
+  "planner_decision_digest": "sha256:3b1da297de13bd55f2252e18c231eb6eac4cc3ee61cfd9e712260db95d8c433d",
+  "r2_frozen_plan_digest": "sha256:6128dd6705d6d692df3d5fc11cc130dba5c010cfff40c0e4c5ec7c19e1b78ff0",
+  "r2_frozen_plan_ref": "docs/inferswarm_r2/frozen-plan.json",
+  "realization_path": "inferswarm-r2-frozen-plan-coordinator",
+  "schema": "inferswarm.r3.compiled-selected-plan/1",
+  "source_lifecycle": "RELEASE_AFTER_FINAL_RESIDENCY"
+}

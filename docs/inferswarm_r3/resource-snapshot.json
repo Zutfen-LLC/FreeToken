@@ -1,0 +1,77 @@
+{
+  "captured_from": "accepted R2 physical resource graph",
+  "digest": "sha256:188a619d7cc2363ac7217d037bdfdc3a2ee8b3868dcfc32b3f8d536db7119946",
+  "evidence_context": {
+    "runtime_context": "accepted-r2-runtime-compatible-with-2fc64ae",
+    "topology_context": "gpu-a--registered-host-staging--gpu-b"
+  },
+  "implementation_commit": "f2ea03738a0162f1f26c57a90e548e2d22119a3b",
+  "links": [
+    {
+      "available": true,
+      "capabilities": [
+        "registered-host-staging"
+      ],
+      "decode_payload_bytes": 8192,
+      "id": "link.gpu-a-host-gpu-b",
+      "prefill_chunk_payload_bytes": 524288,
+      "source_memory_resource_id": "gpu-a.vram",
+      "target_memory_resource_id": "gpu-b.vram"
+    }
+  ],
+  "nodes": [
+    {
+      "compute_units": [
+        {
+          "availability": "AVAILABLE",
+          "capabilities": [
+            "freetoken-offload-v1",
+            "freetoken-resident-block-v1"
+          ],
+          "id": "gpu-a",
+          "integrity_eligible": true,
+          "memory_resource_id": "gpu-a.vram",
+          "stable_device_id": "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099"
+        },
+        {
+          "availability": "AVAILABLE",
+          "capabilities": [
+            "freetoken-offload-v1",
+            "freetoken-resident-block-v1"
+          ],
+          "id": "gpu-b",
+          "integrity_eligible": true,
+          "memory_resource_id": "gpu-b.vram",
+          "stable_device_id": "GPU-d5c05739-96c1-7e49-89b6-bf54c2121c55"
+        }
+      ],
+      "id": "node-a",
+      "memory_resources": [
+        {
+          "capacity_bytes": 12884901888,
+          "id": "gpu-a.vram",
+          "kind": "accelerator-vram",
+          "reservation_bytes": 536870912
+        },
+        {
+          "capacity_bytes": 12884901888,
+          "id": "gpu-b.vram",
+          "kind": "accelerator-vram",
+          "reservation_bytes": 536870912
+        },
+        {
+          "capacity_bytes": 134984794112,
+          "id": "node-a.ram",
+          "kind": "system-ram",
+          "reservation_bytes": 8589934592
+        }
+      ]
+    }
+  ],
+  "provenance": {
+    "driver": "610.57.04",
+    "freetoken_base": "2fc64ae7c79bdc494a52468da329ddafd0adb8ba",
+    "transport_preflight_sha256": "bd310f04066c872fdd02050ef64ce5bd98cbe618f07ce36fdff3909d372986ef"
+  },
+  "schema": "inferswarm.r3.resource-snapshot/1"
+}
