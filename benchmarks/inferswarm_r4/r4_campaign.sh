@@ -49,6 +49,7 @@ case "$PHASE" in
       --node-b-profile "$OUT/node-b-hardware.json" \
       --implementation-commit "$SHA" \
       --out-dir "$OUT" 2>&1 | tee "$OUT/raw/freeze-plan.log"
+    $SSH_B "mkdir -p /home/zutfen/FreeToken-r4/docs/inferswarm_r4"
     scp -q -i /home/zutfen/.ssh/id_r4_staging "$OUT/r4-frozen-plan.json" zutfen@$NODE_B:/home/zutfen/FreeToken-r4/docs/inferswarm_r4/
     scp -q -i /home/zutfen/.ssh/id_r4_staging "$OUT/r4-frozen-plan.json.sha256" zutfen@$NODE_B:/home/zutfen/FreeToken-r4/docs/inferswarm_r4/
     ;;
