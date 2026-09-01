@@ -315,6 +315,13 @@ def main(argv: list[str] | None = None) -> int:
                 "float32_sha256": tensor_sha256(logits.float()),
                 "full_logits": logits.float().cpu().tolist(),
             }
+    final_layer_0_recurrent_state = (
+        runtime.ctx.linear_state_pool.recurrent_states[0, 0]
+        .detach()
+        .float()
+        .cpu()
+        .tolist()
+    )
     while len(generated) < args.max_new_tokens:
         step = len(generated)
         token, logits = runtime.decode(generated[-1], len(prompt_ids) + step - 1)
@@ -372,6 +379,12 @@ def main(argv: list[str] | None = None) -> int:
             "selected_logit_steps": selected_logits,
             "logit_checkpoints": comparisons,
             "prefill_checkpoints": chunks,
+            "targeted_first_divergence_values": {
+                "global_layer": 0,
+                "state": "recurrent",
+                "dtype": "float32",
+                "values": final_layer_0_recurrent_state,
+            },
         },
         "nan_count": sum(row["nan_count"] for row in comparisons),
         "inf_count": sum(row["inf_count"] for row in comparisons),
