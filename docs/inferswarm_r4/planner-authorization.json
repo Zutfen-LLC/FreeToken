@@ -1,0 +1,9 @@
+{
+  "applicable_evidence_ids": [],
+  "authorization": "evidence-collection-only",
+  "candidate_id": "s1r4.two-node-network-split[opaque-slot-a=gpu-a,opaque-slot-b=gpu-b]",
+  "integrity_eligible": true,
+  "policy_eligible": true,
+  "r4_plan_digest": "sha256:021c1b19c61dbeac415e5e99e1e826962c8c903b63ec333501baf2eed0dae5f6",
+  "state": "FEASIBLE_UNRANKED"
+}

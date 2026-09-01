@@ -1,0 +1,102 @@
+{
+  "checks": {
+    "block_b_host_ram": {
+      "linux_memtotal_bytes": 16619393024,
+      "mem_available_proven_at_unix": 1788303586.7180252,
+      "memavailable_bytes": 15265271808,
+      "note": "MemTotal excludes firmware reservations; installed RAM proven via DMI",
+      "physical_installed_ram_bytes": 17179869184
+    },
+    "canonical_link": {
+      "node.inferswarm01": {
+        "duplex": "Full",
+        "interface": "eno1",
+        "mtu": 1500,
+        "route": "10.0.0.219 dev eno1 src 10.0.0.141 uid 1000 \n    cache",
+        "speed": "1000Mb/s"
+      },
+      "node.inferswarm03": {
+        "duplex": "Full",
+        "interface": "enp5s0",
+        "mtu": 1500,
+        "route": "10.0.0.141 dev enp5s0 src 10.0.0.219 uid 1000 \n    cache",
+        "speed": "1000Mb/s"
+      }
+    },
+    "checkpoint_identity": {
+      "file_count": 17,
+      "files_sha256": {
+        ".gitattributes": "d1a8f4a1d2e3787c5956393d9306365ebefe1912cb76828870682b1ab16f5c27",
+        ".quant_summary.txt": "bf884bde9da240fb35a435a6fb5bc3bc8d3222e5728c00199ce8f5bc8fcb2548",
+        "README.md": "bb3a29ef8870dd68be8a0e0d508880dd49a4db5aafb034bb9b3f475ca5740481",
+        "chat_template.jinja": "e84f32a23fdda27689f868aa4a1a5621f41133e51a48d7f3efcbea2839574259",
+        "config.json": "58aefa1c9eff7989f431d748f2ddec39446cb1fd2a69acc46e285c6a37b0cecc",
+        "configuration.json": "c1b09db419119513247e9b8b912c4b9897106c9b20c6cada7e107d993c5435eb",
+        "generation_config.json": "e70c136c1b78ddc1fb0905bac8e733a4dc448d4f852a5dd75143fffc70be550e",
+        "hf_quant_config.json": "75fe7cc8d5836b58734e05ee67423a4ce91d602aaad45c8173a1b7597cd57663",
+        "model-00001-of-00003.safetensors": "07141c2db92e47bc08777132cd1a0323faf300eab3a7d7c111bc2bf075fda050",
+        "model-00002-of-00003.safetensors": "6dea9c759a0f941cf9e1cc1501216b0e107966a66c90425050e212efbd053f02",
+        "model-00003-of-00003.safetensors": "9758875fc55e49561165f4a44342b654c123c3e25c6811b34abb83553fb1a164",
+        "model.safetensors.index.json": "d67403a4e9793c0ba8a136baf14b3b76ec7b32c822267978084895e07ebd8a3e",
+        "preprocessor_config.json": "27225450ac9c6529872ee1924fcb0962ff5634834f817040f444118116f4e516",
+        "tokenizer.json": "5f9e4d4901a92b997e463c1f46055088b6cca5ca61a6522d1b9f64c4bb81cb42",
+        "tokenizer_config.json": "5186f0defcd7f232382c7f0aebcd2252d073bb921ab240e407b7ae8745d2b29b",
+        "video_preprocessor_config.json": "7768af27c1fafa9cc9011c1dc20067e03f8915e03b63504550e11d5066986d13",
+        "vocab.json": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003"
+      },
+      "identical_across_nodes": true,
+      "repository": "nvidia/Qwen3.6-35B-A3B-NVFP4",
+      "revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce"
+    },
+    "frozen_gpu": {
+      "node.inferswarm01": {
+        "capacity_bytes": 12884901888,
+        "name": "NVIDIA GeForce RTX 3060",
+        "pci_bdf": "00000000:02:00.0",
+        "uuid": "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099"
+      },
+      "node.inferswarm03": {
+        "capacity_bytes": 12884901888,
+        "name": "NVIDIA GeForce RTX 3060",
+        "pci_bdf": "00000000:01:00.0",
+        "uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176"
+      }
+    },
+    "producer_identity": {
+      "node.inferswarm01": {
+        "dirty_entries": [],
+        "hostname": "inferswarm01",
+        "node_id": "node.inferswarm01",
+        "producer_sha": "e97f60b7b0120a72a7cf9926cf6a5c558782c9b2",
+        "tree_clean": true
+      },
+      "node.inferswarm03": {
+        "dirty_entries": [],
+        "hostname": "inferswarm03",
+        "node_id": "node.inferswarm03",
+        "producer_sha": "e97f60b7b0120a72a7cf9926cf6a5c558782c9b2",
+        "tree_clean": true
+      }
+    },
+    "same_producer_both_nodes": true,
+    "vram_headroom": {
+      "block_a": {
+        "capacity_bytes": 12884901888,
+        "remaining_bytes": 2023699456,
+        "required_bytes": 10861202432,
+        "safety_bytes": 536870912,
+        "uuid": "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099"
+      },
+      "block_b": {
+        "capacity_bytes": 12884901888,
+        "remaining_bytes": 1714622976,
+        "required_bytes": 11170278912,
+        "safety_bytes": 536870912,
+        "uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176"
+      }
+    }
+  },
+  "frozen_producer_sha": "e97f60b7b0120a72a7cf9926cf6a5c558782c9b2",
+  "result": "ALL_PREFLIGHT_CHECKS_PASSED",
+  "schema": "inferswarm.r4.preflight-gate/1"
+}

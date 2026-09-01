@@ -1,0 +1,30 @@
+{
+  "environment": {
+    "hostname": "inferswarm01",
+    "kernel": "6.12.105+deb13-amd64",
+    "python": "Python 3.13.5"
+  },
+  "focused_r4_result": {
+    "errors": 0,
+    "failed": 0,
+    "ok": true,
+    "passed": 65,
+    "warnings": 0
+  },
+  "generated_at_unix": 1788304507.263273,
+  "generated_at_utc": "2026-09-01T23:15:07Z",
+  "predecessor_regression_result": {
+    "errors": 0,
+    "failed": 0,
+    "ok": true,
+    "passed": 182,
+    "warnings": 0
+  },
+  "producer_sha": "e97f60b7b0120a72a7cf9926cf6a5c558782c9b2",
+  "result": "ALL_TESTS_PASSED",
+  "schema": "inferswarm.r4.test-summary/1",
+  "test_commands": {
+    "focused_r4": "python -m pytest tests/research/test_r4_wire.py tests/research/test_r4_preflight_gate.py -v",
+    "predecessor_regressions": "python -m pytest tests/research/ -v"
+  }
+}
