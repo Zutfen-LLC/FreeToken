@@ -230,6 +230,7 @@ class MatchedLocalRuntime:
             "layer_18_output": {
                 "hidden": tensor_record(seam_hidden),
                 "residual": tensor_record(seam_residual),
+                "pair": tensor_record(torch.stack((seam_hidden, seam_residual))),
             },
             "mutable_state": self.logical_state(end),
             "block_b_output_hidden": tensor_record(hidden),
@@ -256,13 +257,22 @@ class MatchedLocalRuntime:
 
 def _device_record() -> dict:
     fields = "index,uuid,name,memory.total"
-    line = subprocess.check_output(
+    lines = subprocess.check_output(
         ["nvidia-smi", f"--query-gpu={fields}", "--format=csv,noheader,nounits"],
         text=True,
-    ).splitlines()[0]
-    return dict(
-        zip(fields.split(","), [part.strip() for part in line.split(",")], strict=True)
-    )
+    ).splitlines()
+    wanted = os.environ.get("CUDA_VISIBLE_DEVICES")
+    for line in lines:
+        record = dict(
+            zip(
+                fields.split(","),
+                [part.strip() for part in line.split(",")],
+                strict=True,
+            )
+        )
+        if wanted is None or record["uuid"] == wanted:
+            return record
+    raise RuntimeError(f"matched local GPU {wanted!r} is absent")
 
 
 def main(argv: list[str] | None = None) -> int:
