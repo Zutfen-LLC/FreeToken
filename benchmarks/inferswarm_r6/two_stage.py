@@ -22,13 +22,17 @@ from benchmarks.inferswarm_r6.stage_runtime import (
 
 
 class _StageProcessClient:
-    """Control pipe to one spawn-isolated stage process."""
+    """Control pipe to one spawn-isolated stage process (one assigned GPU)."""
 
-    def __init__(self, context, *, role, adapter_data, model_path):
+    def __init__(self, context, *, role, adapter_data, model_path, gpu_index: int):
+        import os
+
         parent, child = context.Pipe()
+        env = {**os.environ, "CUDA_VISIBLE_DEVICES": str(gpu_index)}
         self.parent = parent
         self.process = context.Process(
-            target=_stage_entry,
+            target=_stage_entry_env,
+            args=(env,),
             kwargs={
                 "role": role,
                 "adapter_data": adapter_data,
@@ -61,6 +65,15 @@ class _StageProcessClient:
         self.process.join(timeout=30)
         if self.process.is_alive():
             self.process.terminate()
+
+
+def _stage_entry_env(env: dict, *, role, adapter_data, model_path, connection):
+    import os
+
+    os.environ.clear()
+    os.environ.update(env)
+    _stage_entry(role=role, adapter_data=adapter_data, model_path=model_path,
+                 connection=connection)
 
 
 def _stage_entry(*, role, adapter_data, model_path, connection):
@@ -160,6 +173,7 @@ class GemmaTwoStageRuntime:
             role="a",
             adapter_data={**adapter_data_a, **common},
             model_path=model_path,
+            gpu_index=0,
         )
         try:
             self.stage_b = _StageProcessClient(
@@ -167,6 +181,7 @@ class GemmaTwoStageRuntime:
                 role="b",
                 adapter_data={**adapter_data_b, **common},
                 model_path=model_path,
+                gpu_index=1,
             )
         except BaseException:
             self.stage_a.shutdown()

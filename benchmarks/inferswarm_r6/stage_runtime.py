@@ -92,6 +92,8 @@ class GemmaDenseStage:
             raise ValueError("role must be a or b")
         self.role = role
         self.model_path = model_path
+        # The parent assigns one GPU per stage process before spawn: the
+        # process sees exactly one device, always cuda:0 locally.
         self.device = torch.device("cuda:0")
         self.memory_snapshots = {"P0_fresh_worker": snapshot_host_memory()}
         self.max_seq_len = int(adapter_data["runtime_capacity_tokens"])
