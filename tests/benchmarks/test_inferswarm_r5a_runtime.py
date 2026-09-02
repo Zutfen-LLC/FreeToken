@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from inferswarm_r5a.compose_economics import compose
-from inferswarm_r5a.runtime import require_current_local_split_devices
+from inferswarm_r5a.runtime import R2ServingRuntime, require_current_local_split_devices
 
 
 def _gate():
@@ -77,3 +77,38 @@ def test_economics_is_matched_and_does_not_call_residual_pure_network():
     result = compose(local, network)
     assert result["metrics"]["ttft_ms"]["two_node_minus_same_node"] == 5
     assert "not pure network time" in result["residual_interpretation"]
+
+
+def test_local_runtime_teardown_uses_last_complete_participant_report():
+    class Coordinator:
+        plan = {"digest": "participant"}
+        ready = {"a": {}, "b": {}}
+
+        def __init__(self):
+            self.report_calls = 0
+            self.shutdown_calls = 0
+
+        def reports(self):
+            self.report_calls += 1
+            row = {
+                "activation_bytes": 1,
+                "control_rx_bytes": 2,
+                "control_tx_bytes": 3,
+                "runtime": {},
+            }
+            return {"a": dict(row), "b": dict(row)}
+
+        def shutdown(self):
+            self.shutdown_calls += 1
+
+    runtime = object.__new__(R2ServingRuntime)
+    runtime._coordinator = Coordinator()
+    runtime._sessions = []
+    runtime._closed = False
+    runtime._final_reports = None
+    runtime._last_reports = None
+    runtime.report()
+    runtime.close()
+    runtime.report()
+    assert runtime._coordinator.report_calls == 1
+    assert runtime._coordinator.shutdown_calls == 1

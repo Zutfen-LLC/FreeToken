@@ -81,6 +81,7 @@ class R2ServingRuntime:
         self._sessions: list[dict[str, Any]] = []
         self._closed = False
         self._final_reports: dict[str, Any] | None = None
+        self._last_reports: dict[str, Any] | None = None
 
     def generate(
         self,
@@ -103,11 +104,11 @@ class R2ServingRuntime:
         return session
 
     def report(self) -> dict[str, Any]:
-        participant_reports = (
-            deepcopy(self._final_reports)
-            if self._final_reports is not None
-            else self._coordinator.reports()
-        )
+        if self._final_reports is not None:
+            participant_reports = deepcopy(self._final_reports)
+        else:
+            participant_reports = self._coordinator.reports()
+            self._last_reports = deepcopy(participant_reports)
         return {
             "transport_accounting": {
                 "kind": "registered-pinned-host-staging",
@@ -127,7 +128,9 @@ class R2ServingRuntime:
     def close(self) -> None:
         if self._closed:
             return
-        self._final_reports = self._coordinator.reports()
+        if self._last_reports is None:
+            self._last_reports = self._coordinator.reports()
+        self._final_reports = deepcopy(self._last_reports)
         self._closed = True
         self._coordinator.shutdown()
 
