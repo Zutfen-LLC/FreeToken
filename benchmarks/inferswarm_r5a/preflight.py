@@ -12,23 +12,41 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from benchmarks.inferswarm_r4.node_preflight import capture_node_profile
-from benchmarks.inferswarm_r4.r4_plan import (
-    CANONICAL_LINK,
-    GPU_A_UUID,
-    GPU_B_UUID,
-    MODEL_REPOSITORY,
-    MODEL_REVISION,
-    build_r4_plan,
-)
-from benchmarks.inferswarm_r4.r4_preflight_gate import (
-    checkpoint_manifest,
-    collect_local_identity,
-    collect_remote_identity,
-    run_gate,
-)
+try:
+    from benchmarks.inferswarm_r4.node_preflight import capture_node_profile
+    from benchmarks.inferswarm_r4.r4_plan import (
+        CANONICAL_LINK,
+        GPU_A_UUID,
+        GPU_B_UUID,
+        MODEL_REPOSITORY,
+        MODEL_REVISION,
+        build_r4_plan,
+    )
+    from benchmarks.inferswarm_r4.r4_preflight_gate import (
+        checkpoint_manifest,
+        collect_local_identity,
+        collect_remote_identity,
+        run_gate,
+    )
+except ModuleNotFoundError:  # tests put the repository's benchmarks/ on sys.path
+    from inferswarm_r4.node_preflight import capture_node_profile
+    from inferswarm_r4.r4_plan import (
+        CANONICAL_LINK,
+        GPU_A_UUID,
+        GPU_B_UUID,
+        MODEL_REPOSITORY,
+        MODEL_REVISION,
+        build_r4_plan,
+    )
+    from inferswarm_r4.r4_preflight_gate import (
+        checkpoint_manifest,
+        collect_local_identity,
+        collect_remote_identity,
+        run_gate,
+    )
 from freetoken.research.n0_model_block import write_json_with_sha
 from freetoken.research.r3_planner import freeze
+from freetoken.research.r5a_serving import checkpoint_identity_from_gate
 
 
 def runtime_versions() -> dict[str, Any]:
@@ -165,7 +183,7 @@ def freeze_physical_environment(args) -> tuple[dict[str, Any], dict[str, Any], d
             "model": {
                 "repository": MODEL_REPOSITORY,
                 "revision": MODEL_REVISION,
-                "checkpoint_identity": gate["checkpoint_identity"],
+                "checkpoint_identity": checkpoint_identity_from_gate(gate),
             },
             "node_a": {
                 "node_id": "node.inferswarm01",

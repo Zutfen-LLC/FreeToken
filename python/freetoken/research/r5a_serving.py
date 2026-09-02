@@ -38,6 +38,16 @@ class ServingIsolationError(RuntimeError):
     """A request/session identity was reused or crossed another request."""
 
 
+def checkpoint_identity_from_gate(gate: Mapping[str, Any]) -> dict[str, Any]:
+    """Read the reused R4 gate's nested retained-check schema fail-closed."""
+    if gate.get("result") != "ALL_PREFLIGHT_CHECKS_PASSED":
+        raise ValueError("R5A environment cannot retain an unsuccessful preflight")
+    try:
+        return dict(gate["checks"]["checkpoint_identity"])
+    except KeyError as exc:
+        raise ValueError("preflight gate lacks checkpoint_identity check") from exc
+
+
 class StaticRuntime(Protocol):
     def generate(
         self,
@@ -352,6 +362,7 @@ __all__ = [
     "RealizedStaticPlan",
     "ServingIsolationError",
     "StaticServingController",
+    "checkpoint_identity_from_gate",
     "freeze_execution_plan",
     "reconcile_realization",
 ]
