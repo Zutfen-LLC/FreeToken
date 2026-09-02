@@ -27,9 +27,9 @@ class R5BFrontendDispatcher:
         from benchmarks.inferswarm_r4.r4_plan import load_r4_plan
         from benchmarks.inferswarm_r5a.runtime import (
             realize_local_split_plan,
-            realize_network_plan,
             require_clean_exact_source,
         )
+        from benchmarks.inferswarm_r5b.runtime import realize_isolated_network_plan
         from benchmarks.inferswarm_r5a.strategy import (
             evidence_catalog,
             objective,
@@ -111,7 +111,7 @@ class R5BFrontendDispatcher:
                     ],
                 )
             if realization_path == "r4-persistent-boundary":
-                return realize_network_plan(
+                return realize_isolated_network_plan(
                     dict(execution_plan),
                     r4_plan=self.r4_plan,
                     model_path=server_config.model_path,

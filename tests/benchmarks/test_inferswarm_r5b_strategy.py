@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 
 from inferswarm_r5b.requalify_evidence import requalify
+from inferswarm_r5b.runtime import EpochIsolatedR4Runtime
 from inferswarm_r5b.strategy import (
     QwenTokenBoundaryStrategy,
     policy_evaluator,
@@ -83,3 +84,28 @@ def test_r5a_numeric_evidence_is_requalified_without_rewriting_measurement():
     assert record["metric"]["value"] == 373.6170495
     assert record["provenance"]["numeric_value_remeasured"] is False
     assert record["required_context"]["runtime_context"] == "new-runtime"
+
+
+def test_isolated_r4_facade_preserves_generated_boundary_callbacks():
+    runtime = object.__new__(EpochIsolatedR4Runtime)
+    runtime._closed = False
+    runtime._rpc = lambda operation, **payload: {
+        "result": {
+            "generated_token_ids": [11, 12],
+            "boundaries": [
+                {"generated_step": 0, "checksum": "a"},
+                {"generated_step": 1, "checksum": "b"},
+            ],
+        }
+    }
+    seen = []
+    result = runtime.generate(
+        session_id=1,
+        prompt_token_ids=[7],
+        max_new_tokens=2,
+        on_token=lambda step, token, boundary: seen.append(
+            (step, token, boundary["checksum"])
+        ),
+    )
+    assert result["generated_token_ids"] == [11, 12]
+    assert seen == [(0, 11, "a"), (1, 12, "b")]

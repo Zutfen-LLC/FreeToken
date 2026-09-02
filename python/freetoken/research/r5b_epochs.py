@@ -241,7 +241,11 @@ class EpochServingController:
 
     def _realize(self, execution_plan: Mapping[str, Any]) -> RealizedStaticPlan:
         realized = self.realizer(execution_plan)
-        reconcile_realization(execution_plan, realized.observation)
+        try:
+            reconcile_realization(execution_plan, realized.observation)
+        except Exception:
+            realized.runtime.close()
+            raise
         return realized
 
     @property

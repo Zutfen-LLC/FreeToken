@@ -27,14 +27,24 @@ activation wraps one complete immutable R5A-style frozen plan and independently
 reconciled accepted R2 or R4 runtime in a distinct generation. Epoch identity is
 research-internal and is not a proposed public field or encoding.
 
+The accepted R4 Block-A runtime has process-lifetime CUDA ownership. Each R4
+epoch therefore runs that unchanged accepted runtime inside a fresh
+epoch-lifetime child process. The wrapper only forwards generate/report/close
+operations and returned boundary records; it does not duplicate or alter R4.
+Process exit provides the allocator and CUDA-graph reclamation boundary before
+a later R4 epoch is realized and independently reconciled.
+
 For the one transition-bearing session, exactly the active epoch owns mutable
 runtime and output-commit authority. A replacement may be planned and its
 immutable prerequisites validated while the old epoch remains valid, but
 preparation conveys no authority. Activation order is: select a strategy-safe
-boundary, settle old work, realize/catch up the replacement, switch the single
-authority/routing pointer, activate the replacement, retire the old epoch, and
-reclaim it. Late results are accepted only when epoch, plan, session, and next
-commit position all match current authority.
+boundary and settle old work. With feasible overlap, realize/catch up the
+replacement, atomically switch authority, then retire and reclaim the old
+epoch. In the predeclared cold mode, retire and reclaim the old runtime before
+replacement realization, leaving an explicit interruption with no mutable
+runtime authority until the validated replacement activates. Late results are
+accepted only when epoch, plan, session, and next commit position all match
+current authority.
 
 Both accepted resident runtimes require Node-A GPU0. Full R2/R4 overlap is
 therefore frozen as physically infeasible for this campaign. R5B will retain
