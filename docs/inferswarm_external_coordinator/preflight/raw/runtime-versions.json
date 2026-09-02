@@ -16,6 +16,6 @@
     "transformers": "5.16.1",
     "triton": "3.6.0"
   },
-  "producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+  "producer_sha": "84e531971d6c02530fd0d541da3478df7510f263",
   "representation": "Qwen3.6-NVFP4/freetoken-native-resident-block-v1"
 }

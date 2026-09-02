@@ -18,7 +18,7 @@
         }
       ],
       "participant_plan_digest": "sha256:6128dd6705d6d692df3d5fc11cc130dba5c010cfff40c0e4c5ec7c19e1b78ff0",
-      "producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+      "producer_sha": "84e531971d6c02530fd0d541da3478df7510f263",
       "representation_backend": {
         "backend": "accepted-r2-freetoken-captured-resident",
         "compatible": true,
@@ -104,11 +104,11 @@
       }
     },
     "model_revision_validated": true,
-    "participant_plan_digest": "sha256:8035d4c4bd25a3aa7e1f891d83477549c23ce411a0a99bf01b94a28146e987c2",
+    "participant_plan_digest": "sha256:c339627e5b854fb6d6c8d1685ab4434e9d9067c68fb97db3d2b205633cd23530",
     "representation_backend_compatible": true
   },
-  "digest": "sha256:a2b041b224e4b67249b5822f679d9478954796ff6ec76d61ab85e02e9868af55",
-  "implementation_commit": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+  "digest": "sha256:ddaf7dd67dbbfabc3ee83ff7feea842e7ea8acc5d29a01da73b6225c976723b0",
+  "implementation_commit": "84e531971d6c02530fd0d541da3478df7510f263",
   "initial_resource_availability": {
     "gpu.node-a.0": "AVAILABLE",
     "gpu.node-a.1": "UNAVAILABLE_PARTICIPANT_NOT_STARTED",
@@ -183,10 +183,10 @@
     ],
     "hostname": "inferswarm01",
     "memory": {
-      "measured_at_unix": 1788367519.98367,
-      "mem_available_bytes": 122086420480,
-      "mem_available_kib": 119225020,
-      "mem_free_kib": 88934772,
+      "measured_at_unix": 1788376486.0874543,
+      "mem_available_bytes": 131310964736,
+      "mem_available_kib": 128233364,
+      "mem_free_kib": 97897412,
       "mem_total_bytes": 134984912896,
       "mem_total_kib": 131821204,
       "physical_installed_ram_bytes": 137438953472,
@@ -219,20 +219,20 @@
     ],
     "hostname": "inferswarm03",
     "memory": {
-      "measured_at_unix": 1788367521.3577964,
-      "mem_available_bytes": 15193382912,
-      "mem_available_kib": 14837288,
-      "mem_free_kib": 398836,
+      "measured_at_unix": 1788376487.4883797,
+      "mem_available_bytes": 15211290624,
+      "mem_available_kib": 14854776,
+      "mem_free_kib": 259944,
       "mem_total_bytes": 16619393024,
       "mem_total_kib": 16229876,
       "physical_installed_ram_bytes": 17179869184,
       "swap_activity": {
-        "pswpin": 156748,
-        "pswpout": 2570836
+        "pswpin": 156881,
+        "pswpout": 2574324
       },
-      "swap_free_kib": 7819888,
+      "swap_free_kib": 7806064,
       "swap_total_kib": 8236028,
-      "swaps": "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n/dev/sdb3                               partition\t8236028\t\t416140\t\t-2"
+      "swaps": "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n/dev/sdb3                               partition\t8236028\t\t429964\t\t-2"
     },
     "node_id": "node.inferswarm03"
   },
@@ -240,8 +240,8 @@
     "checks": {
       "block_b_host_ram": {
         "linux_memtotal_bytes": 16619393024,
-        "mem_available_proven_at_unix": 1788367521.3577964,
-        "memavailable_bytes": 15193382912,
+        "mem_available_proven_at_unix": 1788376487.4883797,
+        "memavailable_bytes": 15211290624,
         "note": "MemTotal excludes firmware reservations; installed RAM proven via DMI",
         "physical_installed_ram_bytes": 17179869184
       },
@@ -305,14 +305,14 @@
           "dirty_entries": [],
           "hostname": "inferswarm01",
           "node_id": "node.inferswarm01",
-          "producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+          "producer_sha": "84e531971d6c02530fd0d541da3478df7510f263",
           "tree_clean": true
         },
         "node.inferswarm03": {
           "dirty_entries": [],
           "hostname": "inferswarm03",
           "node_id": "node.inferswarm03",
-          "producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+          "producer_sha": "84e531971d6c02530fd0d541da3478df7510f263",
           "tree_clean": true
         }
       },
@@ -334,11 +334,11 @@
         }
       }
     },
-    "frozen_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+    "frozen_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263",
     "result": "ALL_PREFLIGHT_CHECKS_PASSED",
     "schema": "inferswarm.r4.preflight-gate/1"
   },
-  "runtime_context": "sha256:49949a1a74e9270605905baa2d04bdb15c6e84982563e20330d1f8202ee4b8ed",
+  "runtime_context": "sha256:61295737ad02c589216778caef8d6cf246c39a4db8fcf5e4af9072ca219c2aed",
   "runtime_versions": {
     "backend": "torch-cuda/freetoken-r4-captured-block-runtime",
     "node_a": {
@@ -357,7 +357,7 @@
       "transformers": "5.16.1",
       "triton": "3.6.0"
     },
-    "producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+    "producer_sha": "84e531971d6c02530fd0d541da3478df7510f263",
     "representation": "Qwen3.6-NVFP4/freetoken-native-resident-block-v1"
   },
   "schema": "inferswarm.r5b.frozen-environment/1",
@@ -366,14 +366,14 @@
       "dirty_entries": [],
       "hostname": "inferswarm01",
       "node_id": "node.inferswarm01",
-      "producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+      "producer_sha": "84e531971d6c02530fd0d541da3478df7510f263",
       "tree_clean": true
     },
     "node_b": {
       "dirty_entries": [],
       "hostname": "inferswarm03",
       "node_id": "node.inferswarm03",
-      "producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+      "producer_sha": "84e531971d6c02530fd0d541da3478df7510f263",
       "tree_clean": true
     }
   },
@@ -384,9 +384,9 @@
       "source-backed-single-resource": 2630.5871575
     },
     "correctness_and_feasibility_first": true,
-    "digest": "sha256:ae5b5f94889857f142b3ec627857b7075ae8100121a2878bbd5be9235cd84078",
+    "digest": "sha256:8d68ab7e4838710c8610f1f98723eeaaff206e724cdeb87d0970eff025285fa5",
     "full_overlap_physically_feasible": false,
-    "implementation_commit": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+    "implementation_commit": "84e531971d6c02530fd0d541da3478df7510f263",
     "minimum_expected_remaining_requests": 64,
     "minimum_resource_stability_confidence": 0.9,
     "objective": "minimize applicable median TTFT",

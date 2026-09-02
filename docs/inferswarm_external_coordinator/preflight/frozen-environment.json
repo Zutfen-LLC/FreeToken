@@ -17,7 +17,7 @@
         }
       ],
       "participant_plan_digest": "sha256:6128dd6705d6d692df3d5fc11cc130dba5c010cfff40c0e4c5ec7c19e1b78ff0",
-      "producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+      "producer_sha": "84e531971d6c02530fd0d541da3478df7510f263",
       "representation_backend": {
         "backend": "accepted-r2-freetoken-captured-resident",
         "compatible": true,
@@ -103,11 +103,11 @@
       }
     },
     "model_revision_validated": true,
-    "participant_plan_digest": "sha256:8035d4c4bd25a3aa7e1f891d83477549c23ce411a0a99bf01b94a28146e987c2",
+    "participant_plan_digest": "sha256:c339627e5b854fb6d6c8d1685ab4434e9d9067c68fb97db3d2b205633cd23530",
     "representation_backend_compatible": true
   },
-  "digest": "sha256:01644eccdd75548716a934c9886ff0861ad8df369fb2dc549b4868c43f33a930",
-  "implementation_commit": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+  "digest": "sha256:e7a18da3905da62dc1db55f1077d2f795617caed5fcb1df1eef0a892429b7a32",
+  "implementation_commit": "84e531971d6c02530fd0d541da3478df7510f263",
   "model": {
     "checkpoint_identity": {
       "file_count": 17,
@@ -177,10 +177,10 @@
     ],
     "hostname": "inferswarm01",
     "memory": {
-      "measured_at_unix": 1788367348.7300918,
-      "mem_available_bytes": 122093813760,
-      "mem_available_kib": 119232240,
-      "mem_free_kib": 111179920,
+      "measured_at_unix": 1788376313.3886294,
+      "mem_available_bytes": 130938298368,
+      "mem_available_kib": 127869432,
+      "mem_free_kib": 119785020,
       "mem_total_bytes": 134984912896,
       "mem_total_kib": 131821204,
       "physical_installed_ram_bytes": 137438953472,
@@ -213,20 +213,20 @@
     ],
     "hostname": "inferswarm03",
     "memory": {
-      "measured_at_unix": 1788367350.4012535,
-      "mem_available_bytes": 15242993664,
-      "mem_available_kib": 14885736,
-      "mem_free_kib": 12765592,
+      "measured_at_unix": 1788376314.9402692,
+      "mem_available_bytes": 15208255488,
+      "mem_available_kib": 14851812,
+      "mem_free_kib": 12672372,
       "mem_total_bytes": 16619393024,
       "mem_total_kib": 16229876,
       "physical_installed_ram_bytes": 17179869184,
       "swap_activity": {
-        "pswpin": 156748,
-        "pswpout": 2570803
+        "pswpin": 156881,
+        "pswpout": 2573709
       },
-      "swap_free_kib": 7820144,
+      "swap_free_kib": 7808368,
       "swap_total_kib": 8236028,
-      "swaps": "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n/dev/sdb3                               partition\t8236028\t\t415884\t\t-2"
+      "swaps": "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n/dev/sdb3                               partition\t8236028\t\t427660\t\t-2"
     },
     "node_id": "node.inferswarm03"
   },
@@ -234,8 +234,8 @@
     "checks": {
       "block_b_host_ram": {
         "linux_memtotal_bytes": 16619393024,
-        "mem_available_proven_at_unix": 1788367350.4012535,
-        "memavailable_bytes": 15242993664,
+        "mem_available_proven_at_unix": 1788376314.9402692,
+        "memavailable_bytes": 15208255488,
         "note": "MemTotal excludes firmware reservations; installed RAM proven via DMI",
         "physical_installed_ram_bytes": 17179869184
       },
@@ -299,14 +299,14 @@
           "dirty_entries": [],
           "hostname": "inferswarm01",
           "node_id": "node.inferswarm01",
-          "producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+          "producer_sha": "84e531971d6c02530fd0d541da3478df7510f263",
           "tree_clean": true
         },
         "node.inferswarm03": {
           "dirty_entries": [],
           "hostname": "inferswarm03",
           "node_id": "node.inferswarm03",
-          "producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+          "producer_sha": "84e531971d6c02530fd0d541da3478df7510f263",
           "tree_clean": true
         }
       },
@@ -328,11 +328,11 @@
         }
       }
     },
-    "frozen_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+    "frozen_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263",
     "result": "ALL_PREFLIGHT_CHECKS_PASSED",
     "schema": "inferswarm.r4.preflight-gate/1"
   },
-  "runtime_context": "sha256:49949a1a74e9270605905baa2d04bdb15c6e84982563e20330d1f8202ee4b8ed",
+  "runtime_context": "sha256:61295737ad02c589216778caef8d6cf246c39a4db8fcf5e4af9072ca219c2aed",
   "runtime_versions": {
     "backend": "torch-cuda/freetoken-r4-captured-block-runtime",
     "node_a": {
@@ -351,7 +351,7 @@
       "transformers": "5.16.1",
       "triton": "3.6.0"
     },
-    "producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+    "producer_sha": "84e531971d6c02530fd0d541da3478df7510f263",
     "representation": "Qwen3.6-NVFP4/freetoken-native-resident-block-v1"
   },
   "schema": "inferswarm.r5a.frozen-environment/1",
@@ -360,14 +360,14 @@
       "dirty_entries": [],
       "hostname": "inferswarm01",
       "node_id": "node.inferswarm01",
-      "producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+      "producer_sha": "84e531971d6c02530fd0d541da3478df7510f263",
       "tree_clean": true
     },
     "node_b": {
       "dirty_entries": [],
       "hostname": "inferswarm03",
       "node_id": "node.inferswarm03",
-      "producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+      "producer_sha": "84e531971d6c02530fd0d541da3478df7510f263",
       "tree_clean": true
     }
   }

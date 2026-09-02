@@ -1,8 +1,8 @@
 {
   "schema": "inferswarm.xc.result/1",
   "gate": "EXTERNAL_COORDINATOR_SEPARATION",
-  "implementation_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5",
-  "environment_digest": "sha256:a2b041b224e4b67249b5822f679d9478954796ff6ec76d61ab85e02e9868af55",
+  "implementation_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263",
+  "environment_digest": "sha256:ddaf7dd67dbbfabc3ee83ff7feea842e7ea8acc5d29a01da73b6225c976723b0",
   "committed_token_ids": [
     9764,
     393,

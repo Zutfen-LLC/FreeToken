@@ -1,31 +1,32 @@
 {
   "active_epoch_id": null,
-  "active_plan_digest": "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
+  "active_plan_digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+  "active_realization_id": null,
   "coordinator_scope": {
-    "instance_id": "326579f08962",
+    "instance_id": "72e3faff4304",
     "kind": "cpu-only-external-coordinator",
     "node_agent": "10.0.0.141:18486",
     "requests": [
       {
         "committed_epoch_ids": [
-          "research-generation-0:1e3d75f72682",
-          "research-generation-0:1e3d75f72682",
-          "research-generation-0:1e3d75f72682",
-          "research-generation-0:1e3d75f72682",
-          "research-generation-0:1e3d75f72682",
-          "research-generation-0:1e3d75f72682",
-          "research-generation-0:1e3d75f72682",
-          "research-generation-0:1e3d75f72682"
+          "research-generation-0:cbba220611a7",
+          "research-generation-0:cbba220611a7",
+          "research-generation-0:cbba220611a7",
+          "research-generation-0:cbba220611a7",
+          "research-generation-0:cbba220611a7",
+          "research-generation-0:cbba220611a7",
+          "research-generation-0:cbba220611a7",
+          "research-generation-0:cbba220611a7"
         ],
         "committed_plan_digests": [
-          "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
-          "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
-          "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
-          "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
-          "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
-          "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
-          "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
-          "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd"
+          "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+          "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+          "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+          "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+          "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+          "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+          "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+          "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88"
         ],
         "fencing_arm_injections": [
           {
@@ -105,77 +106,85 @@
           248068,
           198
         ],
-        "request_wall_ns": 15005936680,
+        "request_wall_ns": 14542837508,
         "schema": "inferswarm.xc.coordinator-request/1",
         "session_id": 1,
         "token_events": [
           {
-            "committed_at_ns": 13633099227841,
-            "epoch_id": "research-generation-0:1e3d75f72682",
-            "plan_digest": "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
+            "committed_at_ns": 22362556505992,
+            "epoch_id": "research-generation-0:cbba220611a7",
+            "generation": 0,
+            "plan_digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
             "position": 0,
             "step": 0,
             "text": "<|im_start|>user\nFind the sum of all integer bases $b>9$ for which $17_b$ is a divisor of $97_b.$\nPlease reason step by step, and put your final answer within ",
             "token_id": 9764
           },
           {
-            "committed_at_ns": 13634619692102,
-            "epoch_id": "research-generation-0:1e3d75f72682",
-            "plan_digest": "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
+            "committed_at_ns": 22363951103084,
+            "epoch_id": "research-generation-0:cbba220611a7",
+            "generation": 0,
+            "plan_digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
             "position": 1,
             "step": 1,
             "text": "\\boxed{}.<|im_end|>\n<|im_start|>assistant\n<think>\nLet ",
             "token_id": 393
           },
           {
-            "committed_at_ns": 13636034209380,
-            "epoch_id": "research-generation-0:1e3d75f72682",
-            "plan_digest": "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
+            "committed_at_ns": 22365266771690,
+            "epoch_id": "research-generation-0:cbba220611a7",
+            "generation": 0,
+            "plan_digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
             "position": 2,
             "step": 2,
             "text": "",
             "token_id": 45
           },
           {
-            "committed_at_ns": 13637377272093,
-            "epoch_id": "research-generation-0:1e3d75f72682",
-            "plan_digest": "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
+            "committed_at_ns": 22366627455521,
+            "epoch_id": "research-generation-0:cbba220611a7",
+            "generation": 0,
+            "plan_digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
             "position": 3,
             "step": 3,
             "text": "$N ",
             "token_id": 283
           },
           {
-            "committed_at_ns": 13638818536863,
-            "epoch_id": "research-generation-0:1e3d75f72682",
-            "plan_digest": "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
+            "committed_at_ns": 22368027841921,
+            "epoch_id": "research-generation-0:cbba220611a7",
+            "generation": 0,
+            "plan_digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
             "position": 4,
             "step": 4,
             "text": "= ",
             "token_id": 220
           },
           {
-            "committed_at_ns": 13640366075634,
-            "epoch_id": "research-generation-0:1e3d75f72682",
-            "plan_digest": "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
+            "committed_at_ns": 22369412127017,
+            "epoch_id": "research-generation-0:cbba220611a7",
+            "generation": 0,
+            "plan_digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
             "position": 5,
             "step": 5,
             "text": "",
             "token_id": 24
           },
           {
-            "committed_at_ns": 13641797160839,
-            "epoch_id": "research-generation-0:1e3d75f72682",
-            "plan_digest": "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
+            "committed_at_ns": 22370763888512,
+            "epoch_id": "research-generation-0:cbba220611a7",
+            "generation": 0,
+            "plan_digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
             "position": 6,
             "step": 6,
             "text": "",
             "token_id": 22
           },
           {
-            "committed_at_ns": 13643348467753,
-            "epoch_id": "research-generation-0:1e3d75f72682",
-            "plan_digest": "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
+            "committed_at_ns": 22372210448076,
+            "epoch_id": "research-generation-0:cbba220611a7",
+            "generation": 0,
+            "plan_digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
             "position": 7,
             "step": 7,
             "text": "",
@@ -186,11 +195,14 @@
     ],
     "scope_id": "scope/inferswarm-xc-67"
   },
+  "dead_realization_ids": {
+    "realization-1-18d1975ba81bedba": "epoch retired"
+  },
   "epochs": [
     {
-      "activated_at_ns": 13269482069638,
+      "activated_at_ns": 22317659349321,
       "candidate_id": "resident-two-node-two-slot[slot-a=gpu.node-a.0,slot-b=gpu.node-b.0]",
-      "epoch_id": "research-generation-0:1e3d75f72682",
+      "epoch_id": "research-generation-0:cbba220611a7",
       "execution_plan": {
         "admission_evidence_used": [],
         "backend_choices": [
@@ -208,7 +220,7 @@
           "gpu.node-a.0",
           "gpu.node-b.0"
         ],
-        "digest": "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
+        "digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
         "evidence_audit": [
           {
             "applicable": false,
@@ -225,7 +237,7 @@
               "unit": "ms",
               "value": 373.6170495
             },
-            "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+            "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
             "provenance": {
               "accepted_measurement": {
                 "arm_id": "same-node-resident-clean-http",
@@ -235,8 +247,8 @@
               "accepted_r5a_record_id": "r5a-same-node-resident-clean-http-ttft_ms",
               "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
               "numeric_value_remeasured": false,
-              "regression_evidence": "focused-xc-tests-31-pass",
-              "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+              "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+              "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
             },
             "reasons": [
               "candidate shape mismatch",
@@ -259,7 +271,7 @@
               "unit": "ms",
               "value": 2630.5871575
             },
-            "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+            "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
             "provenance": {
               "accepted_measurement": {
                 "arm_id": "source-backed-single-resource-clean-http",
@@ -269,8 +281,8 @@
               "accepted_r5a_record_id": "r5a-source-backed-single-resource-clean-http-ttft_ms",
               "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
               "numeric_value_remeasured": false,
-              "regression_evidence": "focused-xc-tests-31-pass",
-              "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+              "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+              "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
             },
             "reasons": [
               "candidate shape mismatch",
@@ -293,7 +305,7 @@
               "unit": "ms",
               "value": 1877.4567285
             },
-            "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+            "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
             "provenance": {
               "accepted_measurement": {
                 "arm_id": "two-node-resident-clean-http",
@@ -303,8 +315,8 @@
               "accepted_r5a_record_id": "r5a-two-node-resident-clean-http-ttft_ms",
               "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
               "numeric_value_remeasured": false,
-              "regression_evidence": "focused-xc-tests-31-pass",
-              "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+              "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+              "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
             },
             "reasons": [],
             "role": "RANKING_OBJECTIVE"
@@ -356,7 +368,7 @@
               "unit": "ms",
               "value": 844.3860605
             },
-            "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+            "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
             "provenance": {
               "accepted_measurement": {
                 "arm_id": "same-node-resident-clean-http",
@@ -366,8 +378,8 @@
               "accepted_r5a_record_id": "r5a-same-node-resident-clean-http-complete_request_wall_ms",
               "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
               "numeric_value_remeasured": false,
-              "regression_evidence": "focused-xc-tests-31-pass",
-              "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+              "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+              "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
             },
             "reasons": [
               "candidate shape mismatch",
@@ -391,7 +403,7 @@
               "unit": "tok/s",
               "value": 65.76624873330516
             },
-            "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+            "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
             "provenance": {
               "accepted_measurement": {
                 "arm_id": "same-node-resident-clean-http",
@@ -401,8 +413,8 @@
               "accepted_r5a_record_id": "r5a-same-node-resident-clean-http-decode_tok_s",
               "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
               "numeric_value_remeasured": false,
-              "regression_evidence": "focused-xc-tests-31-pass",
-              "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+              "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+              "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
             },
             "reasons": [
               "candidate shape mismatch",
@@ -427,7 +439,7 @@
               "unit": "ms",
               "value": 3305.816471
             },
-            "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+            "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
             "provenance": {
               "accepted_measurement": {
                 "arm_id": "source-backed-single-resource-clean-http",
@@ -437,8 +449,8 @@
               "accepted_r5a_record_id": "r5a-source-backed-single-resource-clean-http-complete_request_wall_ms",
               "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
               "numeric_value_remeasured": false,
-              "regression_evidence": "focused-xc-tests-31-pass",
-              "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+              "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+              "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
             },
             "reasons": [
               "candidate shape mismatch",
@@ -462,7 +474,7 @@
               "unit": "tok/s",
               "value": 46.0004088474295
             },
-            "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+            "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
             "provenance": {
               "accepted_measurement": {
                 "arm_id": "source-backed-single-resource-clean-http",
@@ -472,8 +484,8 @@
               "accepted_r5a_record_id": "r5a-source-backed-single-resource-clean-http-decode_tok_s",
               "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
               "numeric_value_remeasured": false,
-              "regression_evidence": "focused-xc-tests-31-pass",
-              "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+              "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+              "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
             },
             "reasons": [
               "candidate shape mismatch",
@@ -498,7 +510,7 @@
               "unit": "ms",
               "value": 3067.9846395
             },
-            "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+            "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
             "provenance": {
               "accepted_measurement": {
                 "arm_id": "two-node-resident-clean-http",
@@ -508,8 +520,8 @@
               "accepted_r5a_record_id": "r5a-two-node-resident-clean-http-complete_request_wall_ms",
               "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
               "numeric_value_remeasured": false,
-              "regression_evidence": "focused-xc-tests-31-pass",
-              "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+              "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+              "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
             },
             "reasons": [
               "objective metric mismatch: evidence 'complete_request_wall_ms', objective 'ttft_ms'"
@@ -531,7 +543,7 @@
               "unit": "tok/s",
               "value": 29.222968384878364
             },
-            "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+            "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
             "provenance": {
               "accepted_measurement": {
                 "arm_id": "two-node-resident-clean-http",
@@ -541,8 +553,8 @@
               "accepted_r5a_record_id": "r5a-two-node-resident-clean-http-decode_tok_s",
               "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
               "numeric_value_remeasured": false,
-              "regression_evidence": "focused-xc-tests-31-pass",
-              "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+              "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+              "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
             },
             "reasons": [
               "objective metric mismatch: evidence 'decode_tok_s', objective 'ttft_ms'",
@@ -576,7 +588,7 @@
                   "unit": "ms",
                   "value": 373.6170495
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "same-node-resident-clean-http",
@@ -586,8 +598,8 @@
                   "accepted_r5a_record_id": "r5a-same-node-resident-clean-http-ttft_ms",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [],
                 "role": "RANKING_OBJECTIVE"
@@ -607,7 +619,7 @@
                   "unit": "ms",
                   "value": 2630.5871575
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "source-backed-single-resource-clean-http",
@@ -617,8 +629,8 @@
                   "accepted_r5a_record_id": "r5a-source-backed-single-resource-clean-http-ttft_ms",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "candidate shape mismatch",
@@ -641,7 +653,7 @@
                   "unit": "ms",
                   "value": 1877.4567285
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "two-node-resident-clean-http",
@@ -651,8 +663,8 @@
                   "accepted_r5a_record_id": "r5a-two-node-resident-clean-http-ttft_ms",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "candidate shape mismatch",
@@ -709,7 +721,7 @@
                   "unit": "ms",
                   "value": 844.3860605
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "same-node-resident-clean-http",
@@ -719,8 +731,8 @@
                   "accepted_r5a_record_id": "r5a-same-node-resident-clean-http-complete_request_wall_ms",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "objective metric mismatch: evidence 'complete_request_wall_ms', objective 'ttft_ms'"
@@ -742,7 +754,7 @@
                   "unit": "tok/s",
                   "value": 65.76624873330516
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "same-node-resident-clean-http",
@@ -752,8 +764,8 @@
                   "accepted_r5a_record_id": "r5a-same-node-resident-clean-http-decode_tok_s",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "objective metric mismatch: evidence 'decode_tok_s', objective 'ttft_ms'",
@@ -776,7 +788,7 @@
                   "unit": "ms",
                   "value": 3305.816471
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "source-backed-single-resource-clean-http",
@@ -786,8 +798,8 @@
                   "accepted_r5a_record_id": "r5a-source-backed-single-resource-clean-http-complete_request_wall_ms",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "candidate shape mismatch",
@@ -811,7 +823,7 @@
                   "unit": "tok/s",
                   "value": 46.0004088474295
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "source-backed-single-resource-clean-http",
@@ -821,8 +833,8 @@
                   "accepted_r5a_record_id": "r5a-source-backed-single-resource-clean-http-decode_tok_s",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "candidate shape mismatch",
@@ -847,7 +859,7 @@
                   "unit": "ms",
                   "value": 3067.9846395
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "two-node-resident-clean-http",
@@ -857,8 +869,8 @@
                   "accepted_r5a_record_id": "r5a-two-node-resident-clean-http-complete_request_wall_ms",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "candidate shape mismatch",
@@ -882,7 +894,7 @@
                   "unit": "tok/s",
                   "value": 29.222968384878364
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "two-node-resident-clean-http",
@@ -892,8 +904,8 @@
                   "accepted_r5a_record_id": "r5a-two-node-resident-clean-http-decode_tok_s",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "candidate shape mismatch",
@@ -1000,13 +1012,13 @@
           "revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce"
         },
         "objective": {
-          "digest": "sha256:ef548359dcea9b5c02f79c44f8c7258cecd7fec11178fd5a2759f0ce7cde1fa3",
+          "digest": "sha256:55b7c1430e9c3903c70de7ed8129e20e8f346994b7e776829c313e27e3717927",
           "direction": "MINIMIZE",
           "evidence_context": {
             "workload_geometry": "W2-W4-generate32-static"
           },
           "id": "matched-serving-ttft_ms",
-          "implementation_commit": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+          "implementation_commit": "84e531971d6c02530fd0d541da3478df7510f263",
           "metric": "ttft_ms",
           "schema": "inferswarm.r5a.objective/1",
           "statistic": "median",
@@ -1016,12 +1028,12 @@
           "node.inferswarm01",
           "node.inferswarm03"
         ],
-        "planner_decision_digest": "sha256:06a1733573167cca84f6c306749205bd552252984a2c4263276a07161e726a3c",
+        "planner_decision_digest": "sha256:bb21611f75c85ceaa9604604e0d70428fa06739dc68b1610fe7df95ea54319af",
         "policy_inputs": {
-          "digest": "sha256:43257a3da158930819e41b2b4d5d164d4f4c8f7d8a45dd378d099823777d3d5f",
+          "digest": "sha256:4846ea5caab23a27bee8b38ad76e07e2ac457ec0a3b8b9a730e02f03787e29ac",
           "epoch_reconfiguration": true,
           "excluded_compute_unit_ids": [],
-          "implementation_commit": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+          "implementation_commit": "84e531971d6c02530fd0d541da3478df7510f263",
           "integrity_policy": "quarantined-resources-cannot-participate",
           "reservations_bytes": {},
           "schema": "inferswarm.r5b.operator-policy/1",
@@ -1098,7 +1110,7 @@
           "public_api": false
         },
         "strategy_realization": {
-          "participant_plan_digest": "sha256:8035d4c4bd25a3aa7e1f891d83477549c23ce411a0a99bf01b94a28146e987c2",
+          "participant_plan_digest": "sha256:c339627e5b854fb6d6c8d1685ab4434e9d9067c68fb97db3d2b205633cd23530",
           "path": "r4-persistent-boundary",
           "transition_contract": {
             "fail_without_trusted_history": true,
@@ -1265,199 +1277,199 @@
           "host_expert_fetches": 0,
           "host_lifecycle_snapshots": {
             "P0_fresh_worker": {
-              "pid": 637054,
+              "pid": 708716,
               "process_smaps_rollup_bytes": {
-                "Anonymous": 325406720,
+                "Anonymous": 325435392,
                 "Locked": 0,
-                "Private_Clean": 210960384,
-                "Private_Dirty": 325406720,
-                "Pss": 540705792,
-                "Rss": 551702528,
-                "Shared_Clean": 15335424,
+                "Private_Clean": 210944000,
+                "Private_Dirty": 325435392,
+                "Pss": 540742656,
+                "Rss": 551739392,
+                "Shared_Clean": 15360000,
                 "Shared_Dirty": 0,
                 "Swap": 0,
                 "SwapPss": 0
               },
               "process_status_bytes": {
-                "RssAnon": 325406720,
-                "RssFile": 226295808,
+                "RssAnon": 325435392,
+                "RssFile": 226304000,
                 "RssShmem": 0,
-                "VmHWM": 556548096,
+                "VmHWM": 556396544,
                 "VmLck": 0,
-                "VmRSS": 551702528,
+                "VmRSS": 551739392,
                 "VmSwap": 0
               },
               "system_meminfo_bytes": {
-                "Cached": 41506689024,
-                "MemAvailable": 121985650688,
-                "MemFree": 90967719936,
+                "Cached": 32368746496,
+                "MemAvailable": 131183718400,
+                "MemFree": 100102852608,
                 "Mlocked": 0,
-                "Shmem": 10086072320,
+                "Shmem": 879218688,
                 "SwapFree": 12898529280
               },
               "worker_alive": true
             },
             "P1_source_load_complete": {
-              "pid": 637054,
+              "pid": 708716,
               "process_smaps_rollup_bytes": {
-                "Anonymous": 858738688,
+                "Anonymous": 859586560,
                 "Locked": 0,
-                "Private_Clean": 466083840,
-                "Private_Dirty": 10610728960,
-                "Pss": 11082374144,
-                "Rss": 11094982656,
-                "Shared_Clean": 18169856,
+                "Private_Clean": 466030592,
+                "Private_Dirty": 10611576832,
+                "Pss": 11083184128,
+                "Rss": 11095756800,
+                "Shared_Clean": 18149376,
                 "Shared_Dirty": 0,
                 "Swap": 0,
                 "SwapPss": 0
               },
               "process_status_bytes": {
-                "RssAnon": 858738688,
-                "RssFile": 488153088,
+                "RssAnon": 859586560,
+                "RssFile": 488079360,
                 "RssShmem": 9748090880,
-                "VmHWM": 11557670912,
+                "VmHWM": 11557613568,
                 "VmLck": 0,
-                "VmRSS": 11094982656,
+                "VmRSS": 11095756800,
                 "VmSwap": 0
               },
               "system_meminfo_bytes": {
-                "Cached": 28530114560,
-                "MemAvailable": 111347732480,
-                "MemFree": 103083442176,
+                "Cached": 19392090112,
+                "MemAvailable": 120428220416,
+                "MemFree": 112101167104,
                 "Mlocked": 0,
-                "Shmem": 19834163200,
+                "Shmem": 10627309568,
                 "SwapFree": 12898529280
               },
               "worker_alive": true
             },
             "P2_gpu_population_sources_attached": {
-              "pid": 637054,
+              "pid": 708716,
               "process_smaps_rollup_bytes": {
-                "Anonymous": 866336768,
+                "Anonymous": 868089856,
                 "Locked": 0,
-                "Private_Clean": 467116032,
-                "Private_Dirty": 10626809856,
-                "Pss": 11099487232,
-                "Rss": 11112095744,
-                "Shared_Clean": 18169856,
+                "Private_Clean": 467062784,
+                "Private_Dirty": 10628562944,
+                "Pss": 11101202432,
+                "Rss": 11113775104,
+                "Shared_Clean": 18149376,
                 "Shared_Dirty": 0,
                 "Swap": 0,
                 "SwapPss": 0
               },
               "process_status_bytes": {
-                "RssAnon": 866336768,
-                "RssFile": 489279488,
+                "RssAnon": 868089856,
+                "RssFile": 489205760,
                 "RssShmem": 9756479488,
-                "VmHWM": 11557670912,
+                "VmHWM": 11557613568,
                 "VmLck": 0,
-                "VmRSS": 11112095744,
+                "VmRSS": 11113775104,
                 "VmSwap": 0
               },
               "system_meminfo_bytes": {
-                "Cached": 28538159104,
-                "MemAvailable": 111330496512,
-                "MemFree": 103066714112,
+                "Cached": 19400142848,
+                "MemAvailable": 120410906624,
+                "MemFree": 112084303872,
                 "Mlocked": 0,
-                "Shmem": 19842551808,
+                "Shmem": 10635698176,
                 "SwapFree": 12898529280
               },
               "worker_alive": true
             },
             "P3_logical_detach_complete": {
-              "pid": 637054,
+              "pid": 708716,
               "process_smaps_rollup_bytes": {
-                "Anonymous": 1148473344,
+                "Anonymous": 1150435328,
                 "Locked": 0,
-                "Private_Clean": 558411776,
-                "Private_Dirty": 9828839424,
-                "Pss": 10392812544,
-                "Rss": 10405421056,
-                "Shared_Clean": 18169856,
+                "Private_Clean": 558358528,
+                "Private_Dirty": 9830801408,
+                "Pss": 10394736640,
+                "Rss": 10407309312,
+                "Shared_Clean": 18149376,
                 "Shared_Dirty": 0,
                 "Swap": 0,
                 "SwapPss": 0
               },
               "process_status_bytes": {
-                "RssAnon": 1148473344,
-                "RssFile": 582598656,
+                "RssAnon": 1150435328,
+                "RssFile": 582524928,
                 "RssShmem": 8674349056,
-                "VmHWM": 11557670912,
+                "VmHWM": 11557613568,
                 "VmLck": 0,
-                "VmRSS": 10405421056,
+                "VmRSS": 10407309312,
                 "VmSwap": 0
               },
               "system_meminfo_bytes": {
-                "Cached": 27456458752,
-                "MemAvailable": 112134299648,
-                "MemFree": 103872827392,
+                "Cached": 18318012416,
+                "MemAvailable": 121177407488,
+                "MemFree": 112853196800,
                 "Mlocked": 0,
-                "Shmem": 18760851456,
+                "Shmem": 9553567744,
                 "SwapFree": 12898529280
               },
               "worker_alive": true
             },
             "P4_reference_cleanup_complete": {
-              "pid": 637054,
+              "pid": 708716,
               "process_smaps_rollup_bytes": {
-                "Anonymous": 1148473344,
+                "Anonymous": 1150435328,
                 "Locked": 0,
-                "Private_Clean": 558411776,
-                "Private_Dirty": 1192243200,
-                "Pss": 1756216320,
-                "Rss": 1768824832,
-                "Shared_Clean": 18169856,
+                "Private_Clean": 558358528,
+                "Private_Dirty": 1194205184,
+                "Pss": 1758140416,
+                "Rss": 1770713088,
+                "Shared_Clean": 18149376,
                 "Shared_Dirty": 0,
                 "Swap": 0,
                 "SwapPss": 0
               },
               "process_status_bytes": {
-                "RssAnon": 1148473344,
-                "RssFile": 582598656,
+                "RssAnon": 1150435328,
+                "RssFile": 582524928,
                 "RssShmem": 37752832,
-                "VmHWM": 11557670912,
+                "VmHWM": 11557613568,
                 "VmLck": 0,
-                "VmRSS": 1768824832,
+                "VmRSS": 1770713088,
                 "VmSwap": 0
               },
               "system_meminfo_bytes": {
-                "Cached": 18819432448,
-                "MemAvailable": 120949604352,
-                "MemFree": 112702631936,
+                "Cached": 9681686528,
+                "MemAvailable": 130045575168,
+                "MemFree": 121733521408,
                 "Mlocked": 0,
-                "Shmem": 10123825152,
+                "Shmem": 917241856,
                 "SwapFree": 12898529280
               },
               "worker_alive": true
             },
             "P5_repeated_resident_decode": {
-              "pid": 637054,
+              "pid": 708716,
               "process_smaps_rollup_bytes": {
-                "Anonymous": 1323126784,
+                "Anonymous": 1371353088,
                 "Locked": 0,
-                "Private_Clean": 564690944,
-                "Private_Dirty": 1366900736,
-                "Pss": 1937185792,
-                "Rss": 1949827072,
-                "Shared_Clean": 18235392,
+                "Private_Clean": 564703232,
+                "Private_Dirty": 1415127040,
+                "Pss": 1985439744,
+                "Rss": 1998045184,
+                "Shared_Clean": 18214912,
                 "Shared_Dirty": 0,
                 "Swap": 0,
                 "SwapPss": 0
               },
               "process_status_bytes": {
-                "RssAnon": 1323126784,
-                "RssFile": 588947456,
+                "RssAnon": 1371353088,
+                "RssFile": 588939264,
                 "RssShmem": 37752832,
-                "VmHWM": 11557670912,
+                "VmHWM": 11557613568,
                 "VmLck": 0,
-                "VmRSS": 1949827072,
+                "VmRSS": 1998045184,
                 "VmSwap": 0
               },
               "system_meminfo_bytes": {
-                "Cached": 18819698688,
-                "MemAvailable": 120901455872,
-                "MemFree": 112653381632,
+                "Cached": 9681416192,
+                "MemAvailable": 129999978496,
+                "MemFree": 121687965696,
                 "Mlocked": 0,
-                "Shmem": 10123825152,
+                "Shmem": 916971520,
                 "SwapFree": 12898529280
               },
               "worker_alive": true
@@ -3186,42 +3198,42 @@
           ],
           "host_staging_before_release_bytes": 8636596224,
           "host_staging_current_bytes": 0,
-          "load_elapsed_seconds": 47.55272063300072,
+          "load_elapsed_seconds": 47.91865624500497,
           "non_routed_device_bytes": 1689347736,
-          "pid": 637054,
+          "pid": 708716,
           "populate_count": 1,
           "process_after_realization": {
-            "RssAnon_kib": 1121224,
-            "RssFile_kib": 567280,
+            "RssAnon_kib": 1123144,
+            "RssFile_kib": 567208,
             "RssShmem_kib": 8471044,
-            "VmHWM_kib": 11286788,
-            "VmPeak_kib": 66082032,
-            "VmRSS_kib": 10159548,
+            "VmHWM_kib": 11286732,
+            "VmPeak_kib": 66082164,
+            "VmRSS_kib": 10161396,
             "VmSwap_kib": 0
           },
           "process_before": {
-            "RssAnon_kib": 317780,
-            "RssFile_kib": 220992,
+            "RssAnon_kib": 317812,
+            "RssFile_kib": 221000,
             "RssShmem_kib": 0,
-            "VmHWM_kib": 543504,
-            "VmPeak_kib": 4376736,
-            "VmRSS_kib": 538772,
+            "VmHWM_kib": 543356,
+            "VmPeak_kib": 4376880,
+            "VmRSS_kib": 538812,
             "VmSwap_kib": 0
           },
           "process_current": {
-            "RssAnon_kib": 1311380,
-            "RssFile_kib": 576072,
+            "RssAnon_kib": 1339212,
+            "RssFile_kib": 576064,
             "RssShmem_kib": 36868,
-            "VmHWM_kib": 11286788,
-            "VmPeak_kib": 66082032,
-            "VmRSS_kib": 1924320,
+            "VmHWM_kib": 11286732,
+            "VmPeak_kib": 66082164,
+            "VmRSS_kib": 1952144,
             "VmSwap_kib": 0
           },
           "resident_only": true,
           "resident_source_accesses": 0,
           "role": "a",
           "routed_device_bytes": 8636596224,
-          "ru_maxrss_kib": 11286788,
+          "ru_maxrss_kib": 11286732,
           "state_ownership": {
             "kv_cache_allocated_bytes": 140509184,
             "kv_global_layer_ids": [
@@ -3254,7 +3266,7 @@
           "unexpected_checkpoint_keys": [],
           "unexplained_persistent_host_mirror_bytes": 0,
           "vmstat_delta": {
-            "pgmajfault": 70104,
+            "pgmajfault": 77689,
             "pswpin": 0,
             "pswpout": 0
           },
@@ -3262,58 +3274,58 @@
         },
         "sessions": [
           {
-            "block_a_compute_ns": 379801067,
-            "block_b_compute_ns": 324143460,
+            "block_a_compute_ns": 389221914,
+            "block_b_compute_ns": 379646999,
             "boundaries": [
               {
-                "block_a_compute_ns": 373371046,
-                "block_b_compute_ns": 317464678,
+                "block_a_compute_ns": 382972939,
+                "block_b_compute_ns": 372882232,
                 "consumer_sha256": null,
-                "d2h_ns": 103110,
+                "d2h_ns": 106481,
                 "generated_step": 0,
-                "h2d_ns": 104400,
+                "h2d_ns": 110571,
                 "operation": "prefill",
                 "payload_bytes": 442368,
                 "position": 0,
                 "producer_sha256": null,
-                "receiver_service_ns": 592144999102,
-                "sender_send_ns": 1674032,
-                "step_wall_ns": 1732560495,
+                "receiver_service_ns": 255385608476,
+                "sender_send_ns": 1869336,
+                "step_wall_ns": 1802807547,
                 "tcp_nodelay": true,
                 "token_count": 54
               },
               {
-                "block_a_compute_ns": 6430021,
-                "block_b_compute_ns": 6678782,
+                "block_a_compute_ns": 6248975,
+                "block_b_compute_ns": 6764767,
                 "consumer_sha256": null,
-                "d2h_ns": 101614,
+                "d2h_ns": 113223,
                 "generated_step": 1,
-                "h2d_ns": 84225,
+                "h2d_ns": 91930,
                 "operation": "decode",
                 "payload_bytes": 8192,
                 "position": 54,
                 "producer_sha256": null,
-                "receiver_service_ns": 23140784,
-                "sender_send_ns": 37167,
-                "step_wall_ns": 29892745,
+                "receiver_service_ns": 23783049,
+                "sender_send_ns": 38259,
+                "step_wall_ns": 30536954,
                 "tcp_nodelay": true,
                 "token_count": 1
               }
             ],
             "boundary_semantic_bytes": 450560,
-            "decode_tokens_per_second": 19.99100684566041,
-            "decode_wall_ns": 50022493,
+            "decode_tokens_per_second": 23.41309605440398,
+            "decode_wall_ns": 42711139,
             "generated_token_count": 2,
             "generated_token_ids": [
               9764,
               393
             ],
             "inter_token_latency_ns": [
-              29892745
+              30536954
             ],
-            "inter_token_p50_ns": 29892745,
-            "plan_digest": "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
-            "prefill_wall_ns": 1732696395,
+            "inter_token_p50_ns": 30536954,
+            "plan_digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+            "prefill_wall_ns": 1802947121,
             "prompt_token_count": 54,
             "prompt_token_ids": [
               248045,
@@ -3372,62 +3384,62 @@
               198
             ],
             "session_id": 1000001,
-            "total_request_wall_ns": 1782722095,
-            "ttft_ns": 1732697661
+            "total_request_wall_ns": 1845661087,
+            "ttft_ns": 1802948370
           },
           {
-            "block_a_compute_ns": 112652448,
-            "block_b_compute_ns": 175082293,
+            "block_a_compute_ns": 114597896,
+            "block_b_compute_ns": 179333620,
             "boundaries": [
               {
-                "block_a_compute_ns": 106943876,
-                "block_b_compute_ns": 168500200,
+                "block_a_compute_ns": 108805668,
+                "block_b_compute_ns": 172843118,
                 "consumer_sha256": null,
-                "d2h_ns": 99348,
+                "d2h_ns": 103320,
                 "generated_step": 0,
-                "h2d_ns": 108127,
+                "h2d_ns": 122941,
                 "operation": "prefill",
                 "payload_bytes": 450560,
                 "position": 0,
                 "producer_sha256": null,
-                "receiver_service_ns": 1320618566,
-                "sender_send_ns": 194779,
-                "step_wall_ns": 1462742810,
+                "receiver_service_ns": 1182512483,
+                "sender_send_ns": 186738,
+                "step_wall_ns": 1335912000,
                 "tcp_nodelay": true,
                 "token_count": 55
               },
               {
-                "block_a_compute_ns": 5708572,
-                "block_b_compute_ns": 6582093,
+                "block_a_compute_ns": 5792228,
+                "block_b_compute_ns": 6490502,
                 "consumer_sha256": null,
-                "d2h_ns": 101255,
+                "d2h_ns": 108363,
                 "generated_step": 1,
-                "h2d_ns": 102653,
+                "h2d_ns": 94149,
                 "operation": "decode",
                 "payload_bytes": 8192,
                 "position": 55,
                 "producer_sha256": null,
-                "receiver_service_ns": 22579945,
-                "sender_send_ns": 37271,
-                "step_wall_ns": 29124388,
+                "receiver_service_ns": 22952828,
+                "sender_send_ns": 35777,
+                "step_wall_ns": 29510402,
                 "tcp_nodelay": true,
                 "token_count": 1
               }
             ],
             "boundary_semantic_bytes": 458752,
-            "decode_tokens_per_second": 19.81964087167494,
-            "decode_wall_ns": 50455001,
+            "decode_tokens_per_second": 19.66315636722006,
+            "decode_wall_ns": 50856535,
             "generated_token_count": 2,
             "generated_token_ids": [
               393,
               45
             ],
             "inter_token_latency_ns": [
-              29124388
+              29510402
             ],
-            "inter_token_p50_ns": 29124388,
-            "plan_digest": "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
-            "prefill_wall_ns": 1462860205,
+            "inter_token_p50_ns": 29510402,
+            "plan_digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+            "prefill_wall_ns": 1336004986,
             "prompt_token_count": 55,
             "prompt_token_ids": [
               248045,
@@ -3487,62 +3499,62 @@
               9764
             ],
             "session_id": 1000002,
-            "total_request_wall_ns": 1513317740,
-            "ttft_ns": 1462860801
+            "total_request_wall_ns": 1386864421,
+            "ttft_ns": 1336006429
           },
           {
-            "block_a_compute_ns": 102208286,
-            "block_b_compute_ns": 115124710,
+            "block_a_compute_ns": 103114347,
+            "block_b_compute_ns": 105187277,
             "boundaries": [
               {
-                "block_a_compute_ns": 96341432,
-                "block_b_compute_ns": 108515986,
+                "block_a_compute_ns": 97356984,
+                "block_b_compute_ns": 98731557,
                 "consumer_sha256": null,
-                "d2h_ns": 97785,
+                "d2h_ns": 105032,
                 "generated_step": 0,
-                "h2d_ns": 201336,
+                "h2d_ns": 145245,
                 "operation": "prefill",
                 "payload_bytes": 458752,
                 "position": 0,
                 "producer_sha256": null,
-                "receiver_service_ns": 1284975710,
-                "sender_send_ns": 204674,
-                "step_wall_ns": 1365782609,
+                "receiver_service_ns": 1196507040,
+                "sender_send_ns": 201287,
+                "step_wall_ns": 1267250930,
                 "tcp_nodelay": true,
                 "token_count": 56
               },
               {
-                "block_a_compute_ns": 5866854,
-                "block_b_compute_ns": 6608724,
+                "block_a_compute_ns": 5757363,
+                "block_b_compute_ns": 6455720,
                 "consumer_sha256": null,
-                "d2h_ns": 101476,
+                "d2h_ns": 107589,
                 "generated_step": 1,
-                "h2d_ns": 90441,
+                "h2d_ns": 87904,
                 "operation": "decode",
                 "payload_bytes": 8192,
                 "position": 56,
                 "producer_sha256": null,
-                "receiver_service_ns": 22550301,
-                "sender_send_ns": 36984,
-                "step_wall_ns": 29156983,
+                "receiver_service_ns": 23030060,
+                "sender_send_ns": 35419,
+                "step_wall_ns": 29506558,
                 "tcp_nodelay": true,
                 "token_count": 1
               }
             ],
             "boundary_semantic_bytes": 466944,
-            "decode_tokens_per_second": 23.9582394469825,
-            "decode_wall_ns": 41739294,
+            "decode_tokens_per_second": 23.76199924527138,
+            "decode_wall_ns": 42084001,
             "generated_token_count": 2,
             "generated_token_ids": [
               45,
               283
             ],
             "inter_token_latency_ns": [
-              29156983
+              29506558
             ],
-            "inter_token_p50_ns": 29156983,
-            "plan_digest": "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
-            "prefill_wall_ns": 1365888515,
+            "inter_token_p50_ns": 29506558,
+            "plan_digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+            "prefill_wall_ns": 1267333968,
             "prompt_token_count": 56,
             "prompt_token_ids": [
               248045,
@@ -3603,62 +3615,62 @@
               393
             ],
             "session_id": 1000003,
-            "total_request_wall_ns": 1407629426,
-            "ttft_ns": 1365889040
+            "total_request_wall_ns": 1309419643,
+            "ttft_ns": 1267334475
           },
           {
-            "block_a_compute_ns": 110570731,
-            "block_b_compute_ns": 108879515,
+            "block_a_compute_ns": 104454360,
+            "block_b_compute_ns": 108750723,
             "boundaries": [
               {
-                "block_a_compute_ns": 104783399,
-                "block_b_compute_ns": 102453809,
+                "block_a_compute_ns": 98691128,
+                "block_b_compute_ns": 102308561,
                 "consumer_sha256": null,
-                "d2h_ns": 96741,
+                "d2h_ns": 105535,
                 "generated_step": 0,
-                "h2d_ns": 152332,
+                "h2d_ns": 154160,
                 "operation": "prefill",
                 "payload_bytes": 466944,
                 "position": 0,
                 "producer_sha256": null,
-                "receiver_service_ns": 1209259005,
-                "sender_send_ns": 202945,
-                "step_wall_ns": 1293373123,
+                "receiver_service_ns": 1217806124,
+                "sender_send_ns": 197111,
+                "step_wall_ns": 1302142352,
                 "tcp_nodelay": true,
                 "token_count": 57
               },
               {
-                "block_a_compute_ns": 5787332,
-                "block_b_compute_ns": 6425706,
+                "block_a_compute_ns": 5763232,
+                "block_b_compute_ns": 6442162,
                 "consumer_sha256": null,
-                "d2h_ns": 99447,
+                "d2h_ns": 121470,
                 "generated_step": 1,
-                "h2d_ns": 87104,
+                "h2d_ns": 92764,
                 "operation": "decode",
                 "payload_bytes": 8192,
                 "position": 57,
                 "producer_sha256": null,
-                "receiver_service_ns": 23237686,
-                "sender_send_ns": 35938,
-                "step_wall_ns": 29600846,
+                "receiver_service_ns": 23428007,
+                "sender_send_ns": 35747,
+                "step_wall_ns": 30054740,
                 "tcp_nodelay": true,
                 "token_count": 1
               }
             ],
             "boundary_semantic_bytes": 475136,
-            "decode_tokens_per_second": 23.524472179065274,
-            "decode_wall_ns": 42508924,
+            "decode_tokens_per_second": 19.183236490920276,
+            "decode_wall_ns": 52128847,
             "generated_token_count": 2,
             "generated_token_ids": [
               283,
               220
             ],
             "inter_token_latency_ns": [
-              29600846
+              30054740
             ],
-            "inter_token_p50_ns": 29600846,
-            "plan_digest": "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
-            "prefill_wall_ns": 1293488941,
+            "inter_token_p50_ns": 30054740,
+            "plan_digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+            "prefill_wall_ns": 1302228595,
             "prompt_token_count": 57,
             "prompt_token_ids": [
               248045,
@@ -3720,62 +3732,62 @@
               45
             ],
             "session_id": 1000004,
-            "total_request_wall_ns": 1335999722,
-            "ttft_ns": 1293489398
+            "total_request_wall_ns": 1354359697,
+            "ttft_ns": 1302229343
           },
           {
-            "block_a_compute_ns": 104007834,
-            "block_b_compute_ns": 115243056,
+            "block_a_compute_ns": 104974957,
+            "block_b_compute_ns": 118303599,
             "boundaries": [
               {
-                "block_a_compute_ns": 98142483,
-                "block_b_compute_ns": 108601431,
+                "block_a_compute_ns": 99049428,
+                "block_b_compute_ns": 111627004,
                 "consumer_sha256": null,
-                "d2h_ns": 98284,
+                "d2h_ns": 106229,
                 "generated_step": 0,
-                "h2d_ns": 131034,
+                "h2d_ns": 169211,
                 "operation": "prefill",
                 "payload_bytes": 475136,
                 "position": 0,
                 "producer_sha256": null,
-                "receiver_service_ns": 1302755962,
-                "sender_send_ns": 202835,
-                "step_wall_ns": 1391921964,
+                "receiver_service_ns": 1256727310,
+                "sender_send_ns": 199740,
+                "step_wall_ns": 1340582406,
                 "tcp_nodelay": true,
                 "token_count": 58
               },
               {
-                "block_a_compute_ns": 5865351,
-                "block_b_compute_ns": 6641625,
+                "block_a_compute_ns": 5925529,
+                "block_b_compute_ns": 6676595,
                 "consumer_sha256": null,
-                "d2h_ns": 101556,
+                "d2h_ns": 108977,
                 "generated_step": 1,
-                "h2d_ns": 84213,
+                "h2d_ns": 94835,
                 "operation": "decode",
                 "payload_bytes": 8192,
                 "position": 58,
                 "producer_sha256": null,
-                "receiver_service_ns": 22679474,
-                "sender_send_ns": 36014,
-                "step_wall_ns": 29258371,
+                "receiver_service_ns": 23643616,
+                "sender_send_ns": 36062,
+                "step_wall_ns": 30290829,
                 "tcp_nodelay": true,
                 "token_count": 1
               }
             ],
             "boundary_semantic_bytes": 483328,
-            "decode_tokens_per_second": 23.651743591163907,
-            "decode_wall_ns": 42280181,
+            "decode_tokens_per_second": 18.717416720972132,
+            "decode_wall_ns": 53426176,
             "generated_token_count": 2,
             "generated_token_ids": [
               220,
               24
             ],
             "inter_token_latency_ns": [
-              29258371
+              30290829
             ],
-            "inter_token_p50_ns": 29258371,
-            "plan_digest": "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
-            "prefill_wall_ns": 1392045324,
+            "inter_token_p50_ns": 30290829,
+            "plan_digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+            "prefill_wall_ns": 1340669871,
             "prompt_token_count": 58,
             "prompt_token_ids": [
               248045,
@@ -3838,62 +3850,62 @@
               283
             ],
             "session_id": 1000005,
-            "total_request_wall_ns": 1434327459,
-            "ttft_ns": 1392046182
+            "total_request_wall_ns": 1394098044,
+            "ttft_ns": 1340670609
           },
           {
-            "block_a_compute_ns": 112371653,
-            "block_b_compute_ns": 120789207,
+            "block_a_compute_ns": 112829115,
+            "block_b_compute_ns": 116394857,
             "boundaries": [
               {
-                "block_a_compute_ns": 106630077,
-                "block_b_compute_ns": 114381477,
+                "block_a_compute_ns": 106881044,
+                "block_b_compute_ns": 109724006,
                 "consumer_sha256": null,
-                "d2h_ns": 98454,
+                "d2h_ns": 106683,
                 "generated_step": 0,
-                "h2d_ns": 178940,
+                "h2d_ns": 122988,
                 "operation": "prefill",
                 "payload_bytes": 483328,
                 "position": 0,
                 "producer_sha256": null,
-                "receiver_service_ns": 1393342610,
-                "sender_send_ns": 208128,
-                "step_wall_ns": 1488740592,
+                "receiver_service_ns": 1253274103,
+                "sender_send_ns": 199772,
+                "step_wall_ns": 1334108491,
                 "tcp_nodelay": true,
                 "token_count": 59
               },
               {
-                "block_a_compute_ns": 5741576,
-                "block_b_compute_ns": 6407730,
+                "block_a_compute_ns": 5948071,
+                "block_b_compute_ns": 6670851,
                 "consumer_sha256": null,
-                "d2h_ns": 100728,
+                "d2h_ns": 109625,
                 "generated_step": 1,
-                "h2d_ns": 86453,
+                "h2d_ns": 96085,
                 "operation": "decode",
                 "payload_bytes": 8192,
                 "position": 59,
                 "producer_sha256": null,
-                "receiver_service_ns": 22350561,
-                "sender_send_ns": 36237,
-                "step_wall_ns": 28887071,
+                "receiver_service_ns": 23101199,
+                "sender_send_ns": 36051,
+                "step_wall_ns": 29914965,
                 "tcp_nodelay": true,
                 "token_count": 1
               }
             ],
             "boundary_semantic_bytes": 491520,
-            "decode_tokens_per_second": 19.192530328612204,
-            "decode_wall_ns": 52103604,
+            "decode_tokens_per_second": 23.132632149325026,
+            "decode_wall_ns": 43228976,
             "generated_token_count": 2,
             "generated_token_ids": [
               24,
               22
             ],
             "inter_token_latency_ns": [
-              28887071
+              29914965
             ],
-            "inter_token_p50_ns": 28887071,
-            "plan_digest": "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
-            "prefill_wall_ns": 1488845551,
+            "inter_token_p50_ns": 29914965,
+            "plan_digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+            "prefill_wall_ns": 1334192907,
             "prompt_token_count": 59,
             "prompt_token_ids": [
               248045,
@@ -3957,62 +3969,62 @@
               220
             ],
             "session_id": 1000006,
-            "total_request_wall_ns": 1540950825,
-            "ttft_ns": 1488846108
+            "total_request_wall_ns": 1377423699,
+            "ttft_ns": 1334193400
           },
           {
-            "block_a_compute_ns": 107653250,
-            "block_b_compute_ns": 115935321,
+            "block_a_compute_ns": 114278889,
+            "block_b_compute_ns": 123402561,
             "boundaries": [
               {
-                "block_a_compute_ns": 101800897,
-                "block_b_compute_ns": 109510688,
+                "block_a_compute_ns": 108370844,
+                "block_b_compute_ns": 116796544,
                 "consumer_sha256": null,
-                "d2h_ns": 98647,
+                "d2h_ns": 105403,
                 "generated_step": 0,
-                "h2d_ns": 189223,
+                "h2d_ns": 195529,
                 "operation": "prefill",
                 "payload_bytes": 491520,
                 "position": 0,
                 "producer_sha256": null,
-                "receiver_service_ns": 1291541129,
-                "sender_send_ns": 209607,
-                "step_wall_ns": 1372054441,
+                "receiver_service_ns": 1205832364,
+                "sender_send_ns": 207598,
+                "step_wall_ns": 1302989466,
                 "tcp_nodelay": true,
                 "token_count": 60
               },
               {
-                "block_a_compute_ns": 5852353,
-                "block_b_compute_ns": 6424633,
+                "block_a_compute_ns": 5908045,
+                "block_b_compute_ns": 6606017,
                 "consumer_sha256": null,
-                "d2h_ns": 101777,
+                "d2h_ns": 106389,
                 "generated_step": 1,
-                "h2d_ns": 85663,
+                "h2d_ns": 91460,
                 "operation": "decode",
                 "payload_bytes": 8192,
                 "position": 60,
                 "producer_sha256": null,
-                "receiver_service_ns": 22306596,
-                "sender_send_ns": 36406,
-                "step_wall_ns": 28859773,
+                "receiver_service_ns": 21972968,
+                "sender_send_ns": 35633,
+                "step_wall_ns": 28763364,
                 "tcp_nodelay": true,
                 "token_count": 1
               }
             ],
             "boundary_semantic_bytes": 499712,
-            "decode_tokens_per_second": 19.182348188354776,
-            "decode_wall_ns": 52131261,
+            "decode_tokens_per_second": 23.690863045347676,
+            "decode_wall_ns": 42210366,
             "generated_token_count": 2,
             "generated_token_ids": [
               22,
               853
             ],
             "inter_token_latency_ns": [
-              28859773
+              28763364
             ],
-            "inter_token_p50_ns": 28859773,
-            "plan_digest": "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
-            "prefill_wall_ns": 1372140685,
+            "inter_token_p50_ns": 28763364,
+            "plan_digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+            "prefill_wall_ns": 1303086961,
             "prompt_token_count": 60,
             "prompt_token_ids": [
               248045,
@@ -4077,62 +4089,62 @@
               24
             ],
             "session_id": 1000007,
-            "total_request_wall_ns": 1424273525,
-            "ttft_ns": 1372141148
+            "total_request_wall_ns": 1345299022,
+            "ttft_ns": 1303087420
           },
           {
-            "block_a_compute_ns": 114531571,
-            "block_b_compute_ns": 123485074,
+            "block_a_compute_ns": 114808075,
+            "block_b_compute_ns": 109833475,
             "boundaries": [
               {
-                "block_a_compute_ns": 108641532,
-                "block_b_compute_ns": 117064949,
+                "block_a_compute_ns": 109059589,
+                "block_b_compute_ns": 103333260,
                 "consumer_sha256": null,
-                "d2h_ns": 100342,
+                "d2h_ns": 103389,
                 "generated_step": 0,
-                "h2d_ns": 184993,
+                "h2d_ns": 124610,
                 "operation": "prefill",
                 "payload_bytes": 499712,
                 "position": 0,
                 "producer_sha256": null,
-                "receiver_service_ns": 1403882235,
-                "sender_send_ns": 217951,
-                "step_wall_ns": 1491509602,
+                "receiver_service_ns": 1312541337,
+                "sender_send_ns": 201504,
+                "step_wall_ns": 1396651055,
                 "tcp_nodelay": true,
                 "token_count": 61
               },
               {
-                "block_a_compute_ns": 5890039,
-                "block_b_compute_ns": 6420125,
+                "block_a_compute_ns": 5748486,
+                "block_b_compute_ns": 6500215,
                 "consumer_sha256": null,
-                "d2h_ns": 100125,
+                "d2h_ns": 109077,
                 "generated_step": 1,
-                "h2d_ns": 87182,
+                "h2d_ns": 104352,
                 "operation": "decode",
                 "payload_bytes": 8192,
                 "position": 61,
                 "producer_sha256": null,
-                "receiver_service_ns": 22692606,
-                "sender_send_ns": 36126,
-                "step_wall_ns": 29015710,
+                "receiver_service_ns": 22678865,
+                "sender_send_ns": 35767,
+                "step_wall_ns": 29322694,
                 "tcp_nodelay": true,
                 "token_count": 1
               }
             ],
             "boundary_semantic_bytes": 507904,
-            "decode_tokens_per_second": 18.96192415291017,
-            "decode_wall_ns": 52737264,
+            "decode_tokens_per_second": 22.958924624174458,
+            "decode_wall_ns": 43556047,
             "generated_token_count": 2,
             "generated_token_ids": [
               853,
               3
             ],
             "inter_token_latency_ns": [
-              29015710
+              29322694
             ],
-            "inter_token_p50_ns": 29015710,
-            "plan_digest": "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
-            "prefill_wall_ns": 1491641498,
+            "inter_token_p50_ns": 29322694,
+            "plan_digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+            "prefill_wall_ns": 1396738889,
             "prompt_token_count": 61,
             "prompt_token_ids": [
               248045,
@@ -4198,26 +4210,26 @@
               22
             ],
             "session_id": 1000008,
-            "total_request_wall_ns": 1544381171,
-            "ttft_ns": 1491642197
+            "total_request_wall_ns": 1440296951,
+            "ttft_ns": 1396739653
           }
         ],
         "wire_accounting": {
-          "experiment_id": "sha256:8035d4c4bd25a3aa7e1f891d83477549c23ce411a0a99bf01b94a28146e987c2",
+          "experiment_id": "sha256:c339627e5b854fb6d6c8d1685ab4434e9d9067c68fb97db3d2b205633cd23530",
           "frames_rx": 32,
           "frames_tx": 32,
           "framing_control_bytes_tx": 9384,
-          "result_control_bytes_rx": 8548,
+          "result_control_bytes_rx": 8547,
           "semantic_payload_bytes_tx": 3833856,
           "tcp_nodelay": true,
-          "wire_bytes_rx": 8548,
+          "wire_bytes_rx": 8547,
           "wire_bytes_tx": 3843240
         }
       },
       "generation": 0,
-      "plan_digest": "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
+      "plan_digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
       "planner_decision": {
-        "digest": "sha256:06a1733573167cca84f6c306749205bd552252984a2c4263276a07161e726a3c",
+        "digest": "sha256:bb21611f75c85ceaa9604604e0d70428fa06739dc68b1610fe7df95ea54319af",
         "evaluations": [
           {
             "applicable_admission_evidence_ids": [],
@@ -4240,7 +4252,7 @@
                   "unit": "ms",
                   "value": 373.6170495
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "same-node-resident-clean-http",
@@ -4250,8 +4262,8 @@
                   "accepted_r5a_record_id": "r5a-same-node-resident-clean-http-ttft_ms",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [],
                 "role": "RANKING_OBJECTIVE"
@@ -4271,7 +4283,7 @@
                   "unit": "ms",
                   "value": 2630.5871575
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "source-backed-single-resource-clean-http",
@@ -4281,8 +4293,8 @@
                   "accepted_r5a_record_id": "r5a-source-backed-single-resource-clean-http-ttft_ms",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "candidate shape mismatch",
@@ -4305,7 +4317,7 @@
                   "unit": "ms",
                   "value": 1877.4567285
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "two-node-resident-clean-http",
@@ -4315,8 +4327,8 @@
                   "accepted_r5a_record_id": "r5a-two-node-resident-clean-http-ttft_ms",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "candidate shape mismatch",
@@ -4373,7 +4385,7 @@
                   "unit": "ms",
                   "value": 844.3860605
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "same-node-resident-clean-http",
@@ -4383,8 +4395,8 @@
                   "accepted_r5a_record_id": "r5a-same-node-resident-clean-http-complete_request_wall_ms",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "objective metric mismatch: evidence 'complete_request_wall_ms', objective 'ttft_ms'"
@@ -4406,7 +4418,7 @@
                   "unit": "tok/s",
                   "value": 65.76624873330516
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "same-node-resident-clean-http",
@@ -4416,8 +4428,8 @@
                   "accepted_r5a_record_id": "r5a-same-node-resident-clean-http-decode_tok_s",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "objective metric mismatch: evidence 'decode_tok_s', objective 'ttft_ms'",
@@ -4440,7 +4452,7 @@
                   "unit": "ms",
                   "value": 3305.816471
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "source-backed-single-resource-clean-http",
@@ -4450,8 +4462,8 @@
                   "accepted_r5a_record_id": "r5a-source-backed-single-resource-clean-http-complete_request_wall_ms",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "candidate shape mismatch",
@@ -4475,7 +4487,7 @@
                   "unit": "tok/s",
                   "value": 46.0004088474295
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "source-backed-single-resource-clean-http",
@@ -4485,8 +4497,8 @@
                   "accepted_r5a_record_id": "r5a-source-backed-single-resource-clean-http-decode_tok_s",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "candidate shape mismatch",
@@ -4511,7 +4523,7 @@
                   "unit": "ms",
                   "value": 3067.9846395
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "two-node-resident-clean-http",
@@ -4521,8 +4533,8 @@
                   "accepted_r5a_record_id": "r5a-two-node-resident-clean-http-complete_request_wall_ms",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "candidate shape mismatch",
@@ -4546,7 +4558,7 @@
                   "unit": "tok/s",
                   "value": 29.222968384878364
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "two-node-resident-clean-http",
@@ -4556,8 +4568,8 @@
                   "accepted_r5a_record_id": "r5a-two-node-resident-clean-http-decode_tok_s",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "candidate shape mismatch",
@@ -4635,7 +4647,7 @@
                   "unit": "ms",
                   "value": 373.6170495
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "same-node-resident-clean-http",
@@ -4645,8 +4657,8 @@
                   "accepted_r5a_record_id": "r5a-same-node-resident-clean-http-ttft_ms",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "candidate shape mismatch",
@@ -4669,7 +4681,7 @@
                   "unit": "ms",
                   "value": 2630.5871575
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "source-backed-single-resource-clean-http",
@@ -4679,8 +4691,8 @@
                   "accepted_r5a_record_id": "r5a-source-backed-single-resource-clean-http-ttft_ms",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "candidate shape mismatch",
@@ -4703,7 +4715,7 @@
                   "unit": "ms",
                   "value": 1877.4567285
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "two-node-resident-clean-http",
@@ -4713,8 +4725,8 @@
                   "accepted_r5a_record_id": "r5a-two-node-resident-clean-http-ttft_ms",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [],
                 "role": "RANKING_OBJECTIVE"
@@ -4766,7 +4778,7 @@
                   "unit": "ms",
                   "value": 844.3860605
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "same-node-resident-clean-http",
@@ -4776,8 +4788,8 @@
                   "accepted_r5a_record_id": "r5a-same-node-resident-clean-http-complete_request_wall_ms",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "candidate shape mismatch",
@@ -4801,7 +4813,7 @@
                   "unit": "tok/s",
                   "value": 65.76624873330516
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "same-node-resident-clean-http",
@@ -4811,8 +4823,8 @@
                   "accepted_r5a_record_id": "r5a-same-node-resident-clean-http-decode_tok_s",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "candidate shape mismatch",
@@ -4837,7 +4849,7 @@
                   "unit": "ms",
                   "value": 3305.816471
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "source-backed-single-resource-clean-http",
@@ -4847,8 +4859,8 @@
                   "accepted_r5a_record_id": "r5a-source-backed-single-resource-clean-http-complete_request_wall_ms",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "candidate shape mismatch",
@@ -4872,7 +4884,7 @@
                   "unit": "tok/s",
                   "value": 46.0004088474295
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "source-backed-single-resource-clean-http",
@@ -4882,8 +4894,8 @@
                   "accepted_r5a_record_id": "r5a-source-backed-single-resource-clean-http-decode_tok_s",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "candidate shape mismatch",
@@ -4908,7 +4920,7 @@
                   "unit": "ms",
                   "value": 3067.9846395
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "two-node-resident-clean-http",
@@ -4918,8 +4930,8 @@
                   "accepted_r5a_record_id": "r5a-two-node-resident-clean-http-complete_request_wall_ms",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "objective metric mismatch: evidence 'complete_request_wall_ms', objective 'ttft_ms'"
@@ -4941,7 +4953,7 @@
                   "unit": "tok/s",
                   "value": 29.222968384878364
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "two-node-resident-clean-http",
@@ -4951,8 +4963,8 @@
                   "accepted_r5a_record_id": "r5a-two-node-resident-clean-http-decode_tok_s",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "objective metric mismatch: evidence 'decode_tok_s', objective 'ttft_ms'",
@@ -5032,7 +5044,7 @@
                   "unit": "ms",
                   "value": 373.6170495
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "same-node-resident-clean-http",
@@ -5042,8 +5054,8 @@
                   "accepted_r5a_record_id": "r5a-same-node-resident-clean-http-ttft_ms",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "candidate shape mismatch",
@@ -5066,7 +5078,7 @@
                   "unit": "ms",
                   "value": 2630.5871575
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "source-backed-single-resource-clean-http",
@@ -5076,8 +5088,8 @@
                   "accepted_r5a_record_id": "r5a-source-backed-single-resource-clean-http-ttft_ms",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [],
                 "role": "RANKING_OBJECTIVE"
@@ -5097,7 +5109,7 @@
                   "unit": "ms",
                   "value": 1877.4567285
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "two-node-resident-clean-http",
@@ -5107,8 +5119,8 @@
                   "accepted_r5a_record_id": "r5a-two-node-resident-clean-http-ttft_ms",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "candidate shape mismatch",
@@ -5165,7 +5177,7 @@
                   "unit": "ms",
                   "value": 844.3860605
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "same-node-resident-clean-http",
@@ -5175,8 +5187,8 @@
                   "accepted_r5a_record_id": "r5a-same-node-resident-clean-http-complete_request_wall_ms",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "candidate shape mismatch",
@@ -5200,7 +5212,7 @@
                   "unit": "tok/s",
                   "value": 65.76624873330516
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "same-node-resident-clean-http",
@@ -5210,8 +5222,8 @@
                   "accepted_r5a_record_id": "r5a-same-node-resident-clean-http-decode_tok_s",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "candidate shape mismatch",
@@ -5236,7 +5248,7 @@
                   "unit": "ms",
                   "value": 3305.816471
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "source-backed-single-resource-clean-http",
@@ -5246,8 +5258,8 @@
                   "accepted_r5a_record_id": "r5a-source-backed-single-resource-clean-http-complete_request_wall_ms",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "objective metric mismatch: evidence 'complete_request_wall_ms', objective 'ttft_ms'"
@@ -5269,7 +5281,7 @@
                   "unit": "tok/s",
                   "value": 46.0004088474295
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "source-backed-single-resource-clean-http",
@@ -5279,8 +5291,8 @@
                   "accepted_r5a_record_id": "r5a-source-backed-single-resource-clean-http-decode_tok_s",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "objective metric mismatch: evidence 'decode_tok_s', objective 'ttft_ms'",
@@ -5303,7 +5315,7 @@
                   "unit": "ms",
                   "value": 3067.9846395
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "two-node-resident-clean-http",
@@ -5313,8 +5325,8 @@
                   "accepted_r5a_record_id": "r5a-two-node-resident-clean-http-complete_request_wall_ms",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "candidate shape mismatch",
@@ -5338,7 +5350,7 @@
                   "unit": "tok/s",
                   "value": 29.222968384878364
                 },
-                "producer_identity": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+                "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
                 "provenance": {
                   "accepted_measurement": {
                     "arm_id": "two-node-resident-clean-http",
@@ -5348,8 +5360,8 @@
                   "accepted_r5a_record_id": "r5a-two-node-resident-clean-http-decode_tok_s",
                   "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
                   "numeric_value_remeasured": false,
-                  "regression_evidence": "focused-xc-tests-31-pass",
-                  "requalification_producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5"
+                  "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+                  "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
                 },
                 "reasons": [
                   "candidate shape mismatch",
@@ -5396,13 +5408,13 @@
             "technically_feasible": true
           }
         ],
-        "implementation_commit": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+        "implementation_commit": "84e531971d6c02530fd0d541da3478df7510f263",
         "inputs": {
-          "evidence_catalog_digest": "sha256:61596325808668a002634865b6349161e3457a87c0c67d724b7d9ce0a21b6b63",
-          "objective_digest": "sha256:ef548359dcea9b5c02f79c44f8c7258cecd7fec11178fd5a2759f0ce7cde1fa3",
-          "policy_digest": "sha256:43257a3da158930819e41b2b4d5d164d4f4c8f7d8a45dd378d099823777d3d5f",
-          "resource_snapshot_digest": "sha256:b6067f03b3d65d0be4cf346308367521a2d31a7d09e09e227ead625d11476170",
-          "strategy_problem_digest": "sha256:d7ef77973f3d8100d84f1b9c8f221aa5770046763de49ed0188bfe72363c1706"
+          "evidence_catalog_digest": "sha256:7c81b3ec7c5dc708e1f559ee9065b69d1a9d41bd5ac5a4fa143fec26d61c95f3",
+          "objective_digest": "sha256:55b7c1430e9c3903c70de7ed8129e20e8f346994b7e776829c313e27e3717927",
+          "policy_digest": "sha256:4846ea5caab23a27bee8b38ad76e07e2ac457ec0a3b8b9a730e02f03787e29ac",
+          "resource_snapshot_digest": "sha256:ee106a2598bdec417036e3fcf7ed4a3aa15d609f79e42bbcb770b8b28a572980",
+          "strategy_problem_digest": "sha256:d4d10b7e6009be9cf335865818dc59ff02b7f13ea1ec52ec13b8ccf102e964cc"
         },
         "planning_phase": "SETUP_ONLY",
         "schema": "inferswarm.r3.planner-decision/1",
@@ -5419,76 +5431,85 @@
           }
         ]
       },
-      "planner_decision_digest": "sha256:06a1733573167cca84f6c306749205bd552252984a2c4263276a07161e726a3c",
-      "reclaimed_at_ns": 14012792754210,
+      "planner_decision_digest": "sha256:bb21611f75c85ceaa9604604e0d70428fa06739dc68b1610fe7df95ea54319af",
+      "realization_authorization": {
+        "allocated_at_ns": 22265150526824,
+        "attempt": 1,
+        "epoch_id": "research-generation-0:cbba220611a7",
+        "generation": 0,
+        "plan_digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+        "realization_id": "realization-1-18d1975ba81bedba",
+        "schema": "inferswarm.r5b.realization-authorization/1"
+      },
+      "reclaimed_at_ns": 22422287344065,
       "reclamation": {
-        "closed_at_ns": 1788368694603139061,
+        "closed_at_ns": 1788377104097726577,
         "kind": "remote-node-agent-epoch-close",
         "node_reclamation": {}
       },
       "reconciliation": {
         "matched": true,
         "mismatches": [],
-        "plan_digest": "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
+        "plan_digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
         "schema": "inferswarm.r5a.realization-reconciliation/1"
       },
-      "resource_snapshot_digest": "sha256:b6067f03b3d65d0be4cf346308367521a2d31a7d09e09e227ead625d11476170",
-      "retired_at_ns": 14010949518922,
+      "resource_snapshot_digest": "sha256:ee106a2598bdec417036e3fcf7ed4a3aa15d609f79e42bbcb770b8b28a572980",
+      "retired_at_ns": 22420397769860,
       "runtime_report_failure": null,
       "runtime_sessions": [
         {
-          "block_a_compute_ns": 379801067,
-          "block_b_compute_ns": 324143460,
+          "block_a_compute_ns": 389221914,
+          "block_b_compute_ns": 379646999,
           "boundaries": [
             {
-              "block_a_compute_ns": 373371046,
-              "block_b_compute_ns": 317464678,
+              "block_a_compute_ns": 382972939,
+              "block_b_compute_ns": 372882232,
               "consumer_sha256": null,
-              "d2h_ns": 103110,
+              "d2h_ns": 106481,
               "generated_step": 0,
-              "h2d_ns": 104400,
+              "h2d_ns": 110571,
               "operation": "prefill",
               "payload_bytes": 442368,
               "position": 0,
               "producer_sha256": null,
-              "receiver_service_ns": 592144999102,
-              "sender_send_ns": 1674032,
-              "step_wall_ns": 1732560495,
+              "receiver_service_ns": 255385608476,
+              "sender_send_ns": 1869336,
+              "step_wall_ns": 1802807547,
               "tcp_nodelay": true,
               "token_count": 54
             },
             {
-              "block_a_compute_ns": 6430021,
-              "block_b_compute_ns": 6678782,
+              "block_a_compute_ns": 6248975,
+              "block_b_compute_ns": 6764767,
               "consumer_sha256": null,
-              "d2h_ns": 101614,
+              "d2h_ns": 113223,
               "generated_step": 1,
-              "h2d_ns": 84225,
+              "h2d_ns": 91930,
               "operation": "decode",
               "payload_bytes": 8192,
               "position": 54,
               "producer_sha256": null,
-              "receiver_service_ns": 23140784,
-              "sender_send_ns": 37167,
-              "step_wall_ns": 29892745,
+              "receiver_service_ns": 23783049,
+              "sender_send_ns": 38259,
+              "step_wall_ns": 30536954,
               "tcp_nodelay": true,
               "token_count": 1
             }
           ],
           "boundary_semantic_bytes": 450560,
-          "decode_tokens_per_second": 19.99100684566041,
-          "decode_wall_ns": 50022493,
+          "decode_tokens_per_second": 23.41309605440398,
+          "decode_wall_ns": 42711139,
           "generated_token_count": 2,
           "generated_token_ids": [
             9764,
             393
           ],
           "inter_token_latency_ns": [
-            29892745
+            30536954
           ],
-          "inter_token_p50_ns": 29892745,
-          "plan_digest": "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
-          "prefill_wall_ns": 1732696395,
+          "inter_token_p50_ns": 30536954,
+          "plan_digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+          "prefill_wall_ns": 1802947121,
           "prompt_token_count": 54,
           "prompt_token_ids": [
             248045,
@@ -5547,62 +5568,62 @@
             198
           ],
           "session_id": 1000001,
-          "total_request_wall_ns": 1782722095,
-          "ttft_ns": 1732697661
+          "total_request_wall_ns": 1845661087,
+          "ttft_ns": 1802948370
         },
         {
-          "block_a_compute_ns": 112652448,
-          "block_b_compute_ns": 175082293,
+          "block_a_compute_ns": 114597896,
+          "block_b_compute_ns": 179333620,
           "boundaries": [
             {
-              "block_a_compute_ns": 106943876,
-              "block_b_compute_ns": 168500200,
+              "block_a_compute_ns": 108805668,
+              "block_b_compute_ns": 172843118,
               "consumer_sha256": null,
-              "d2h_ns": 99348,
+              "d2h_ns": 103320,
               "generated_step": 0,
-              "h2d_ns": 108127,
+              "h2d_ns": 122941,
               "operation": "prefill",
               "payload_bytes": 450560,
               "position": 0,
               "producer_sha256": null,
-              "receiver_service_ns": 1320618566,
-              "sender_send_ns": 194779,
-              "step_wall_ns": 1462742810,
+              "receiver_service_ns": 1182512483,
+              "sender_send_ns": 186738,
+              "step_wall_ns": 1335912000,
               "tcp_nodelay": true,
               "token_count": 55
             },
             {
-              "block_a_compute_ns": 5708572,
-              "block_b_compute_ns": 6582093,
+              "block_a_compute_ns": 5792228,
+              "block_b_compute_ns": 6490502,
               "consumer_sha256": null,
-              "d2h_ns": 101255,
+              "d2h_ns": 108363,
               "generated_step": 1,
-              "h2d_ns": 102653,
+              "h2d_ns": 94149,
               "operation": "decode",
               "payload_bytes": 8192,
               "position": 55,
               "producer_sha256": null,
-              "receiver_service_ns": 22579945,
-              "sender_send_ns": 37271,
-              "step_wall_ns": 29124388,
+              "receiver_service_ns": 22952828,
+              "sender_send_ns": 35777,
+              "step_wall_ns": 29510402,
               "tcp_nodelay": true,
               "token_count": 1
             }
           ],
           "boundary_semantic_bytes": 458752,
-          "decode_tokens_per_second": 19.81964087167494,
-          "decode_wall_ns": 50455001,
+          "decode_tokens_per_second": 19.66315636722006,
+          "decode_wall_ns": 50856535,
           "generated_token_count": 2,
           "generated_token_ids": [
             393,
             45
           ],
           "inter_token_latency_ns": [
-            29124388
+            29510402
           ],
-          "inter_token_p50_ns": 29124388,
-          "plan_digest": "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
-          "prefill_wall_ns": 1462860205,
+          "inter_token_p50_ns": 29510402,
+          "plan_digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+          "prefill_wall_ns": 1336004986,
           "prompt_token_count": 55,
           "prompt_token_ids": [
             248045,
@@ -5662,62 +5683,62 @@
             9764
           ],
           "session_id": 1000002,
-          "total_request_wall_ns": 1513317740,
-          "ttft_ns": 1462860801
+          "total_request_wall_ns": 1386864421,
+          "ttft_ns": 1336006429
         },
         {
-          "block_a_compute_ns": 102208286,
-          "block_b_compute_ns": 115124710,
+          "block_a_compute_ns": 103114347,
+          "block_b_compute_ns": 105187277,
           "boundaries": [
             {
-              "block_a_compute_ns": 96341432,
-              "block_b_compute_ns": 108515986,
+              "block_a_compute_ns": 97356984,
+              "block_b_compute_ns": 98731557,
               "consumer_sha256": null,
-              "d2h_ns": 97785,
+              "d2h_ns": 105032,
               "generated_step": 0,
-              "h2d_ns": 201336,
+              "h2d_ns": 145245,
               "operation": "prefill",
               "payload_bytes": 458752,
               "position": 0,
               "producer_sha256": null,
-              "receiver_service_ns": 1284975710,
-              "sender_send_ns": 204674,
-              "step_wall_ns": 1365782609,
+              "receiver_service_ns": 1196507040,
+              "sender_send_ns": 201287,
+              "step_wall_ns": 1267250930,
               "tcp_nodelay": true,
               "token_count": 56
             },
             {
-              "block_a_compute_ns": 5866854,
-              "block_b_compute_ns": 6608724,
+              "block_a_compute_ns": 5757363,
+              "block_b_compute_ns": 6455720,
               "consumer_sha256": null,
-              "d2h_ns": 101476,
+              "d2h_ns": 107589,
               "generated_step": 1,
-              "h2d_ns": 90441,
+              "h2d_ns": 87904,
               "operation": "decode",
               "payload_bytes": 8192,
               "position": 56,
               "producer_sha256": null,
-              "receiver_service_ns": 22550301,
-              "sender_send_ns": 36984,
-              "step_wall_ns": 29156983,
+              "receiver_service_ns": 23030060,
+              "sender_send_ns": 35419,
+              "step_wall_ns": 29506558,
               "tcp_nodelay": true,
               "token_count": 1
             }
           ],
           "boundary_semantic_bytes": 466944,
-          "decode_tokens_per_second": 23.9582394469825,
-          "decode_wall_ns": 41739294,
+          "decode_tokens_per_second": 23.76199924527138,
+          "decode_wall_ns": 42084001,
           "generated_token_count": 2,
           "generated_token_ids": [
             45,
             283
           ],
           "inter_token_latency_ns": [
-            29156983
+            29506558
           ],
-          "inter_token_p50_ns": 29156983,
-          "plan_digest": "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
-          "prefill_wall_ns": 1365888515,
+          "inter_token_p50_ns": 29506558,
+          "plan_digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+          "prefill_wall_ns": 1267333968,
           "prompt_token_count": 56,
           "prompt_token_ids": [
             248045,
@@ -5778,62 +5799,62 @@
             393
           ],
           "session_id": 1000003,
-          "total_request_wall_ns": 1407629426,
-          "ttft_ns": 1365889040
+          "total_request_wall_ns": 1309419643,
+          "ttft_ns": 1267334475
         },
         {
-          "block_a_compute_ns": 110570731,
-          "block_b_compute_ns": 108879515,
+          "block_a_compute_ns": 104454360,
+          "block_b_compute_ns": 108750723,
           "boundaries": [
             {
-              "block_a_compute_ns": 104783399,
-              "block_b_compute_ns": 102453809,
+              "block_a_compute_ns": 98691128,
+              "block_b_compute_ns": 102308561,
               "consumer_sha256": null,
-              "d2h_ns": 96741,
+              "d2h_ns": 105535,
               "generated_step": 0,
-              "h2d_ns": 152332,
+              "h2d_ns": 154160,
               "operation": "prefill",
               "payload_bytes": 466944,
               "position": 0,
               "producer_sha256": null,
-              "receiver_service_ns": 1209259005,
-              "sender_send_ns": 202945,
-              "step_wall_ns": 1293373123,
+              "receiver_service_ns": 1217806124,
+              "sender_send_ns": 197111,
+              "step_wall_ns": 1302142352,
               "tcp_nodelay": true,
               "token_count": 57
             },
             {
-              "block_a_compute_ns": 5787332,
-              "block_b_compute_ns": 6425706,
+              "block_a_compute_ns": 5763232,
+              "block_b_compute_ns": 6442162,
               "consumer_sha256": null,
-              "d2h_ns": 99447,
+              "d2h_ns": 121470,
               "generated_step": 1,
-              "h2d_ns": 87104,
+              "h2d_ns": 92764,
               "operation": "decode",
               "payload_bytes": 8192,
               "position": 57,
               "producer_sha256": null,
-              "receiver_service_ns": 23237686,
-              "sender_send_ns": 35938,
-              "step_wall_ns": 29600846,
+              "receiver_service_ns": 23428007,
+              "sender_send_ns": 35747,
+              "step_wall_ns": 30054740,
               "tcp_nodelay": true,
               "token_count": 1
             }
           ],
           "boundary_semantic_bytes": 475136,
-          "decode_tokens_per_second": 23.524472179065274,
-          "decode_wall_ns": 42508924,
+          "decode_tokens_per_second": 19.183236490920276,
+          "decode_wall_ns": 52128847,
           "generated_token_count": 2,
           "generated_token_ids": [
             283,
             220
           ],
           "inter_token_latency_ns": [
-            29600846
+            30054740
           ],
-          "inter_token_p50_ns": 29600846,
-          "plan_digest": "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
-          "prefill_wall_ns": 1293488941,
+          "inter_token_p50_ns": 30054740,
+          "plan_digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+          "prefill_wall_ns": 1302228595,
           "prompt_token_count": 57,
           "prompt_token_ids": [
             248045,
@@ -5895,62 +5916,62 @@
             45
           ],
           "session_id": 1000004,
-          "total_request_wall_ns": 1335999722,
-          "ttft_ns": 1293489398
+          "total_request_wall_ns": 1354359697,
+          "ttft_ns": 1302229343
         },
         {
-          "block_a_compute_ns": 104007834,
-          "block_b_compute_ns": 115243056,
+          "block_a_compute_ns": 104974957,
+          "block_b_compute_ns": 118303599,
           "boundaries": [
             {
-              "block_a_compute_ns": 98142483,
-              "block_b_compute_ns": 108601431,
+              "block_a_compute_ns": 99049428,
+              "block_b_compute_ns": 111627004,
               "consumer_sha256": null,
-              "d2h_ns": 98284,
+              "d2h_ns": 106229,
               "generated_step": 0,
-              "h2d_ns": 131034,
+              "h2d_ns": 169211,
               "operation": "prefill",
               "payload_bytes": 475136,
               "position": 0,
               "producer_sha256": null,
-              "receiver_service_ns": 1302755962,
-              "sender_send_ns": 202835,
-              "step_wall_ns": 1391921964,
+              "receiver_service_ns": 1256727310,
+              "sender_send_ns": 199740,
+              "step_wall_ns": 1340582406,
               "tcp_nodelay": true,
               "token_count": 58
             },
             {
-              "block_a_compute_ns": 5865351,
-              "block_b_compute_ns": 6641625,
+              "block_a_compute_ns": 5925529,
+              "block_b_compute_ns": 6676595,
               "consumer_sha256": null,
-              "d2h_ns": 101556,
+              "d2h_ns": 108977,
               "generated_step": 1,
-              "h2d_ns": 84213,
+              "h2d_ns": 94835,
               "operation": "decode",
               "payload_bytes": 8192,
               "position": 58,
               "producer_sha256": null,
-              "receiver_service_ns": 22679474,
-              "sender_send_ns": 36014,
-              "step_wall_ns": 29258371,
+              "receiver_service_ns": 23643616,
+              "sender_send_ns": 36062,
+              "step_wall_ns": 30290829,
               "tcp_nodelay": true,
               "token_count": 1
             }
           ],
           "boundary_semantic_bytes": 483328,
-          "decode_tokens_per_second": 23.651743591163907,
-          "decode_wall_ns": 42280181,
+          "decode_tokens_per_second": 18.717416720972132,
+          "decode_wall_ns": 53426176,
           "generated_token_count": 2,
           "generated_token_ids": [
             220,
             24
           ],
           "inter_token_latency_ns": [
-            29258371
+            30290829
           ],
-          "inter_token_p50_ns": 29258371,
-          "plan_digest": "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
-          "prefill_wall_ns": 1392045324,
+          "inter_token_p50_ns": 30290829,
+          "plan_digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+          "prefill_wall_ns": 1340669871,
           "prompt_token_count": 58,
           "prompt_token_ids": [
             248045,
@@ -6013,62 +6034,62 @@
             283
           ],
           "session_id": 1000005,
-          "total_request_wall_ns": 1434327459,
-          "ttft_ns": 1392046182
+          "total_request_wall_ns": 1394098044,
+          "ttft_ns": 1340670609
         },
         {
-          "block_a_compute_ns": 112371653,
-          "block_b_compute_ns": 120789207,
+          "block_a_compute_ns": 112829115,
+          "block_b_compute_ns": 116394857,
           "boundaries": [
             {
-              "block_a_compute_ns": 106630077,
-              "block_b_compute_ns": 114381477,
+              "block_a_compute_ns": 106881044,
+              "block_b_compute_ns": 109724006,
               "consumer_sha256": null,
-              "d2h_ns": 98454,
+              "d2h_ns": 106683,
               "generated_step": 0,
-              "h2d_ns": 178940,
+              "h2d_ns": 122988,
               "operation": "prefill",
               "payload_bytes": 483328,
               "position": 0,
               "producer_sha256": null,
-              "receiver_service_ns": 1393342610,
-              "sender_send_ns": 208128,
-              "step_wall_ns": 1488740592,
+              "receiver_service_ns": 1253274103,
+              "sender_send_ns": 199772,
+              "step_wall_ns": 1334108491,
               "tcp_nodelay": true,
               "token_count": 59
             },
             {
-              "block_a_compute_ns": 5741576,
-              "block_b_compute_ns": 6407730,
+              "block_a_compute_ns": 5948071,
+              "block_b_compute_ns": 6670851,
               "consumer_sha256": null,
-              "d2h_ns": 100728,
+              "d2h_ns": 109625,
               "generated_step": 1,
-              "h2d_ns": 86453,
+              "h2d_ns": 96085,
               "operation": "decode",
               "payload_bytes": 8192,
               "position": 59,
               "producer_sha256": null,
-              "receiver_service_ns": 22350561,
-              "sender_send_ns": 36237,
-              "step_wall_ns": 28887071,
+              "receiver_service_ns": 23101199,
+              "sender_send_ns": 36051,
+              "step_wall_ns": 29914965,
               "tcp_nodelay": true,
               "token_count": 1
             }
           ],
           "boundary_semantic_bytes": 491520,
-          "decode_tokens_per_second": 19.192530328612204,
-          "decode_wall_ns": 52103604,
+          "decode_tokens_per_second": 23.132632149325026,
+          "decode_wall_ns": 43228976,
           "generated_token_count": 2,
           "generated_token_ids": [
             24,
             22
           ],
           "inter_token_latency_ns": [
-            28887071
+            29914965
           ],
-          "inter_token_p50_ns": 28887071,
-          "plan_digest": "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
-          "prefill_wall_ns": 1488845551,
+          "inter_token_p50_ns": 29914965,
+          "plan_digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+          "prefill_wall_ns": 1334192907,
           "prompt_token_count": 59,
           "prompt_token_ids": [
             248045,
@@ -6132,62 +6153,62 @@
             220
           ],
           "session_id": 1000006,
-          "total_request_wall_ns": 1540950825,
-          "ttft_ns": 1488846108
+          "total_request_wall_ns": 1377423699,
+          "ttft_ns": 1334193400
         },
         {
-          "block_a_compute_ns": 107653250,
-          "block_b_compute_ns": 115935321,
+          "block_a_compute_ns": 114278889,
+          "block_b_compute_ns": 123402561,
           "boundaries": [
             {
-              "block_a_compute_ns": 101800897,
-              "block_b_compute_ns": 109510688,
+              "block_a_compute_ns": 108370844,
+              "block_b_compute_ns": 116796544,
               "consumer_sha256": null,
-              "d2h_ns": 98647,
+              "d2h_ns": 105403,
               "generated_step": 0,
-              "h2d_ns": 189223,
+              "h2d_ns": 195529,
               "operation": "prefill",
               "payload_bytes": 491520,
               "position": 0,
               "producer_sha256": null,
-              "receiver_service_ns": 1291541129,
-              "sender_send_ns": 209607,
-              "step_wall_ns": 1372054441,
+              "receiver_service_ns": 1205832364,
+              "sender_send_ns": 207598,
+              "step_wall_ns": 1302989466,
               "tcp_nodelay": true,
               "token_count": 60
             },
             {
-              "block_a_compute_ns": 5852353,
-              "block_b_compute_ns": 6424633,
+              "block_a_compute_ns": 5908045,
+              "block_b_compute_ns": 6606017,
               "consumer_sha256": null,
-              "d2h_ns": 101777,
+              "d2h_ns": 106389,
               "generated_step": 1,
-              "h2d_ns": 85663,
+              "h2d_ns": 91460,
               "operation": "decode",
               "payload_bytes": 8192,
               "position": 60,
               "producer_sha256": null,
-              "receiver_service_ns": 22306596,
-              "sender_send_ns": 36406,
-              "step_wall_ns": 28859773,
+              "receiver_service_ns": 21972968,
+              "sender_send_ns": 35633,
+              "step_wall_ns": 28763364,
               "tcp_nodelay": true,
               "token_count": 1
             }
           ],
           "boundary_semantic_bytes": 499712,
-          "decode_tokens_per_second": 19.182348188354776,
-          "decode_wall_ns": 52131261,
+          "decode_tokens_per_second": 23.690863045347676,
+          "decode_wall_ns": 42210366,
           "generated_token_count": 2,
           "generated_token_ids": [
             22,
             853
           ],
           "inter_token_latency_ns": [
-            28859773
+            28763364
           ],
-          "inter_token_p50_ns": 28859773,
-          "plan_digest": "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
-          "prefill_wall_ns": 1372140685,
+          "inter_token_p50_ns": 28763364,
+          "plan_digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+          "prefill_wall_ns": 1303086961,
           "prompt_token_count": 60,
           "prompt_token_ids": [
             248045,
@@ -6252,62 +6273,62 @@
             24
           ],
           "session_id": 1000007,
-          "total_request_wall_ns": 1424273525,
-          "ttft_ns": 1372141148
+          "total_request_wall_ns": 1345299022,
+          "ttft_ns": 1303087420
         },
         {
-          "block_a_compute_ns": 114531571,
-          "block_b_compute_ns": 123485074,
+          "block_a_compute_ns": 114808075,
+          "block_b_compute_ns": 109833475,
           "boundaries": [
             {
-              "block_a_compute_ns": 108641532,
-              "block_b_compute_ns": 117064949,
+              "block_a_compute_ns": 109059589,
+              "block_b_compute_ns": 103333260,
               "consumer_sha256": null,
-              "d2h_ns": 100342,
+              "d2h_ns": 103389,
               "generated_step": 0,
-              "h2d_ns": 184993,
+              "h2d_ns": 124610,
               "operation": "prefill",
               "payload_bytes": 499712,
               "position": 0,
               "producer_sha256": null,
-              "receiver_service_ns": 1403882235,
-              "sender_send_ns": 217951,
-              "step_wall_ns": 1491509602,
+              "receiver_service_ns": 1312541337,
+              "sender_send_ns": 201504,
+              "step_wall_ns": 1396651055,
               "tcp_nodelay": true,
               "token_count": 61
             },
             {
-              "block_a_compute_ns": 5890039,
-              "block_b_compute_ns": 6420125,
+              "block_a_compute_ns": 5748486,
+              "block_b_compute_ns": 6500215,
               "consumer_sha256": null,
-              "d2h_ns": 100125,
+              "d2h_ns": 109077,
               "generated_step": 1,
-              "h2d_ns": 87182,
+              "h2d_ns": 104352,
               "operation": "decode",
               "payload_bytes": 8192,
               "position": 61,
               "producer_sha256": null,
-              "receiver_service_ns": 22692606,
-              "sender_send_ns": 36126,
-              "step_wall_ns": 29015710,
+              "receiver_service_ns": 22678865,
+              "sender_send_ns": 35767,
+              "step_wall_ns": 29322694,
               "tcp_nodelay": true,
               "token_count": 1
             }
           ],
           "boundary_semantic_bytes": 507904,
-          "decode_tokens_per_second": 18.96192415291017,
-          "decode_wall_ns": 52737264,
+          "decode_tokens_per_second": 22.958924624174458,
+          "decode_wall_ns": 43556047,
           "generated_token_count": 2,
           "generated_token_ids": [
             853,
             3
           ],
           "inter_token_latency_ns": [
-            29015710
+            29322694
           ],
-          "inter_token_p50_ns": 29015710,
-          "plan_digest": "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
-          "prefill_wall_ns": 1491641498,
+          "inter_token_p50_ns": 29322694,
+          "plan_digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+          "prefill_wall_ns": 1396738889,
           "prompt_token_count": 61,
           "prompt_token_ids": [
             248045,
@@ -6373,8 +6394,8 @@
             22
           ],
           "session_id": 1000008,
-          "total_request_wall_ns": 1544381171,
-          "ttft_ns": 1491642197
+          "total_request_wall_ns": 1440296951,
+          "ttft_ns": 1396739653
         }
       ],
       "state": "RECLAIMED"
@@ -6383,61 +6404,62 @@
   "late_result_rejection_count": 2,
   "late_result_rejections": [
     {
-      "active_epoch_id": "research-generation-0:1e3d75f72682",
+      "active_epoch_id": "research-generation-0:cbba220611a7",
       "committed_position_unchanged": 1,
       "envelope": {
-        "arrived_at_ns": 13633099636043,
-        "epoch_id": "research-generation-0:1e3d75f72682",
+        "arrived_at_ns": 22362557132703,
+        "epoch_id": "research-generation-0:cbba220611a7",
         "injection": "CONTROLLED_LATE_REAL_SERVING_RESULT",
-        "plan_digest": "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
+        "plan_digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
         "position": 0,
         "schema": "inferswarm.r5b.result-envelope/1",
         "session_id": 1,
         "token_id": 9764
       },
       "reason": "NON_NEXT_COMMIT_POSITION",
-      "rejected_at_ns": 13633099645067
+      "rejected_at_ns": 22362557144062
     },
     {
-      "active_epoch_id": "research-generation-0:1e3d75f72682",
+      "active_epoch_id": "research-generation-0:cbba220611a7",
       "committed_position_unchanged": 1,
       "envelope": {
-        "arrived_at_ns": 13633099694310,
-        "epoch_id": "research-generation-0:1e3d75f72682-retired",
+        "arrived_at_ns": 22362557208750,
+        "epoch_id": "research-generation-0:cbba220611a7-retired",
         "injection": "CONTROLLED_LATE_REAL_SERVING_RESULT",
-        "plan_digest": "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
+        "plan_digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
         "position": 1,
         "schema": "inferswarm.r5b.result-envelope/1",
         "session_id": 1,
         "token_id": 424242
       },
       "reason": "RETIRED_OR_SUPERSEDED_EPOCH",
-      "rejected_at_ns": 13633099698535
+      "rejected_at_ns": 22362557214872
     }
   ],
+  "realization_attempts": 1,
   "resource_events": [],
   "schema": "inferswarm.r5b.epoch-serving-report/1",
   "sessions": [
     {
       "committed_epoch_ids": [
-        "research-generation-0:1e3d75f72682",
-        "research-generation-0:1e3d75f72682",
-        "research-generation-0:1e3d75f72682",
-        "research-generation-0:1e3d75f72682",
-        "research-generation-0:1e3d75f72682",
-        "research-generation-0:1e3d75f72682",
-        "research-generation-0:1e3d75f72682",
-        "research-generation-0:1e3d75f72682"
+        "research-generation-0:cbba220611a7",
+        "research-generation-0:cbba220611a7",
+        "research-generation-0:cbba220611a7",
+        "research-generation-0:cbba220611a7",
+        "research-generation-0:cbba220611a7",
+        "research-generation-0:cbba220611a7",
+        "research-generation-0:cbba220611a7",
+        "research-generation-0:cbba220611a7"
       ],
       "committed_plan_digests": [
-        "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
-        "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
-        "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
-        "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
-        "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
-        "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
-        "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
-        "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd"
+        "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+        "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+        "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+        "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+        "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+        "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+        "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
+        "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88"
       ],
       "generated_token_ids": [
         9764,
@@ -6450,7 +6472,7 @@
         853
       ],
       "latest_committed_boundary": {
-        "active_epoch_id": "research-generation-0:1e3d75f72682",
+        "active_epoch_id": "research-generation-0:cbba220611a7",
         "committed_generated_token_ids": [
           9764,
           393,
@@ -6462,7 +6484,7 @@
           853
         ],
         "committed_position": 8,
-        "plan_digest": "sha256:1e3d75f72682e07b890e651d92186c6d02c5069c5eeaca556ff11dd9a4c699bd",
+        "plan_digest": "sha256:cbba220611a7cf9f1f475351d4110ef018e68fb4a934963db1541c4dbd647e88",
         "prompt_token_ids": [
           248045,
           846,
@@ -6527,7 +6549,7 @@
         "schema": "inferswarm.r5b.committed-boundary/1",
         "session_id": 1
       },
-      "request_wall_ns": 12231378372,
+      "request_wall_ns": 11699725948,
       "session_id": 1
     }
   ],

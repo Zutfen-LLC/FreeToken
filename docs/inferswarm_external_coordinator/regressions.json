@@ -1,12 +1,18 @@
-{"schema": "inferswarm.xc.regression-summary/1",
- "producer_sha": "df8a429e9110b6c2e6bb56b1cf5e96db0a7b1b8e",
- "evidence_head_note": "regressions run against the physical producer tree on inferswarm01 (FreeToken-xc @ df8a429)",
- "environment": {"host": "inferswarm01", "python": "3.13.5", "torch": "2.11.0+cu130"},
- "suites": {
-   "research": {"passed": 230, "failed": 0, "r5b_baseline": 199, "delta": "+31 external-Coordinator tests"},
-   "benchmarks": {"passed": 563, "failed": 0, "r5b_baseline": 563, "delta": "0"},
-   "server": {"passed": 583, "failed": 0, "r5b_baseline": 581, "delta": "+2 (upstream-added tests since R5B baseline)"},
-   "warnings": "one Starlette/httpx test-client deprecation warning (the known existing warning from accepted R5B)"
- },
- "coordinator_purity_tests": {"host": "inferswarm00", "venv": "/srv/inferswarm/venv (no torch)", "passed": 31, "failed": 0,
-   "note": "focused xc wire/seam/epoch tests pass with no torch/triton in sys.modules"}}
+{
+  "schema": "inferswarm.xc.regression-summary/1",
+  "producer_sha": "84e531971d6c02530fd0d541da3478df7510f263",
+  "evidence_head_note": "regressions run against the corrected physical producer tree on inferswarm01 (FreeToken-xc @ 84e5319) and the CPU-only coordinator inferswarm00 (repos/FreeToken-xc @ 84e5319)",
+  "environment": {"host": "inferswarm01", "python": "3.13.5", "torch": "2.11.0+cu130"},
+  "suites": {
+    "research": {"passed": 235, "failed": 0, "prior_xc_producer": 230, "delta": "+5 realization-authorization regression tests"},
+    "benchmarks": {"passed": 563, "failed": 0, "r5b_baseline": 563, "delta": "0"},
+    "server": {"passed": 583, "failed": 0, "r5b_baseline": 581, "delta": "+2 (upstream main merge, unchanged from prior xc producer)"},
+    "xc_focus": {"passed": 42, "failed": 0, "note": "xc wire/seam/coordinator-epoch/realization-authority + r5b epochs"},
+    "coordinator_control_plane_cpu_only": {"passed": 36, "failed": 0, "note": "torch-free venv on inferswarm00; purity gate: no torch/safetensors imported by control-plane modules"}
+  },
+  "regression_of_record": {
+    "claim": "Same Execution Plan digest does not imply same remote epoch authority",
+    "test": "tests/research/test_xc_realization_authority.py",
+    "passed": true
+  }
+}

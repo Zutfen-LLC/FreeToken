@@ -1,0 +1,29 @@
+{
+  "schema": "inferswarm.xc.anomaly-provenance/1",
+  "gate": "EXTERNAL_COORDINATOR_SEPARATION",
+  "superseded_physical_producer": {
+    "producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+    "evidence_commit": "861a404",
+    "what_it_proved": "physical Coordinator separation: CPU-only control plane on inferswarm00, remote realization/execution on inferswarm01/03, exact reference tokens, fencing, reclamation",
+    "why_superseded": "its remote wire epoch identity was plan-derived (remote-realization:<plan-digest-prefix>, derived independently on both sides) rather than activation-derived Coordinator epoch/generation authority; the same plan digest could therefore imply the same remote epoch authority, violating the requirement that every activation carry distinct epoch/generation authority",
+    "evidence_disposition": "retained in git history (commit 861a404); not deleted; not citable as the final canonical proof"
+  },
+  "corrected_physical_producer": {
+    "producer_sha": "84e531971d6c02530fd0d541da3478df7510f263",
+    "base": "8cfcda4c44065ceba4230dc548a12696093d5177 (accepted Pre-R6 head)",
+    "design": "realization-authorization record allocated by EpochServingController before realization (prospective authoritative epoch id, prospective generation, plan digest, unique realization-attempt nonce); passed to the realizer; adopted verbatim by the activated Epoch; failed/superseded/retired attempt identities are dead forever; wire binds epoch/generation/realization identity on REALIZE/GENERATE/REPORT/CLOSE; Node agent consumes (never derives) the Coordinator identity and refuses retired authorizations",
+    "canonical_run": {
+      "wire_epoch_id": "research-generation-0:cbba220611a7",
+      "realization_id": "realization-1-18d1975ba81bedba",
+      "committed_tokens": [9764, 393, 45, 283, 220, 24, 22, 853],
+      "reconciliation_matched": true,
+      "fencing_rejections": ["NON_NEXT_COMMIT_POSITION", "RETIRED_OR_SUPERSEDED_EPOCH"],
+      "epoch_state_after_shutdown": "RECLAIMED",
+      "reclamation_kind": "remote-node-agent-epoch-close",
+      "gpu_census": "both nodes 1 MiB used, zero compute processes",
+      "coordinator_purity": "no /dev/nvidia*, no nvidia-smi, no nvidia kernel modules, 32 MB tokenizer metadata, zero .safetensors"
+    }
+  },
+  "historical_r5_evidence_rerun": false,
+  "note": "Historical R5 evidence was not rerun, per gate instructions."
+}
