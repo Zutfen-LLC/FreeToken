@@ -226,7 +226,10 @@ class GemmaDenseStage:
                         f"unexpected selective block keys: {list(state)[:8]}"
                     )
 
-        with torch.device(self.device), torch_dtype(torch.bfloat16):
+        # Build ONLY owned modules on meta, then stream planned keys
+        # device-ward one tensor at a time (accepted N0 selective pattern:
+        # construction never touches accelerator memory).
+        with torch.device("meta"), torch_dtype(torch.bfloat16):
             modules = _StageModules(self.config, spec, self.full_config)
             if spec.owns_embeddings:
                 from freetoken.layers import VocabParallelEmbedding
@@ -251,11 +254,11 @@ class GemmaDenseStage:
         staging_peak = 0
         for key, tensor in reader.tensors(device="cpu"):
             src_key = _key_adapter(key)
-            expected = state.get(src_key)
-            if expected is None:
+            expected_meta = state.get(src_key)
+            if expected_meta is None:
                 raise RuntimeError(f"planned key {key} has no module destination")
             staging_peak += tensor.numel() * tensor.element_size()
-            loaded[src_key] = tensor.to(device=self.device, dtype=expected.dtype)
+            loaded[src_key] = tensor.to(device=self.device, dtype=torch.bfloat16)
             del tensor
         self._host_peak_staging_bytes = staging_peak
         missing = sorted(set(state) - set(loaded))
