@@ -1,0 +1,14 @@
+{
+  "all_gpu_execution_processes_absent": true,
+  "node_a": {
+    "gpu_compute_processes_csv": "",
+    "gpu_memory_csv": "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099, 00000000:02:00.0, 1, 12288\nGPU-d5c05739-96c1-7e49-89b6-bf54c2121c55, 00000000:03:00.0, 1, 12288"
+  },
+  "node_b": {
+    "gpu_compute_processes_csv": "",
+    "gpu_memory_csv": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176, 00000000:01:00.0, 1, 12288\nGPU-a57bd3fb-c072-67ed-166c-ce52cf504ac0, 00000000:03:00.0, 1, 12288"
+  },
+  "observed_at_unix_ns": 1788353391130087088,
+  "physical_producer_sha": "0f44f86f91db3c7a82f6d380c074a3731535f3a9",
+  "schema": "inferswarm.pre-r6.post-shutdown-resource-state/1"
+}

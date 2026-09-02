@@ -1,0 +1,58 @@
+{
+  "content": "",
+  "inter_output_gaps_ns": [
+    1395094009
+  ],
+  "maximum_client_visible_inter_token_gap_ns": 1395094009,
+  "output_event_times_ns": [
+    67996700143382,
+    67998095237391
+  ],
+  "reasoning_content": "Let $",
+  "request_body": {
+    "chat_template_kwargs": {
+      "enable_thinking": true
+    },
+    "ignore_eos": true,
+    "max_tokens": 2,
+    "messages": [
+      {
+        "content": "Find the sum of all integer bases $b>9$ for which $17_b$ is a divisor of $97_b.$\nPlease reason step by step, and put your final answer within \\boxed{}.",
+        "role": "user"
+      }
+    ],
+    "model": "nvidia/Qwen3.6-35B-A3B-NVFP4",
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    },
+    "temperature": 0.0,
+    "top_k": -1,
+    "top_p": 1.0
+  },
+  "request_ended_ns": 67998098027174,
+  "request_entry_contract": "ordinary FreeToken OpenAI adapter -> GenSpec -> TokenizeMsg -> epoch-aware controller",
+  "request_path": "/v1/chat/completions",
+  "request_started_ns": 67992375131319,
+  "request_wall_ns": 5722895855,
+  "resource_events_sent": [
+    {
+      "payload": {
+        "event_id": "r5b-scale-up",
+        "expected_remaining_requests": 64,
+        "inject_late_result": true,
+        "kind": "AVAILABLE",
+        "resource_id": "gpu.node-a.1",
+        "resource_stability_confidence": 1.0,
+        "trusted_history_available": true
+      },
+      "sent_at_ns": 67996700418727
+    }
+  ],
+  "schema": "inferswarm.r5b.http-lifecycle/1",
+  "usage": {
+    "completion_tokens": 2,
+    "prompt_tokens": 54,
+    "total_tokens": 56
+  }
+}
