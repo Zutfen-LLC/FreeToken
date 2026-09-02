@@ -155,14 +155,15 @@ class _Runtime:
 
     def generate(self, *, session_id, prompt_token_ids, max_new_tokens, on_token=None):
         assert not self.closed
-        assert max_new_tokens == 1
-        token = prompt_token_ids[-1] + 1
+        assert max_new_tokens == 2
+        tokens = [prompt_token_ids[-1] + 1, prompt_token_ids[-1] + 2]
         if on_token:
-            on_token(0, token, {"checksum": f"token-{token}"})
+            for step, token in enumerate(tokens):
+                on_token(step, token, {"checksum": f"token-{token}"})
         return {
             "session_id": session_id,
             "plan_digest": self.plan["digest"],
-            "generated_token_ids": [token],
+            "generated_token_ids": tokens,
         }
 
     def report(self):

@@ -572,8 +572,9 @@ class EpochServingController:
                 token_holder: list[int] = []
 
                 def capture(_step: int, token: int, boundary: Mapping[str, Any]) -> None:
-                    token_holder.append(int(token))
-                    boundary_holder.update(deepcopy(dict(boundary)))
+                    if _step == 0:
+                        token_holder.append(int(token))
+                        boundary_holder.update(deepcopy(dict(boundary)))
 
                 runtime_session_id = self._runtime_session_id(session_id)
                 with self._execution_lock:
@@ -582,7 +583,10 @@ class EpochServingController:
                             epoch.runtime.generate(
                                 session_id=runtime_session_id,
                                 prompt_token_ids=replay_input,
-                                max_new_tokens=1,
+                                # Accepted R2/R4 service measurement requires one
+                                # decode interval. Commit only step zero; step one is
+                                # explicitly speculative and discarded before replay.
+                                max_new_tokens=2,
                                 on_token=capture,
                             )
                         )
@@ -616,6 +620,7 @@ class EpochServingController:
                     "committed_at_ns": session.committed_at_ns[-1],
                     "replay_input_token_count": len(replay_input),
                     "replay_wall_ns": _now() - replay_started,
+                    "speculative_uncommitted_tokens_discarded": 1,
                 }
                 if on_token is not None:
                     on_token(step, token, commit)

@@ -56,6 +56,11 @@ output is suppressed. The first externally usable post-transition token is the
 next uncommitted token. This token-boundary/replay rule is not generalized to
 other models or strategies.
 
+Each accepted runtime invocation produces the next commit candidate plus one
+speculative token because the accepted R2/R4 measurement record requires one
+decode interval. Only step zero is eligible to commit; the speculative step is
+discarded and never emitted or used as recovery history.
+
 Continuation is legal only with exact trusted history, the pinned model and
 representation/backend contract, and greedy deterministic sampling. If those
 inputs are missing or untrusted, the session fails closed. Mutable device state
