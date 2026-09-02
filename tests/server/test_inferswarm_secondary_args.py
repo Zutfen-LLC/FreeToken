@@ -34,11 +34,27 @@ def test_parser_accepts_no_secondary_without_changing_defaults():
     assert args.inferswarm_remote_mode == "overlap"
     assert args.inferswarm_mechanism_max_steps == 256
     assert args.inferswarm_r5a_config is None
+    assert args.inferswarm_r5b_config is None
 
 
 def test_r5a_static_serving_config_is_a_separate_research_mode():
     args = _parse("--inferswarm-r5a-config", "/tmp/r5a.json")
     assert args.inferswarm_r5a_config == "/tmp/r5a.json"
+
+
+def test_r5b_epoch_serving_config_is_a_separate_research_mode():
+    args = _parse("--inferswarm-r5b-config", "/tmp/r5b.json")
+    assert args.inferswarm_r5b_config == "/tmp/r5b.json"
+
+
+def test_r5a_and_r5b_serving_modes_are_mutually_exclusive():
+    with pytest.raises(SystemExit):
+        _parse(
+            "--inferswarm-r5a-config",
+            "/tmp/r5a.json",
+            "--inferswarm-r5b-config",
+            "/tmp/r5b.json",
+        )
 
 
 def test_r5a_static_serving_refuses_historical_execution_flags():

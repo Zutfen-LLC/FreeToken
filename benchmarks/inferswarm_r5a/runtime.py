@@ -82,6 +82,7 @@ class R2ServingRuntime:
         self._closed = False
         self._final_reports: dict[str, Any] | None = None
         self._last_reports: dict[str, Any] | None = None
+        self._failed_resources: list[dict[str, Any]] = []
 
     def generate(
         self,
@@ -123,12 +124,36 @@ class R2ServingRuntime:
             "ready": deepcopy(self._coordinator.ready),
             "participants": deepcopy(participant_reports),
             "sessions": deepcopy(self._sessions),
+            "failed_resources": deepcopy(getattr(self, "_failed_resources", [])),
         }
+
+    def fail_resource(self, resource_id: str) -> None:
+        """R5B controlled real loss of the required local Block-B participant."""
+        if resource_id != "gpu.node-a.1":
+            raise RuntimeError(f"R2 runtime cannot fail unknown resource {resource_id}")
+        process = self._coordinator.processes["b"]
+        before = process.is_alive()
+        if before:
+            process.terminate()
+            process.join(10)
+        self._failed_resources.append(
+            {
+                "resource_id": resource_id,
+                "participant_role": "b",
+                "pid": process.pid,
+                "alive_before": before,
+                "alive_after": process.is_alive(),
+                "exit_code": process.exitcode,
+                "physical_execution_capability_lost": not process.is_alive(),
+            }
+        )
 
     def close(self) -> None:
         if self._closed:
             return
-        if self._last_reports is None:
+        if self._last_reports is None and all(
+            process.is_alive() for process in self._coordinator.processes.values()
+        ):
             self._last_reports = self._coordinator.reports()
         self._final_reports = deepcopy(self._last_reports)
         self._closed = True

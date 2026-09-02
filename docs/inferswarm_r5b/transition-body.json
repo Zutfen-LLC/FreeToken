@@ -1,0 +1,21 @@
+{
+  "model": "nvidia/Qwen3.6-35B-A3B-NVFP4",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Find the sum of all integer bases $b>9$ for which $17_b$ is a divisor of $97_b.$\nPlease reason step by step, and put your final answer within \\boxed{}."
+    }
+  ],
+  "max_tokens": 8,
+  "ignore_eos": true,
+  "stream": true,
+  "stream_options": {
+    "include_usage": true
+  },
+  "chat_template_kwargs": {
+    "enable_thinking": true
+  },
+  "temperature": 0.0,
+  "top_p": 1.0,
+  "top_k": -1
+}
