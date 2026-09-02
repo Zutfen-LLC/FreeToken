@@ -88,8 +88,10 @@ class GemmaDenseStage:
     """One dense contiguous stage: selective load, resident execution."""
 
     def __init__(self, *, role: str, model_path: str, adapter_data: dict) -> None:
-        if role not in ("a", "b"):
-            raise ValueError("role must be a or b")
+        _alias = {"a": "first", "b": "last"}
+        role = _alias.get(role, role)
+        if role not in ("first", "middle", "last"):
+            raise ValueError("role must be first, middle, or last")
         self.role = role
         self.model_path = model_path
         # The parent assigns one GPU per stage process before spawn: the
@@ -401,8 +403,9 @@ class GemmaDenseStage:
 
     @torch.inference_mode()
     def prefill(self, token_ids, hidden_or_ids, start: int):
-        """Stage A: token ids in; hidden out. Stage B: hidden in; logits out."""
-        if self.role == "a":
+        """first: token ids in; hidden out. middle: hidden in; hidden out.
+        last: hidden in; (next token, logits) out."""
+        if self.role == "first":
             batch = self._prepare(
                 start=start, token_count=len(token_ids), phase="prefill"
             )
@@ -417,14 +420,16 @@ class GemmaDenseStage:
         batch = self._prepare(start=start, token_count=hidden.shape[0], phase="prefill")
         with self.ctx.forward_batch(batch):
             hidden, _ = self.forward_layers(hidden)
+            if self.role != "last":
+                return hidden, None
             final = self.finalize(hidden, None)
             logits = self.lm_head_logits(final)
         return int(torch.argmax(logits, dim=-1).item()), logits.detach()
 
     @torch.inference_mode()
     def decode(self, token_or_hidden, position: int):
-        """One decode step. Stage A: token id; Stage B: boundary hidden."""
-        if self.role == "a":
+        """One decode step. first: token id in; middle/last: hidden in."""
+        if self.role == "first":
             token_id = token_or_hidden
             batch = self._prepare(
                 start=position, token_count=1, phase="decode"
@@ -438,6 +443,8 @@ class GemmaDenseStage:
         batch = self._prepare(start=position, token_count=1, phase="decode")
         with self.ctx.forward_batch(batch):
             hidden, _ = self.forward_layers(hidden)
+            if self.role != "last":
+                return hidden, None
             final = self.finalize(hidden, None)
             logits = self.lm_head_logits(final)
         return int(torch.argmax(logits, dim=-1).item()), logits

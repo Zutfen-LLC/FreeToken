@@ -124,8 +124,14 @@ def legal_candidates(model_path: str) -> dict[str, Any]:
             total += weights
         return per, total
 
+    # Census-measured (issue #65): text tower ~21.7 GB + 2.0 GB tied embed;
+    # a 2-stage split (~12.8 GB/stage) does NOT fit 11.63 GiB-usable 3060s
+    # (hardware-verified OOM during selective load).  The legal candidate is
+    # the 3-stage contiguous chain; 2-stage is retained as MEASURED_INFEASIBLE.
     two_ranges = [(0, 24), (24, 48)]
     two_per, two_total = stage_weights(two_ranges)
+    three_ranges = [(0, 16), (16, 32), (32, 48)]
+    three_per, three_total = stage_weights(three_ranges)
     # Tied lm_head duplicates the embedding table on the head stage.
     shared_state = {
         "id": "tied-embedding-lm-head",
@@ -142,7 +148,34 @@ def legal_candidates(model_path: str) -> dict[str, Any]:
         "model_repository": MODEL_REPOSITORY,
         "revision": MODEL_REVISION,
         "strategy_id": STRATEGY_ID,
+        "measured_infeasible": [
+            {
+                "id": "dense-two-stage-contiguous",
+                "unitization": "opaque-contiguous-stage-v2",
+                "stages": [
+                    {"layer_range": [0, 24], "owns": ["embeddings"]},
+                    {"layer_range": [24, 48], "owns": ["final-norm", "lm_head(tied)"]},
+                ],
+                "stage_weight_bytes": two_per,
+                "feasibility_note": "MEASURED_INFEASIBLE: stage weights exceed "
+                "11.63 GiB usable VRAM per 3060 (hardware OOM during selective "
+                "load on inferswarm01, producer 2c8e381)",
+            },
+        ],
         "candidates": [
+            {
+                "id": "dense-three-stage-chain",
+                "unitization": "opaque-contiguous-stage-v2",
+                "stages": [
+                    {"layer_range": [0, 16], "owns": ["embeddings"]},
+                    {"layer_range": [16, 32], "owns": []},
+                    {"layer_range": [32, 48], "owns": ["final-norm", "lm-head(tied)"]},
+                ],
+                "stage_weight_bytes": three_per,
+                "shared_state": shared_state,
+                "feasibility_note": "three >=9.4GiB VRAM units; spans two nodes "
+                "when only two local GPUs are available",
+            },
             {
                 "id": "dense-two-stage-contiguous",
                 "unitization": "opaque-contiguous-stage-v2",
