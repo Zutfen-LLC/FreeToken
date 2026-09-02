@@ -1,0 +1,12 @@
+{"schema": "inferswarm.xc.regression-summary/1",
+ "producer_sha": "df8a429e9110b6c2e6bb56b1cf5e96db0a7b1b8e",
+ "evidence_head_note": "regressions run against the physical producer tree on inferswarm01 (FreeToken-xc @ df8a429)",
+ "environment": {"host": "inferswarm01", "python": "3.13.5", "torch": "2.11.0+cu130"},
+ "suites": {
+   "research": {"passed": 230, "failed": 0, "r5b_baseline": 199, "delta": "+31 external-Coordinator tests"},
+   "benchmarks": {"passed": 563, "failed": 0, "r5b_baseline": 563, "delta": "0"},
+   "server": {"passed": 583, "failed": 0, "r5b_baseline": 581, "delta": "+2 (upstream-added tests since R5B baseline)"},
+   "warnings": "one Starlette/httpx test-client deprecation warning (the known existing warning from accepted R5B)"
+ },
+ "coordinator_purity_tests": {"host": "inferswarm00", "venv": "/srv/inferswarm/venv (no torch)", "passed": 31, "failed": 0,
+   "note": "focused xc wire/seam/epoch tests pass with no torch/triton in sys.modules"}}
