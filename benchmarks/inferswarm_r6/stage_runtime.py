@@ -252,14 +252,74 @@ class GemmaDenseStage:
         state = modules.state_dict()
         loaded = {}
         staging_peak = 0
+        # Checkpoint stores separate q/k/v (+ no v on k_eq_v full-attn layers)
+        # and mlp.{gate,up}_proj; modules expect merged qkv_proj /
+        # gate_up_proj and feed_forward.* renames.  Reuse the accepted
+        # gemma4 rename+merge machinery, buffered per merged key, but only
+        # for planned keys, merging straight onto the device.
+        import re as _re
+
+        from freetoken.models.gemma4.weight import (
+            _MERGE_RULES,
+            _rename_language_key,
+        )
+
+        _layer_re = _re.compile(r"layers\.(\d+)\.")
+
+        def _merge_rule_for(renamed_key):
+            for suffix, rule in _MERGE_RULES.items():
+                if renamed_key.endswith(suffix + ".weight"):
+                    return renamed_key.replace(suffix, rule.fused_suffix), rule
+            return None
+
+        k_eq_v_layers = {
+            gid
+            for gid in modules.global_layer_ids
+            if getattr(
+                self.full_config.attention_group_for_layer(gid), "k_eq_v", False
+            )
+        }
+        merge_buf: dict[str, dict[str, torch.Tensor]] = {}
         for key, tensor in reader.tensors(device="cpu"):
-            src_key = _key_adapter(key)
-            expected_meta = state.get(src_key)
-            if expected_meta is None:
-                raise RuntimeError(f"planned key {key} has no module destination")
+            # raw checkpoint key -> renamed module key (renames only)
+            renamed = _rename_language_key(
+                "language_model." + key.removeprefix("model.language_model.")
+            )
+            if renamed is None or not renamed.startswith("model."):
+                raise RuntimeError(f"planned key {key} failed rename -> {renamed!r}")
+            rule_ref = _merge_rule_for(renamed)
+            if rule_ref is None:
+                expected_meta = state.get(renamed)
+                if expected_meta is None:
+                    raise RuntimeError(
+                        f"planned key {key} (-> {renamed}) has no module destination"
+                    )
+                staging_peak += tensor.numel() * tensor.element_size()
+                loaded[renamed] = tensor.to(device=self.device, dtype=torch.bfloat16)
+                continue
+            merged_key, rule = rule_ref
+            slots = merge_buf.setdefault(merged_key, {})
+            slots[rule.slot] = tensor
+            if rule.slot == "k":
+                layer_match = _layer_re.search(key)
+                if layer_match is not None and int(layer_match.group(1)) in k_eq_v_layers:
+                    slots["v"] = tensor
+            if not all(slot in slots for slot in rule.slots):
+                staging_peak += tensor.numel() * tensor.element_size()
+                continue
+            parts = [slots[slot] for slot in rule.slots]
+            del merge_buf[merged_key]
+            merged = parts[0]
+            for part in parts[1:]:
+                merged = torch.cat([merged, part.to(merged.dtype)], dim=0)
             staging_peak += tensor.numel() * tensor.element_size()
-            loaded[src_key] = tensor.to(device=self.device, dtype=torch.bfloat16)
-            del tensor
+            expected_meta = state.get(merged_key)
+            if expected_meta is None:
+                raise RuntimeError(f"merged key {merged_key} has no module destination")
+            loaded[merged_key] = merged.to(device=self.device, dtype=torch.bfloat16)
+            del parts, merged
+        if merge_buf:
+            raise RuntimeError(f"incomplete merge groups: {list(merge_buf)[:5]}")
         self._host_peak_staging_bytes = staging_peak
         missing = sorted(set(state) - set(loaded))
         if missing:
