@@ -299,6 +299,24 @@ class R4ServingRuntime:
         # The accepted R4 service historically ended with its process. R5B
         # reuses it inside a longer-lived host process, so all owning references
         # must be dropped before the replacement can materialize on GPU A0.
+        runtime = self._backend_runtime
+        from freetoken import core as core_module
+
+        if core_module._GLOBAL_CTX is not runtime.ctx:
+            raise RuntimeError(
+                "R5B cannot prove ownership of the process-global runtime context"
+            )
+        core_module._GLOBAL_CTX = None
+        graph = getattr(getattr(runtime, "decode_graph", None), "graph", None)
+        if graph is not None and hasattr(graph, "reset"):
+            graph.reset()
+        self._coordinator.runtime = None
+        self._realized.adapter.runtime = None
+        runtime.decode_graph = None
+        runtime.cache = None
+        runtime.ctx = None
+        runtime.block = None
+        runtime.loaded = None
         self._host_u8 = None
         self._coordinator = None
         self._backend_runtime = None
