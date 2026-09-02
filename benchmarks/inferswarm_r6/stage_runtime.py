@@ -164,15 +164,20 @@ class GemmaDenseStage:
     # -- construction helpers ------------------------------------------
 
     def _stage_config(self, full_config):
+        """Stage-local view: groups renumbered to 0..k-1 (order-preserving, so
+        each layer keeps its global group type) and num_layers = owned count,
+        so the KV pool's full/swa layer mapping covers exactly the owned
+        layers.  Global identity is retained via ``global_layer_ids``."""
         from dataclasses import replace as _replace
 
-        owned = set(range(self.spec.start_layer, self.spec.end_layer))
+        owned = sorted(range(self.spec.start_layer, self.spec.end_layer))
+        local_of = {gid: i for i, gid in enumerate(owned)}
         groups = []
         for group in full_config.attention_groups:
-            layer_ids = tuple(i for i in group.layer_ids if i in owned)
+            layer_ids = tuple(local_of[i] for i in group.layer_ids if i in local_of)
             if layer_ids:
                 groups.append(_replace(group, layer_ids=layer_ids))
-        return _replace(full_config, attention_groups=tuple(groups))
+        return _replace(full_config, attention_groups=tuple(groups), num_layers=len(owned))
 
     def _build_module(self):
         raise NotImplementedError("staged modules are built inside _selective_load")
@@ -241,8 +246,8 @@ class GemmaDenseStage:
                     embed_scale=self.full_config.embedding_scale,
                 )
             modules.layers = [
-                Gemma4DecoderLayer(self.full_config, layer)
-                for layer in modules.global_layer_ids
+                Gemma4DecoderLayer(self.config, local)
+                for local in range(len(modules.global_layer_ids))
             ]
             if spec.owns_final_norm_head:
                 from freetoken.layers import GemmaRMSNorm
