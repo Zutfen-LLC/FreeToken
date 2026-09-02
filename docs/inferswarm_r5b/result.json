@@ -1,0 +1,380 @@
+{
+  "accepted_r5a_base_sha": "d9f45a9ef7b5f89800f96c54397202a7d43beb52",
+  "checks": {
+    "all_realizations_reconciled": true,
+    "all_reclaimed_after_shutdown": true,
+    "distinct_epoch_generations": true,
+    "exact_output": true,
+    "exact_physical_producer": true,
+    "http_accounting": true,
+    "late_result_fenced": true,
+    "logits_finite": true,
+    "physical_gpu1_worker_loss": true,
+    "planner_selected_expected_truthful_sequence": true,
+    "post_shutdown_gpu_processes_absent": true,
+    "preflight": true,
+    "regressions": true,
+    "single_authority_after_request": true,
+    "three_activated_transitions": true
+  },
+  "correctness": {
+    "committed_epoch_ids": [
+      "research-generation-0:17e2d8715d7f",
+      "research-generation-0:17e2d8715d7f",
+      "research-generation-1:cd1d5f89cdce",
+      "research-generation-2:17e2d8715d7f",
+      "research-generation-2:17e2d8715d7f",
+      "research-generation-2:17e2d8715d7f",
+      "research-generation-3:cd1d5f89cdce",
+      "research-generation-3:cd1d5f89cdce"
+    ],
+    "committed_plan_digests": [
+      "sha256:17e2d8715d7f81c02505939e299012e6cb0a83b749110effbfc9c63a77c06824",
+      "sha256:17e2d8715d7f81c02505939e299012e6cb0a83b749110effbfc9c63a77c06824",
+      "sha256:cd1d5f89cdce3a575ec15aaa561c92060f5abc3ac979ebb69f62e4a9d782ceac",
+      "sha256:17e2d8715d7f81c02505939e299012e6cb0a83b749110effbfc9c63a77c06824",
+      "sha256:17e2d8715d7f81c02505939e299012e6cb0a83b749110effbfc9c63a77c06824",
+      "sha256:17e2d8715d7f81c02505939e299012e6cb0a83b749110effbfc9c63a77c06824",
+      "sha256:cd1d5f89cdce3a575ec15aaa561c92060f5abc3ac979ebb69f62e4a9d782ceac",
+      "sha256:cd1d5f89cdce3a575ec15aaa561c92060f5abc3ac979ebb69f62e4a9d782ceac"
+    ],
+    "expected_generated_token_ids": [
+      9764,
+      393,
+      45,
+      283,
+      220,
+      24,
+      22,
+      853
+    ],
+    "inf_count": 0,
+    "nan_count": 0,
+    "observed_generated_token_ids": [
+      9764,
+      393,
+      45,
+      283,
+      220,
+      24,
+      22,
+      853
+    ],
+    "prompt_token_count": 54,
+    "selected_logits_records": 16
+  },
+  "environment_digest": "sha256:bc37a987b25f22d6100f2ed6a5d8f8b30c73cf11f98916446cc4dcdbe3cad121",
+  "epoch_service": [
+    {
+      "candidate_id": "resident-two-node-two-slot[slot-a=gpu.node-a.0,slot-b=gpu.node-b.0]",
+      "epoch_id": "research-generation-0:17e2d8715d7f",
+      "generation": 0,
+      "median_decode_tokens_per_second": 21.744434059995434,
+      "median_runtime_ttft_ns": 1556158874.5,
+      "plan_digest": "sha256:17e2d8715d7f81c02505939e299012e6cb0a83b749110effbfc9c63a77c06824",
+      "reclamation": {
+        "accepted_runtime_reclamation": {
+          "after": {
+            "allocated_bytes": 84155392,
+            "reserved_bytes": 117440512
+          },
+          "before": {
+            "allocated_bytes": 10861235712,
+            "reserved_bytes": 10928259072
+          },
+          "kind": "accepted-r4-in-process-materialization-reclamation"
+        },
+        "kind": "r5b-epoch-process-isolation-around-accepted-r4-runtime",
+        "process_exit_code": 0,
+        "process_pid": 351012,
+        "process_stopped": true
+      },
+      "runtime_requests": 2
+    },
+    {
+      "candidate_id": "resident-same-node-two-slot[slot-a=gpu.node-a.0,slot-b=gpu.node-a.1]",
+      "epoch_id": "research-generation-1:cd1d5f89cdce",
+      "generation": 1,
+      "median_decode_tokens_per_second": 4.8753055768405975,
+      "median_runtime_ttft_ns": 908042625,
+      "plan_digest": "sha256:cd1d5f89cdce3a575ec15aaa561c92060f5abc3ac979ebb69f62e4a9d782ceac",
+      "reclamation": {
+        "all_participants_stopped": true,
+        "kind": "accepted-r2-child-process-reclamation",
+        "participant_exit_codes": {
+          "a": 0,
+          "b": -15
+        }
+      },
+      "runtime_requests": 1
+    },
+    {
+      "candidate_id": "resident-two-node-two-slot[slot-a=gpu.node-a.0,slot-b=gpu.node-b.0]",
+      "epoch_id": "research-generation-2:17e2d8715d7f",
+      "generation": 2,
+      "median_decode_tokens_per_second": 21.757074345359005,
+      "median_runtime_ttft_ns": 1288844873,
+      "plan_digest": "sha256:17e2d8715d7f81c02505939e299012e6cb0a83b749110effbfc9c63a77c06824",
+      "reclamation": {
+        "accepted_runtime_reclamation": {
+          "after": {
+            "allocated_bytes": 84157440,
+            "reserved_bytes": 119537664
+          },
+          "before": {
+            "allocated_bytes": 10861237760,
+            "reserved_bytes": 10928259072
+          },
+          "kind": "accepted-r4-in-process-materialization-reclamation"
+        },
+        "kind": "r5b-epoch-process-isolation-around-accepted-r4-runtime",
+        "process_exit_code": 0,
+        "process_pid": 352743,
+        "process_stopped": true
+      },
+      "runtime_requests": 3
+    },
+    {
+      "candidate_id": "resident-same-node-two-slot[slot-a=gpu.node-a.0,slot-b=gpu.node-a.1]",
+      "epoch_id": "research-generation-3:cd1d5f89cdce",
+      "generation": 3,
+      "median_decode_tokens_per_second": 5.037591163321058,
+      "median_runtime_ttft_ns": 689312971.0,
+      "plan_digest": "sha256:cd1d5f89cdce3a575ec15aaa561c92060f5abc3ac979ebb69f62e4a9d782ceac",
+      "reclamation": {
+        "all_participants_stopped": true,
+        "kind": "accepted-r2-child-process-reclamation",
+        "participant_exit_codes": {
+          "a": 0,
+          "b": 0
+        }
+      },
+      "runtime_requests": 2
+    }
+  ],
+  "http": {
+    "maximum_client_visible_inter_token_gap_ns": 72192927906,
+    "request_wall_ns": 209628793009,
+    "usage": {
+      "completion_tokens": 8,
+      "prompt_tokens": 54,
+      "total_tokens": 62
+    }
+  },
+  "measurement_note": "Nanosecond wall times are monotonic observed values. Cutover totals combine explicitly listed settle/reclaim and realization phases and are not labeled network latency.",
+  "methodology_sha256": "57a466de08a8e147980b0c4cd9ce4df9db184389d62f63e614a8fbf625ffa504",
+  "non_claims": [
+    "no zero-downtime claim",
+    "no production scheduler, daemon, protocol, or public epoch API",
+    "no make-before-break runtime materialization claim",
+    "no materially different model or R6 claim"
+  ],
+  "physical_producer_sha": "7dd945a67c04198ec2d9afe782a39c90e8141f5e",
+  "regressions": {
+    "benchmarks": {
+      "expected_passed": 563,
+      "passed": true,
+      "warning_count": 0
+    },
+    "r5b_negative_arms": {
+      "cases": [
+        "failed preparation retains old authority",
+        "unrecoverable mutable state fails closed",
+        "retired result cannot change state or accounting",
+        "participant loss publication is atomic"
+      ],
+      "expected_passed": 4,
+      "passed": true,
+      "warning_count": 0
+    },
+    "research": {
+      "expected_passed": 199,
+      "passed": true,
+      "warning_count": 0
+    },
+    "server": {
+      "expected_passed": 581,
+      "passed": true,
+      "warning_count": 1
+    }
+  },
+  "result": "R5B_PLAN_EPOCH_RECOVERY_PASS",
+  "runtime_safety": [
+    {
+      "available": true,
+      "fallbacks": 0,
+      "generation": 0,
+      "host_expert_fetches": 0,
+      "host_materialization_accounting_by_participant": [
+        {
+          "lifecycle_policy": "release_after_final_residency",
+          "optional_retained_host_cache_bytes": 0,
+          "reclaimable_host_cache_bytes": 0,
+          "release_invoked_bytes": 8636596224,
+          "release_pending": 0,
+          "required_persistent_host_bytes": 0,
+          "transient_staging_bytes": 0
+        }
+      ],
+      "participant_count": 1,
+      "resident_only": true,
+      "resident_source_accesses": 0,
+      "steady_model_state_movement_bytes": 0,
+      "unexplained_persistent_host_mirror_bytes": 0,
+      "vmstat_delta_by_participant": [
+        {
+          "pgmajfault": 64857,
+          "pswpin": 0,
+          "pswpout": 0
+        }
+      ]
+    },
+    {
+      "available": false,
+      "controlled_failed_epoch": true,
+      "generation": 1,
+      "reason": "BrokenPipeError: [Errno 32] Broken pipe"
+    },
+    {
+      "available": true,
+      "fallbacks": 0,
+      "generation": 2,
+      "host_expert_fetches": 0,
+      "host_materialization_accounting_by_participant": [
+        {
+          "lifecycle_policy": "release_after_final_residency",
+          "optional_retained_host_cache_bytes": 0,
+          "reclaimable_host_cache_bytes": 0,
+          "release_invoked_bytes": 8636596224,
+          "release_pending": 0,
+          "required_persistent_host_bytes": 0,
+          "transient_staging_bytes": 0
+        }
+      ],
+      "participant_count": 1,
+      "resident_only": true,
+      "resident_source_accesses": 0,
+      "steady_model_state_movement_bytes": 0,
+      "unexplained_persistent_host_mirror_bytes": 0,
+      "vmstat_delta_by_participant": [
+        {
+          "pgmajfault": 80618,
+          "pswpin": 0,
+          "pswpout": 0
+        }
+      ]
+    },
+    {
+      "available": true,
+      "fallbacks": 0,
+      "generation": 3,
+      "host_expert_fetches": 0,
+      "host_materialization_accounting_by_participant": [
+        {
+          "lifecycle_policy": "release_after_final_residency",
+          "optional_retained_host_cache_bytes": 0,
+          "reclaimable_host_cache_bytes": 0,
+          "release_invoked_bytes": 8636596224,
+          "release_pending": 0,
+          "required_persistent_host_bytes": 0,
+          "transient_staging_bytes": 0
+        },
+        {
+          "lifecycle_policy": "release_after_final_residency",
+          "optional_retained_host_cache_bytes": 0,
+          "reclaimable_host_cache_bytes": 0,
+          "release_invoked_bytes": 9545711616,
+          "release_pending": 0,
+          "required_persistent_host_bytes": 0,
+          "transient_staging_bytes": 0
+        }
+      ],
+      "participant_count": 2,
+      "resident_only": true,
+      "resident_source_accesses": 0,
+      "steady_model_state_movement_bytes": 0,
+      "unexplained_persistent_host_mirror_bytes": 0,
+      "vmstat_delta_by_participant": [
+        {
+          "pgmajfault": 199341,
+          "pswpin": 0,
+          "pswpout": 0
+        },
+        {
+          "pgmajfault": 199341,
+          "pswpin": 0,
+          "pswpout": 0
+        }
+      ]
+    }
+  ],
+  "schema": "inferswarm.r5b.result/1",
+  "transitions": [
+    {
+      "client_visible_inter_token_gap_ns": 72192927906,
+      "first_post_transition_runtime_request_wall_ns": 1334464260,
+      "immutable_preparation_wall_ns": 29082410,
+      "old_epoch_id": "research-generation-0:17e2d8715d7f",
+      "old_settle_and_reclaim_wall_ns": 1801325801,
+      "planner_decision_digest": "sha256:dc01811754dfa8f04879b7ccb1931b997360523f385b6c2632f921497f3802f1",
+      "replacement_candidate_id": "resident-same-node-two-slot[slot-a=gpu.node-a.0,slot-b=gpu.node-a.1]",
+      "replacement_epoch_id": "research-generation-1:cd1d5f89cdce",
+      "replacement_realization_wall_ns": 67866921788,
+      "replanning_wall_ns": 28865396,
+      "replay_plus_first_candidate_prefill_wall_ns": 908041235,
+      "replay_range": [
+        0,
+        2
+      ],
+      "replay_source": "retained exact prompt plus committed generated-token history",
+      "replay_token_count": 2,
+      "resource_snapshot_digest": "sha256:4629517fb5ea57b09fea22bc97f2f9db10fde896be6484a72ecd879e4761b5da",
+      "total_authority_cutover_wall_ns": 69669753622,
+      "trigger": "r5b-scale-up"
+    },
+    {
+      "client_visible_inter_token_gap_ns": 57112854253,
+      "first_post_transition_runtime_request_wall_ns": 1740726516,
+      "immutable_preparation_wall_ns": 67479759,
+      "old_epoch_id": "research-generation-1:cd1d5f89cdce",
+      "old_settle_and_reclaim_wall_ns": 1493798259,
+      "planner_decision_digest": "sha256:f81ac7bc74cfc47fe26d2c0d0f9cea17aff4408d1bb7f326a9f41d560371745f",
+      "replacement_candidate_id": "resident-two-node-two-slot[slot-a=gpu.node-a.0,slot-b=gpu.node-b.0]",
+      "replacement_epoch_id": "research-generation-2:17e2d8715d7f",
+      "replacement_realization_wall_ns": 53325510081,
+      "replanning_wall_ns": 67243016,
+      "replay_plus_first_candidate_prefill_wall_ns": 1693804939,
+      "replay_range": [
+        0,
+        3
+      ],
+      "replay_source": "retained exact prompt plus committed generated-token history",
+      "replay_token_count": 3,
+      "resource_snapshot_digest": "sha256:9d70b2b54db46bffa7fbfdb908bb2b4dec3a81e7afaf1f54396aef9ed9fa3b35",
+      "total_authority_cutover_wall_ns": 54822778723,
+      "trigger": "r5b-scale-down-loss"
+    },
+    {
+      "client_visible_inter_token_gap_ns": 72064212621,
+      "first_post_transition_runtime_request_wall_ns": 1329132374,
+      "immutable_preparation_wall_ns": 28951963,
+      "old_epoch_id": "research-generation-2:17e2d8715d7f",
+      "old_settle_and_reclaim_wall_ns": 1956581223,
+      "planner_decision_digest": "sha256:dc01811754dfa8f04879b7ccb1931b997360523f385b6c2632f921497f3802f1",
+      "replacement_candidate_id": "resident-same-node-two-slot[slot-a=gpu.node-a.0,slot-b=gpu.node-a.1]",
+      "replacement_epoch_id": "research-generation-3:cd1d5f89cdce",
+      "replacement_realization_wall_ns": 67594965643,
+      "replanning_wall_ns": 28729446,
+      "replay_plus_first_candidate_prefill_wall_ns": 911880251,
+      "replay_range": [
+        0,
+        6
+      ],
+      "replay_source": "retained exact prompt plus committed generated-token history",
+      "replay_token_count": 6,
+      "resource_snapshot_digest": "sha256:4629517fb5ea57b09fea22bc97f2f9db10fde896be6484a72ecd879e4761b5da",
+      "total_authority_cutover_wall_ns": 69553065294,
+      "trigger": "r5b-scale-back-up"
+    }
+  ]
+}

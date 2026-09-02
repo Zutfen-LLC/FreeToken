@@ -189,6 +189,7 @@ class FrontendManager:
     backend_processes: List[Any] = field(default_factory=list)
     # Temporary R5A research dispatcher. None preserves the normal worker/ZMQ path.
     inferswarm_r5a_dispatcher: Any = None
+    inferswarm_r5b_dispatcher: Any = None
     # Event loop the listener runs on, captured when the listener starts (_create_listener_once).
     # Lets a cross-thread caller — the supervisor thread's failure callback — marshal rebuild
     # future resolution back onto the loop (asyncio Futures are not thread-safe). None until the
@@ -340,6 +341,11 @@ class FrontendManager:
             self.initialized = True
 
     async def send_one(self, msg: BaseTokenizerMsg):
+        if self.inferswarm_r5b_dispatcher is not None:
+            if self._loop is None:
+                self._loop = asyncio.get_running_loop()
+            await self.inferswarm_r5b_dispatcher.submit(msg, self)
+            return
         if self.inferswarm_r5a_dispatcher is not None:
             if self._loop is None:
                 self._loop = asyncio.get_running_loop()
@@ -404,6 +410,8 @@ class FrontendManager:
         await self.send_one(AbortMsg(uid=uid))
 
     def shutdown(self):
+        if self.inferswarm_r5b_dispatcher is not None:
+            self.inferswarm_r5b_dispatcher.close()
         if self.inferswarm_r5a_dispatcher is not None:
             self.inferswarm_r5a_dispatcher.close()
         self.send_tokenizer.stop()
@@ -1054,6 +1062,33 @@ def run_api_server(config: ServerArgs, start_backend: Callable[[], "Any"], run_s
             encoder=BaseTokenizerMsg.encoder,
         ),
     )
+
+    if config.inferswarm_r5b_config is not None:
+        from .inferswarm_r5b import R5BFrontendDispatcher
+
+        _GLOBAL_STATE.inferswarm_r5b_dispatcher = R5BFrontendDispatcher(
+            config.inferswarm_r5b_config, config
+        )
+        _GLOBAL_STATE.maintenance_state = "serving"
+        _GLOBAL_STATE.ready_at = time.monotonic()
+        active = _GLOBAL_STATE.inferswarm_r5b_dispatcher.controller.active_epoch
+        _GLOBAL_STATE.runtime_config = {
+            "mode": "inferswarm-r5b-epoch-serving",
+            "active_epoch_id": active.epoch_id,
+            "plan_digest": active.execution_plan["digest"],
+        }
+        logger.info(
+            "API server is ready with InferSwarm R5B epoch %s plan %s on %s:%s",
+            active.epoch_id,
+            active.execution_plan["digest"],
+            host,
+            port,
+        )
+        if run_shell:
+            _serve_and_run_shell(host, port)
+            return
+        uvicorn.run(app, host=host, port=port)
+        return
 
     if config.inferswarm_r5a_config is not None:
         # Planning and complete plan freeze happen inside the dispatcher before

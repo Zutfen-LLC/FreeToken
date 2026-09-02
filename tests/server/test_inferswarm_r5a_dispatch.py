@@ -61,3 +61,22 @@ def test_default_serving_path_is_unchanged_without_r5a_dispatcher():
     msg = TokenizeMsg(uid=8, text="ordinary request", sampling_params=SamplingParams(max_tokens=2))
     asyncio.run(state.send_one(msg))
     assert send.items == [msg]
+
+
+def test_existing_tokenize_waist_routes_to_r5b_without_zmq_submission():
+    send = _Queue()
+    state = FrontendManager(
+        config=SimpleNamespace(),
+        send_tokenizer=send,
+        recv_tokenizer=_Queue(),
+    )
+    dispatcher = _Dispatcher()
+    state.inferswarm_r5b_dispatcher = dispatcher
+    msg = TokenizeMsg(
+        uid=9, text="ordinary epoch request", sampling_params=SamplingParams(max_tokens=2)
+    )
+    asyncio.run(state.send_one(msg))
+    assert dispatcher.items == [(msg, state)]
+    assert send.items == []
+    state.shutdown()
+    assert dispatcher.closed

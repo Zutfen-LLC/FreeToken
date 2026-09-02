@@ -88,6 +88,9 @@ class ServerArgs(SchedulerConfig):
     # frontend dispatches TokenizeMsg requests through one planner-frozen
     # InferSwarm runtime instead of launching the conventional backend workers.
     inferswarm_r5a_config: str | None = None
+    # R5B epoch-serving research configuration. This remains an internal proof
+    # seam and does not freeze a public control-plane or epoch API.
+    inferswarm_r5b_config: str | None = None
 
     @property
     def share_tokenizer(self) -> bool:
@@ -392,6 +395,15 @@ def parse_args(
             "Research-only frozen R5A static-serving configuration. Uses the ordinary "
             "FreeToken serving surface but replaces backend startup with the selected "
             "immutable InferSwarm plan."
+        ),
+    )
+    parser.add_argument(
+        "--inferswarm-r5b-config",
+        type=str,
+        default=ServerArgs.inferswarm_r5b_config,
+        help=(
+            "Research-only R5B epoch-serving configuration. Uses the ordinary "
+            "FreeToken serving surface and an authenticated local resource-event seam."
         ),
     )
 
@@ -868,8 +880,11 @@ def parse_args(
     d7_diagnostics = kwargs["inferswarm_d7_participation_diagnostics"]
     d5_weighted = kwargs["inferswarm_d5_weighted_placement"]
     r5a = kwargs["inferswarm_r5a_config"] is not None
+    r5b = kwargs["inferswarm_r5b_config"] is not None
+    if r5a and r5b:
+        parser.error("R5A and R5B research serving modes are mutually exclusive")
     multiworker = d3 or d5_compact or d6_transport
-    if r5a and any(
+    if (r5a or r5b) and any(
         (
             kwargs["inferswarm_secondary_gpu"] is not None,
             kwargs["inferswarm_placement"] is not None,
@@ -883,7 +898,7 @@ def parse_args(
             d7_sparse,
         )
     ):
-        parser.error("--inferswarm-r5a-config is mutually exclusive with historical InferSwarm execution flags")
+        parser.error("R5A/R5B serving config is mutually exclusive with historical InferSwarm execution flags")
     if d2 and kwargs["inferswarm_remote_decode"]:
         parser.error(
             "--inferswarm-experimental-d2-graph-remote is mutually exclusive with "

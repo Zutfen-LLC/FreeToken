@@ -1,0 +1,14 @@
+============================= test session starts ==============================
+platform linux -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0 -- /home/zutfen/FreeToken/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/zutfen/FreeToken-r5b
+configfile: pyproject.toml
+plugins: anyio-4.14.2
+collecting ... collected 4 items
+
+tests/research/test_r5b_epochs.py::test_failed_overlap_preparation_keeps_old_epoch_authoritative PASSED [ 25%]
+tests/research/test_r5b_epochs.py::test_unrecoverable_authority_loss_fails_closed PASSED [ 50%]
+tests/research/test_r5b_epochs.py::test_late_retired_epoch_result_is_rejected_without_state_or_accounting_change PASSED [ 75%]
+tests/research/test_r5b_epochs.py::test_loss_injection_is_atomic_with_event_publication PASSED [100%]
+
+============================== 4 passed in 0.12s ===============================

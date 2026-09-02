@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 import subprocess
 from copy import deepcopy
 from pathlib import Path
@@ -82,6 +83,8 @@ class R2ServingRuntime:
         self._closed = False
         self._final_reports: dict[str, Any] | None = None
         self._last_reports: dict[str, Any] | None = None
+        self._failed_resources: list[dict[str, Any]] = []
+        self.reclamation_report: dict[str, Any] = {}
 
     def generate(
         self,
@@ -123,16 +126,51 @@ class R2ServingRuntime:
             "ready": deepcopy(self._coordinator.ready),
             "participants": deepcopy(participant_reports),
             "sessions": deepcopy(self._sessions),
+            "failed_resources": deepcopy(getattr(self, "_failed_resources", [])),
         }
+
+    def fail_resource(self, resource_id: str) -> None:
+        """R5B controlled real loss of the required local Block-B participant."""
+        if resource_id != "gpu.node-a.1":
+            raise RuntimeError(f"R2 runtime cannot fail unknown resource {resource_id}")
+        process = self._coordinator.processes["b"]
+        before = process.is_alive()
+        if before:
+            process.terminate()
+            process.join(10)
+        self._failed_resources.append(
+            {
+                "resource_id": resource_id,
+                "participant_role": "b",
+                "pid": process.pid,
+                "alive_before": before,
+                "alive_after": process.is_alive(),
+                "exit_code": process.exitcode,
+                "physical_execution_capability_lost": not process.is_alive(),
+            }
+        )
 
     def close(self) -> None:
         if self._closed:
             return
-        if self._last_reports is None:
+        if self._last_reports is None and all(
+            process.is_alive() for process in self._coordinator.processes.values()
+        ):
             self._last_reports = self._coordinator.reports()
         self._final_reports = deepcopy(self._last_reports)
         self._closed = True
         self._coordinator.shutdown()
+        processes = getattr(self._coordinator, "processes", {})
+        self.reclamation_report = {
+            "kind": "accepted-r2-child-process-reclamation",
+            "participant_exit_codes": {
+                role: process.exitcode
+                for role, process in processes.items()
+            },
+            "all_participants_stopped": all(
+                not process.is_alive() for process in processes.values()
+            ),
+        }
 
 
 class R4ServingRuntime:
@@ -209,6 +247,7 @@ class R4ServingRuntime:
         )
         self._sessions: list[dict[str, Any]] = []
         self._closed = False
+        self.reclamation_report: dict[str, Any] = {}
 
     def generate(
         self,
@@ -251,8 +290,48 @@ class R4ServingRuntime:
         if self._closed:
             return
         self._closed = True
+        before = {
+            "allocated_bytes": int(self._torch.cuda.memory_allocated(0)),
+            "reserved_bytes": int(self._torch.cuda.memory_reserved(0)),
+        }
         self._coordinator.close()
         self._unregister(self._host_u8)
+        # The accepted R4 service historically ended with its process. R5B
+        # reuses it inside a longer-lived host process, so all owning references
+        # must be dropped before the replacement can materialize on GPU A0.
+        runtime = self._backend_runtime
+        from freetoken import core as core_module
+
+        if core_module._GLOBAL_CTX is not runtime.ctx:
+            raise RuntimeError(
+                "R5B cannot prove ownership of the process-global runtime context"
+            )
+        core_module._GLOBAL_CTX = None
+        graph = getattr(getattr(runtime, "decode_graph", None), "graph", None)
+        if graph is not None and hasattr(graph, "reset"):
+            graph.reset()
+        self._coordinator.runtime = None
+        self._realized.adapter.runtime = None
+        runtime.decode_graph = None
+        runtime.cache = None
+        runtime.ctx = None
+        runtime.block = None
+        runtime.loaded = None
+        self._host_u8 = None
+        self._coordinator = None
+        self._backend_runtime = None
+        self._realized = None
+        gc.collect()
+        self._torch.cuda.empty_cache()
+        self._torch.cuda.synchronize(0)
+        self.reclamation_report = {
+            "kind": "accepted-r4-in-process-materialization-reclamation",
+            "before": before,
+            "after": {
+                "allocated_bytes": int(self._torch.cuda.memory_allocated(0)),
+                "reserved_bytes": int(self._torch.cuda.memory_reserved(0)),
+            },
+        }
 
 
 def current_head(repository_root: Path) -> str:
