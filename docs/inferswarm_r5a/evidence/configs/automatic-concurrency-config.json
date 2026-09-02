@@ -1,0 +1,12 @@
+{
+  "repository_root": "/home/zutfen/FreeToken-r5a",
+  "environment": "preflight/frozen-environment.json",
+  "participant_plan": "preflight/participant-plan.json",
+  "local_participant_plan": "/home/zutfen/FreeToken-r5a/docs/inferswarm_r2/frozen-plan.json",
+  "serving_evidence": "matched-serving-evidence.json",
+  "report_out": "automatic-concurrency/serving-report.json",
+  "peer_host": "10.0.0.219",
+  "peer_port": 18485,
+  "objective": "ttft_ms",
+  "diagnostic": true
+}

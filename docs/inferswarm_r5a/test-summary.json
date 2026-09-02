@@ -1,49 +1,30 @@
 {
   "schema": "inferswarm.r5a.test-summary/1",
-  "implementation_producer_sha": "c82a79206d9223cc9d4e94b92e780a4cab71fda7",
+  "implementation_producer_sha": "60ea7bd9841a636a26bfe7f140dba04b0a562f03",
   "environment": {
     "python": "/home/zutfen/FreeToken/.venv/bin/python",
     "pythonpath": "/home/zutfen/FreeToken-r5a:/home/zutfen/FreeToken-r5a/python:/home/zutfen/FreeToken-r5a/benchmarks"
   },
-  "classification": {
-    "initial_invocation": "INVALID_TEST_ENVIRONMENT",
-    "reason": "The shared editable virtualenv imported /home/zutfen/FreeToken instead of the isolated R5A worktree; collection tracebacks identified that exact path.",
-    "corrective_action": "Pin the clean R5A worktree first on PYTHONPATH and rerun all suites."
+  "focused": {
+    "scope": "R5A serving lifecycle, local realizer, planner evidence, and placement economics",
+    "result": "PASS",
+    "passed": 11,
+    "failed": 0
   },
-  "focused": [
-    {
-      "scope": "R1-R5A research dependency set",
-      "result": "PASS",
-      "passed": 182,
-      "failed": 0
-    },
-    {
-      "scope": "R4 summary and R5A strategy",
-      "result": "PASS",
-      "passed": 3,
-      "failed": 0
-    },
-    {
-      "scope": "R5A serving integration and InferSwarm server arguments",
-      "result": "PASS",
-      "passed": 29,
-      "failed": 0
-    }
-  ],
   "suite_regressions": [
     {
       "scope": "tests/research",
       "result": "PASS",
-      "passed": 190,
+      "passed": 193,
       "failed": 0,
-      "elapsed_seconds": 8.78
+      "elapsed_seconds": 8.81
     },
     {
       "scope": "tests/benchmarks",
       "result": "PASS",
-      "passed": 554,
+      "passed": 559,
       "failed": 0,
-      "elapsed_seconds": 17.74
+      "elapsed_seconds": 18.28
     },
     {
       "scope": "tests/server",
@@ -52,7 +33,7 @@
       "failed": 0,
       "warnings": 1,
       "warning_class": "StarletteDeprecationWarning",
-      "elapsed_seconds": 11.19
+      "elapsed_seconds": 10.99
     }
   ]
 }

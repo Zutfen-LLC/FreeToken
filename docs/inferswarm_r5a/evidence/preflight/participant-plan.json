@@ -93473,7 +93473,7 @@
     "transport_path_id": "link.node-a-to-node-b.tcp"
   },
   "created_from_r1_base": "6a242a34083c3080aa6d8f92625a6be4a0d124db",
-  "digest": "sha256:6b2f967feabe6febf968eb925ba54ded29e73fb506ac48ee838367734f9a7369",
+  "digest": "sha256:bc306ddb4076f4c7ed72dbb9effef9ef08ba402b20b0ec35b609c92feb94a584",
   "execution": [
     {
       "compute_unit_id": "gpu-a",
@@ -187437,7 +187437,7 @@
       "node_a_hostname": "inferswarm01",
       "node_b_hardware_digest": null,
       "node_b_hostname": "inferswarm03",
-      "producer_sha": "c82a79206d9223cc9d4e94b92e780a4cab71fda7",
+      "producer_sha": "60ea7bd9841a636a26bfe7f140dba04b0a562f03",
       "variable_changed": "node-network-locality-only"
     }
   },

@@ -1,0 +1,12 @@
+{
+  "schema": "inferswarm.r5a.node-b-teardown-observation/1",
+  "producer_freetoken_sha": "60ea7bd9841a636a26bfe7f140dba04b0a562f03",
+  "arm_id": "two-node-resident-clean-http",
+  "node_a_server_exit_code": 0,
+  "node_b_service_exit_code": 1,
+  "node_b_exception_class": "freetoken.research.r4_wire.WireError",
+  "node_b_exception": "disconnect mid-frame after 0/16 bytes",
+  "timing": "after all 12 HTTP requests, final serving report, and node-b final report were captured during coordinator shutdown",
+  "classification": "ACCEPTED_R4_FAIL_CLOSED_TERMINAL_DISCONNECT",
+  "runtime_fallback": false
+}

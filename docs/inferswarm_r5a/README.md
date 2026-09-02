@@ -2,54 +2,54 @@
 
 Disposition: `R5A_STATIC_MULTI_NODE_SERVING_PASS`.
 
-R5A proves that an ordinary FreeToken `/v1/chat/completions` request can enter the existing host serving path, cross the existing `TokenizeMsg` waist, invoke generic evidence-aware planning, freeze an explainable static plan before heavyweight realization, realize that plan on `inferswarm01` and `inferswarm03`, execute through the accepted R4 backend-native boundary, and stream a correct response.
+This correction closes the remaining comparison gate in InferSwarm #60. The ordinary FreeToken `/v1/chat/completions -> TokenizeMsg -> R5A controller -> frozen plan -> realization` path can now realize either accepted resident strategy: the R2 same-node split or the R4 two-node boundary. The generic planner received current matched evidence for every legal candidate and truthfully selected the same-node resident split under the declared median-TTFT objective.
 
 ## Provenance
 
 - Required base: `584c2ae77ff37b932f4da6cd2b1652b0696066a9`.
-- Physical implementation producer: `c82a79206d9223cc9d4e94b92e780a4cab71fda7` (clean on both nodes).
+- Clean physical implementation producer on both nodes: `60ea7bd9841a636a26bfe7f140dba04b0a562f03`.
 - Deliberately excluded newer `main`: `a2538a428baa4c6d823c76efe96cb3bc0cbd1f86`.
-- Frozen environment: `sha256:f929cdc3567e24b3210f7dc9dbcc90692105e292aec01832b48ee62c56fa7d0e`.
-- R4-derived participant plan: `sha256:6b2f967feabe6febf968eb925ba54ded29e73fb506ac48ee838367734f9a7369`.
-- Automatic R5A plan: `sha256:04dcf8699c627782aed5eddf8b169a6e79cbe98e3828bec753c3a4a1fe72cb62`.
+- Frozen environment: `sha256:bedf54e6602800f5b179e7ae7eb9eec816cdf1c49181a7ecc4ca904247b9fce2`.
+- R4-derived two-node participant plan: `sha256:bc306ddb4076f4c7ed72dbb9effef9ef08ba402b20b0ec35b609c92feb94a584`.
+- Accepted R2 local participant plan: `sha256:6128dd6705d692df3d5fc11cc130dba5c010cfff40c0e4c5ec7c19e1b78ff0`.
+- Automatic R5A execution plan: `sha256:11c9e21c51c2bdd037ec8644f656a7333ac7878e1ee31ff71c99220a6e2aea17`.
 
-The raw frozen environment, full 14.8 MB participant plan, request records, planner decision, execution plan, per-node realization reports, and summaries are retained under `evidence/`; they are not represented only by hashes.
+The full environment, participant plan, request records, planner explanations, execution plans, realization reports, diagnostics, and metric inputs are retained under `evidence/`; required raw evidence is not represented only by hashes. The superseded `c82a792` evidence was replaced and remains recoverable from Git ancestry. Accepted R4 evidence was not changed.
 
-## Planner result
+## Frozen local resources
 
-The declared objective was to minimize median TTFT on the matched W2/W4 generate-32 workload. Current matched evidence ranked the two-node resident candidate first at 1,904.6 ms and the local source-backed control second at 2,624.8 ms. The legal same-node resident split remained feasible but unranked because no current matched evidence applied. The unused second GPU on `inferswarm01` is explained as unnecessary for the highest-ranked candidate.
+The additional Node-A RTX 3060 was frozen and fail-closed with UUID `GPU-d5c05739-96c1-7e49-89b6-bf54c2121c55`, BDF `00000000:03:00.0`, 12,884,901,888 bytes total VRAM, 11,170,278,912 required bytes, and a 536,870,912-byte reservation. The primary Node-A GPU remained `GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099` at BDF `00000000:02:00.0`. Preflight also froze clean producer state, model revision and hashes, runtime versions, representation/backend compatibility, RAM, paging, and the Node-B/network inputs.
 
-The accepted R4 2.947 Mb/s demand/capacity record was normalized into the generic evidence catalog with its original provenance. Its runtime context did not exactly match the R5A producer, so it was explicitly rejected and did not influence admission or ranking. R5A ranking instead used freshly measured, exact-context serving evidence.
+## Matched placement economics and planner result
 
-The first two-node arm was a controlled evidence-collection override and remains labeled as such. After matched local and network evidence existed, the fresh automatic planner run selected the two-node candidate without an override.
+All three legal candidates used the same W2/W4 generate-32 workload, one warmup plus five measured repetitions per class, deterministic settings, ordinary HTTP entry point, and measurement definitions.
 
-## Correctness and residency
+| Candidate | Median TTFT | Median request wall | Median decode |
+|---|---:|---:|---:|
+| same-node resident R2 split | 373.617 ms | 844.386 ms | 65.766 tok/s |
+| two-node resident R4 split | 1,877.457 ms | 3,067.985 ms | 29.223 tok/s |
+| source-backed single-resource control | 2,630.587 ms | 3,305.816 ms | 46.000 tok/s |
 
-The unchanged R2/R4 comparator passed W2 and W4 with exact prompt tokens, exact generated tokens, selected logits within the frozen threshold, matching boundary checksums, and zero NaN/Inf. Intended and observed R5A realization matched exactly. Both nodes reported zero fallback, recapture, host expert fetch, resident-source access, steady-state model-state movement, and unexplained persistent host mirror bytes.
+The two-node placement added 1,503.840 ms median TTFT and 2,223.599 ms median request wall relative to the resident same-node split; its TTFT was 5.025 times the same-node value. The compute-subtracted residual remains a combined staging/transport/protocol residual: 46.457 ms for same-node and 2,248.427 ms for two-node. It is not labeled pure network time.
 
-Node A released 8,636,596,224 staging bytes and retained 10,878,279,168 CUDA-allocated bytes; Node B released 9,545,711,616 staging bytes and retained 11,170,319,360 CUDA-allocated bytes. Neither staging process relied on swap.
+The frozen nine-record serving-evidence derivative gave each legal candidate an exact-context TTFT record. The generic planner ranked same-node resident first, two-node resident second, and source-backed single-resource third. The automatic arm selected same-node without an override and explained the unused Node-B GPU. Accepted R4 demand/capacity evidence was presented with provenance but rejected because its runtime context did not exactly match this producer; it did not influence admission or ranking.
 
-## Service measurements
+## Correctness, residency, and service evidence
 
-The clean matched arm used one warmup plus five measured repetitions for each of W2 and W4. Across the ten measured requests, medians were:
+Fresh diagnostic W2/W4 arms for both resident placements passed the accepted R2/R4 comparator: exact prompt and generated tokens, selected logits within the frozen threshold, matching boundary checksums, and zero NaN/Inf. Clean arms retained exact token equality and zero NaN/Inf. Intended and observed realization reconciled without mismatch or plan substitution.
 
-- TTFT: 1,904.6 ms.
-- prefill wall: 1,904.6 ms; prefill throughput: 45.87 tok/s.
-- decode: 29.46 tok/s.
-- per-request median inter-token p50/p95: 33.64/35.55 ms.
-- complete request wall: 3,023.1 ms.
-- measured network staging/protocol residual: 2,170.8 ms, 72.14% of request wall.
+Both resident placements reported zero fallback, graph recapture, host expert fetch, resident-source access, steady-state model-state movement, and unexplained persistent host mirror bytes. Both blocks released their 8,636,596,224-byte and 9,545,711,616-byte staging sources and had zero process-scoped swap reliance. Local-resident block VRAM allocations were 10,861,239,808 and 11,170,319,360 bytes; the two-node arm retained 10,886,798,848 and 11,170,319,360 bytes. Clean graph replay counts were 372 per block.
 
-Across all 12 clean requests, including the two warmups, application wire accounting was 11,797,047 bytes A→B and 122,535 bytes B→A, of which 11,649,024 bytes were semantic payload A→B. Node A and B materialization took 45.60 s and 33.59 s respectively; coordinator-observed realization wall was 47.69 s. Numeric summaries are derived only from the predeclared measured repetitions and are labeled `MEASURED` in the JSON artifacts.
+The same-node arm additionally retained median prefill wall 373.616 ms, prefill throughput 227.357 tok/s, per-request inter-token p50/p95 15.127/15.183 ms, and registered-host activation/control accounting. The two-node arm retained median prefill wall 1,877.456 ms, prefill throughput 47.122 tok/s, inter-token p50/p95 33.798/35.538 ms, and application wire totals of 11,797,047 bytes A-to-B and 122,529 bytes B-to-A across all 12 clean requests, including 11,649,024 semantic payload bytes.
 
-## Bounded concurrency
+Node-B treats the coordinator's terminal socket close after final report capture as a fail-closed zero-byte `disconnect mid-frame` and exits nonzero. This is the accepted R4 teardown behavior, occurs after complete retained request/final accounting, and is not relabeled as a serving fallback.
 
-The automatic planner-selected arm admitted W2 and W4 concurrently with a frozen bound of two. It observed two outstanding requests, two distinct session IDs, exact generated sequences, and the same immutable plan digest on both controller request records. Execution was serialized at the accepted single-connection R4 boundary; this proves request/session isolation and static-plan behavior, not production load capacity.
+## Bounded concurrency and regressions
 
-## Regression result
+The automatic planner-selected arm admitted W2 and W4 with a frozen bound of two. It observed two outstanding requests, distinct session IDs, exact generated sequences, clean invariants, and the same immutable plan digest. Execution remained serialized through the accepted static runtime; this is an isolation proof, not a production load claim.
 
-With the R5A worktree pinned first on `PYTHONPATH`, 190 research, 554 benchmark, and 578 server tests passed. An initial invalid invocation imported the unrelated `/home/zutfen/FreeToken` editable worktree; the traceback-based classification and corrected rerun are retained in `test-summary.json`.
+Final regressions from the physical producer passed: 193 research, 559 benchmark, and 578 server tests. The server suite emitted one unrelated `StarletteDeprecationWarning`.
 
 ## Proof boundary
 
-This is a static two-node research gate. It makes no production throughput, elasticity, live-membership, epoch-transition, failover, availability, 2.5-GbE, heterogeneous-accelerator, final API/control-plane, or GLM-5.3 claim. Accepted R4 evidence was not regenerated or modified.
+This is a static research gate. It makes no production throughput, elasticity, live-membership, epoch-transition, failover, availability, 2.5-GbE, heterogeneous-accelerator, final API/control-plane, or GLM-5.3 claim.
