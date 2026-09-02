@@ -1,0 +1,100 @@
+{
+  "digest": "sha256:1da890b22803332bcd1cacab390c087f0366b3f0ef318c54c75ab747cdf696ad",
+  "implementation_commit": "c82a79206d9223cc9d4e94b92e780a4cab71fda7",
+  "records": [
+    {
+      "confidence": "EXACT_CONTEXT",
+      "evidence_class": "MEASURED_R5A_MATCHED_HTTP_SERVING",
+      "evidence_identity": "fbbbf3fb11e6123dc61757ef0eaf9ff4f14b2b27457eb4aa37464d787ada8d0f",
+      "freshness": "CURRENT",
+      "id": "r5a-two-node-clean-http-ttft_ms",
+      "mapping": {
+        "slot-a": "gpu.node-a.0",
+        "slot-b": "gpu.node-b.0"
+      },
+      "measurement_status": "MEASURED",
+      "metric": {
+        "name": "ttft_ms",
+        "statistic": "median",
+        "unit": "ms",
+        "value": 1904.5799765000002
+      },
+      "producer_identity": "c82a79206d9223cc9d4e94b92e780a4cab71fda7",
+      "provenance": {
+        "arm_id": "two-node-clean-http",
+        "artifact_sha256": "fbbbf3fb11e6123dc61757ef0eaf9ff4f14b2b27457eb4aa37464d787ada8d0f"
+      },
+      "required_context": {
+        "model_revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
+        "network_context": "1GbE-full-duplex-MTU1500-eno1-enp5s0",
+        "runtime_context": "sha256:e05894ce96dc602d6bf7f2c084bc154990529827bb8d1b01ab6a73af99ed7826",
+        "workload_geometry": "W2-W4-generate32-static"
+      },
+      "role": "RANKING_OBJECTIVE",
+      "shape_id": "resident-two-node-two-slot"
+    },
+    {
+      "confidence": "EXACT_CONTEXT",
+      "evidence_class": "MEASURED_R5A_MATCHED_HTTP_SERVING",
+      "evidence_identity": "fbbbf3fb11e6123dc61757ef0eaf9ff4f14b2b27457eb4aa37464d787ada8d0f",
+      "freshness": "CURRENT",
+      "id": "r5a-two-node-clean-http-complete_request_wall_ms",
+      "mapping": {
+        "slot-a": "gpu.node-a.0",
+        "slot-b": "gpu.node-b.0"
+      },
+      "measurement_status": "MEASURED",
+      "metric": {
+        "name": "complete_request_wall_ms",
+        "statistic": "median",
+        "unit": "ms",
+        "value": 3023.1407335
+      },
+      "producer_identity": "c82a79206d9223cc9d4e94b92e780a4cab71fda7",
+      "provenance": {
+        "arm_id": "two-node-clean-http",
+        "artifact_sha256": "fbbbf3fb11e6123dc61757ef0eaf9ff4f14b2b27457eb4aa37464d787ada8d0f"
+      },
+      "required_context": {
+        "model_revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
+        "network_context": "1GbE-full-duplex-MTU1500-eno1-enp5s0",
+        "runtime_context": "sha256:e05894ce96dc602d6bf7f2c084bc154990529827bb8d1b01ab6a73af99ed7826",
+        "workload_geometry": "W2-W4-generate32-static"
+      },
+      "role": "RANKING_OBJECTIVE",
+      "shape_id": "resident-two-node-two-slot"
+    },
+    {
+      "confidence": "EXACT_CONTEXT",
+      "evidence_class": "MEASURED_R5A_MATCHED_HTTP_SERVING",
+      "evidence_identity": "fbbbf3fb11e6123dc61757ef0eaf9ff4f14b2b27457eb4aa37464d787ada8d0f",
+      "freshness": "CURRENT",
+      "id": "r5a-two-node-clean-http-decode_tok_s",
+      "mapping": {
+        "slot-a": "gpu.node-a.0",
+        "slot-b": "gpu.node-b.0"
+      },
+      "measurement_status": "MEASURED",
+      "metric": {
+        "name": "decode_tok_s",
+        "statistic": "median",
+        "unit": "tok/s",
+        "value": 29.45834955400884
+      },
+      "producer_identity": "c82a79206d9223cc9d4e94b92e780a4cab71fda7",
+      "provenance": {
+        "arm_id": "two-node-clean-http",
+        "artifact_sha256": "fbbbf3fb11e6123dc61757ef0eaf9ff4f14b2b27457eb4aa37464d787ada8d0f"
+      },
+      "required_context": {
+        "model_revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
+        "network_context": "1GbE-full-duplex-MTU1500-eno1-enp5s0",
+        "runtime_context": "sha256:e05894ce96dc602d6bf7f2c084bc154990529827bb8d1b01ab6a73af99ed7826",
+        "workload_geometry": "W2-W4-generate32-static"
+      },
+      "role": "RANKING_OBJECTIVE",
+      "shape_id": "resident-two-node-two-slot"
+    }
+  ],
+  "schema": "inferswarm.r5a.serving-evidence-derivative/1"
+}

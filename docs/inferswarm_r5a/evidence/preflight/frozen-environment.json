@@ -1,0 +1,272 @@
+{
+  "compatibility": {
+    "model_revision_validated": true,
+    "participant_plan_digest": "sha256:6b2f967feabe6febf968eb925ba54ded29e73fb506ac48ee838367734f9a7369",
+    "representation_backend_compatible": true
+  },
+  "digest": "sha256:f929cdc3567e24b3210f7dc9dbcc90692105e292aec01832b48ee62c56fa7d0e",
+  "implementation_commit": "c82a79206d9223cc9d4e94b92e780a4cab71fda7",
+  "model": {
+    "checkpoint_identity": {
+      "file_count": 17,
+      "files_sha256": {
+        ".gitattributes": "d1a8f4a1d2e3787c5956393d9306365ebefe1912cb76828870682b1ab16f5c27",
+        ".quant_summary.txt": "bf884bde9da240fb35a435a6fb5bc3bc8d3222e5728c00199ce8f5bc8fcb2548",
+        "README.md": "bb3a29ef8870dd68be8a0e0d508880dd49a4db5aafb034bb9b3f475ca5740481",
+        "chat_template.jinja": "e84f32a23fdda27689f868aa4a1a5621f41133e51a48d7f3efcbea2839574259",
+        "config.json": "58aefa1c9eff7989f431d748f2ddec39446cb1fd2a69acc46e285c6a37b0cecc",
+        "configuration.json": "c1b09db419119513247e9b8b912c4b9897106c9b20c6cada7e107d993c5435eb",
+        "generation_config.json": "e70c136c1b78ddc1fb0905bac8e733a4dc448d4f852a5dd75143fffc70be550e",
+        "hf_quant_config.json": "75fe7cc8d5836b58734e05ee67423a4ce91d602aaad45c8173a1b7597cd57663",
+        "model-00001-of-00003.safetensors": "07141c2db92e47bc08777132cd1a0323faf300eab3a7d7c111bc2bf075fda050",
+        "model-00002-of-00003.safetensors": "6dea9c759a0f941cf9e1cc1501216b0e107966a66c90425050e212efbd053f02",
+        "model-00003-of-00003.safetensors": "9758875fc55e49561165f4a44342b654c123c3e25c6811b34abb83553fb1a164",
+        "model.safetensors.index.json": "d67403a4e9793c0ba8a136baf14b3b76ec7b32c822267978084895e07ebd8a3e",
+        "preprocessor_config.json": "27225450ac9c6529872ee1924fcb0962ff5634834f817040f444118116f4e516",
+        "tokenizer.json": "5f9e4d4901a92b997e463c1f46055088b6cca5ca61a6522d1b9f64c4bb81cb42",
+        "tokenizer_config.json": "5186f0defcd7f232382c7f0aebcd2252d073bb921ab240e407b7ae8745d2b29b",
+        "video_preprocessor_config.json": "7768af27c1fafa9cc9011c1dc20067e03f8915e03b63504550e11d5066986d13",
+        "vocab.json": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003"
+      },
+      "identical_across_nodes": true,
+      "repository": "nvidia/Qwen3.6-35B-A3B-NVFP4",
+      "revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce"
+    },
+    "repository": "nvidia/Qwen3.6-35B-A3B-NVFP4",
+    "revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce"
+  },
+  "network": {
+    "available": true,
+    "duplex": "full",
+    "link_id": "link.node-a-to-node-b.tcp",
+    "mtu": 1500,
+    "negotiated_mbps": 1000,
+    "node_a_interface": "eno1",
+    "node_a_ipv4": "10.0.0.141",
+    "node_b_interface": "enp5s0",
+    "node_b_ipv4": "10.0.0.219"
+  },
+  "network_context": "1GbE-full-duplex-MTU1500-eno1-enp5s0",
+  "node_a": {
+    "cpu": {
+      "logical_cpus": 28,
+      "model": "Intel(R) Xeon(R) CPU E5-2683 v3 @ 2.00GHz",
+      "physical_cores": 14
+    },
+    "gpus": [
+      {
+        "availability": "AVAILABLE",
+        "integrity_eligible": true,
+        "name": "NVIDIA GeForce RTX 3060",
+        "pci_bdf": "00000000:02:00.0",
+        "reservation_bytes": 536870912,
+        "uuid": "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099",
+        "vram_total_bytes": 12884901888
+      },
+      {
+        "availability": "AVAILABLE",
+        "integrity_eligible": true,
+        "name": "NVIDIA GeForce RTX 3060",
+        "pci_bdf": "00000000:03:00.0",
+        "reservation_bytes": 536870912,
+        "uuid": "GPU-d5c05739-96c1-7e49-89b6-bf54c2121c55",
+        "vram_total_bytes": 12884901888
+      }
+    ],
+    "hostname": "inferswarm01",
+    "memory": {
+      "measured_at_unix": 1788313132.5434551,
+      "mem_available_bytes": 131963944960,
+      "mem_available_kib": 128871040,
+      "mem_free_kib": 102227992,
+      "mem_total_bytes": 134984912896,
+      "mem_total_kib": 131821204,
+      "physical_installed_ram_bytes": 137438953472,
+      "swap_activity": {
+        "pswpin": 0,
+        "pswpout": 0
+      },
+      "swap_free_kib": 12596220,
+      "swap_total_kib": 12596220,
+      "swaps": "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n/dev/sdb3                               partition\t12596220\t0\t\t-2"
+    },
+    "node_id": "node.inferswarm01"
+  },
+  "node_b": {
+    "cpu": {
+      "logical_cpus": 8,
+      "model": "Intel(R) Core(TM) i3-10100F CPU @ 3.60GHz",
+      "physical_cores": 4
+    },
+    "gpus": [
+      {
+        "availability": "AVAILABLE",
+        "integrity_eligible": true,
+        "name": "NVIDIA GeForce RTX 3060",
+        "pci_bdf": "00000000:01:00.0",
+        "reservation_bytes": 536870912,
+        "uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176",
+        "vram_total_bytes": 12884901888
+      }
+    ],
+    "hostname": "inferswarm03",
+    "memory": {
+      "measured_at_unix": 1788313133.9731324,
+      "mem_available_bytes": 15238348800,
+      "mem_available_kib": 14881200,
+      "mem_free_kib": 477412,
+      "mem_total_bytes": 16619393024,
+      "mem_total_kib": 16229876,
+      "physical_installed_ram_bytes": 17179869184,
+      "swap_activity": {
+        "pswpin": 150568,
+        "pswpout": 2512706
+      },
+      "swap_free_kib": 7997488,
+      "swap_total_kib": 8236028,
+      "swaps": "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n/dev/sdb3                               partition\t8236028\t\t238540\t\t-2"
+    },
+    "node_id": "node.inferswarm03"
+  },
+  "preflight_gate": {
+    "checks": {
+      "block_b_host_ram": {
+        "linux_memtotal_bytes": 16619393024,
+        "mem_available_proven_at_unix": 1788313133.9731324,
+        "memavailable_bytes": 15238348800,
+        "note": "MemTotal excludes firmware reservations; installed RAM proven via DMI",
+        "physical_installed_ram_bytes": 17179869184
+      },
+      "canonical_link": {
+        "node.inferswarm01": {
+          "duplex": "Full",
+          "interface": "eno1",
+          "mtu": 1500,
+          "route": "10.0.0.219 dev eno1 src 10.0.0.141 uid 1000 \n    cache",
+          "speed": "1000Mb/s"
+        },
+        "node.inferswarm03": {
+          "duplex": "Full",
+          "interface": "enp5s0",
+          "mtu": 1500,
+          "route": "10.0.0.141 dev enp5s0 src 10.0.0.219 uid 1000 \n    cache",
+          "speed": "1000Mb/s"
+        }
+      },
+      "checkpoint_identity": {
+        "file_count": 17,
+        "files_sha256": {
+          ".gitattributes": "d1a8f4a1d2e3787c5956393d9306365ebefe1912cb76828870682b1ab16f5c27",
+          ".quant_summary.txt": "bf884bde9da240fb35a435a6fb5bc3bc8d3222e5728c00199ce8f5bc8fcb2548",
+          "README.md": "bb3a29ef8870dd68be8a0e0d508880dd49a4db5aafb034bb9b3f475ca5740481",
+          "chat_template.jinja": "e84f32a23fdda27689f868aa4a1a5621f41133e51a48d7f3efcbea2839574259",
+          "config.json": "58aefa1c9eff7989f431d748f2ddec39446cb1fd2a69acc46e285c6a37b0cecc",
+          "configuration.json": "c1b09db419119513247e9b8b912c4b9897106c9b20c6cada7e107d993c5435eb",
+          "generation_config.json": "e70c136c1b78ddc1fb0905bac8e733a4dc448d4f852a5dd75143fffc70be550e",
+          "hf_quant_config.json": "75fe7cc8d5836b58734e05ee67423a4ce91d602aaad45c8173a1b7597cd57663",
+          "model-00001-of-00003.safetensors": "07141c2db92e47bc08777132cd1a0323faf300eab3a7d7c111bc2bf075fda050",
+          "model-00002-of-00003.safetensors": "6dea9c759a0f941cf9e1cc1501216b0e107966a66c90425050e212efbd053f02",
+          "model-00003-of-00003.safetensors": "9758875fc55e49561165f4a44342b654c123c3e25c6811b34abb83553fb1a164",
+          "model.safetensors.index.json": "d67403a4e9793c0ba8a136baf14b3b76ec7b32c822267978084895e07ebd8a3e",
+          "preprocessor_config.json": "27225450ac9c6529872ee1924fcb0962ff5634834f817040f444118116f4e516",
+          "tokenizer.json": "5f9e4d4901a92b997e463c1f46055088b6cca5ca61a6522d1b9f64c4bb81cb42",
+          "tokenizer_config.json": "5186f0defcd7f232382c7f0aebcd2252d073bb921ab240e407b7ae8745d2b29b",
+          "video_preprocessor_config.json": "7768af27c1fafa9cc9011c1dc20067e03f8915e03b63504550e11d5066986d13",
+          "vocab.json": "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003"
+        },
+        "identical_across_nodes": true,
+        "repository": "nvidia/Qwen3.6-35B-A3B-NVFP4",
+        "revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce"
+      },
+      "frozen_gpu": {
+        "node.inferswarm01": {
+          "capacity_bytes": 12884901888,
+          "name": "NVIDIA GeForce RTX 3060",
+          "pci_bdf": "00000000:02:00.0",
+          "uuid": "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099"
+        },
+        "node.inferswarm03": {
+          "capacity_bytes": 12884901888,
+          "name": "NVIDIA GeForce RTX 3060",
+          "pci_bdf": "00000000:01:00.0",
+          "uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176"
+        }
+      },
+      "producer_identity": {
+        "node.inferswarm01": {
+          "dirty_entries": [],
+          "hostname": "inferswarm01",
+          "node_id": "node.inferswarm01",
+          "producer_sha": "c82a79206d9223cc9d4e94b92e780a4cab71fda7",
+          "tree_clean": true
+        },
+        "node.inferswarm03": {
+          "dirty_entries": [],
+          "hostname": "inferswarm03",
+          "node_id": "node.inferswarm03",
+          "producer_sha": "c82a79206d9223cc9d4e94b92e780a4cab71fda7",
+          "tree_clean": true
+        }
+      },
+      "same_producer_both_nodes": true,
+      "vram_headroom": {
+        "block_a": {
+          "capacity_bytes": 12884901888,
+          "remaining_bytes": 2023699456,
+          "required_bytes": 10861202432,
+          "safety_bytes": 536870912,
+          "uuid": "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099"
+        },
+        "block_b": {
+          "capacity_bytes": 12884901888,
+          "remaining_bytes": 1714622976,
+          "required_bytes": 11170278912,
+          "safety_bytes": 536870912,
+          "uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176"
+        }
+      }
+    },
+    "frozen_producer_sha": "c82a79206d9223cc9d4e94b92e780a4cab71fda7",
+    "result": "ALL_PREFLIGHT_CHECKS_PASSED",
+    "schema": "inferswarm.r4.preflight-gate/1"
+  },
+  "runtime_context": "sha256:e05894ce96dc602d6bf7f2c084bc154990529827bb8d1b01ab6a73af99ed7826",
+  "runtime_versions": {
+    "backend": "torch-cuda/freetoken-r4-captured-block-runtime",
+    "node_a": {
+      "pytest": "9.1.1",
+      "python": "3.13.5",
+      "torch": "2.11.0+cu130",
+      "torch_cuda": "13.0",
+      "transformers": "5.16.1",
+      "triton": "3.6.0"
+    },
+    "node_b": {
+      "pytest": "9.1.1",
+      "python": "3.13.5",
+      "torch": "2.11.0+cu130",
+      "torch_cuda": "13.0",
+      "transformers": "5.16.1",
+      "triton": "3.6.0"
+    },
+    "producer_sha": "c82a79206d9223cc9d4e94b92e780a4cab71fda7",
+    "representation": "Qwen3.6-NVFP4/freetoken-native-resident-block-v1"
+  },
+  "schema": "inferswarm.r5a.frozen-environment/1",
+  "source": {
+    "node_a": {
+      "dirty_entries": [],
+      "hostname": "inferswarm01",
+      "node_id": "node.inferswarm01",
+      "producer_sha": "c82a79206d9223cc9d4e94b92e780a4cab71fda7",
+      "tree_clean": true
+    },
+    "node_b": {
+      "dirty_entries": [],
+      "hostname": "inferswarm03",
+      "node_id": "node.inferswarm03",
+      "producer_sha": "c82a79206d9223cc9d4e94b92e780a4cab71fda7",
+      "tree_clean": true
+    }
+  }
+}

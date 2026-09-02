@@ -1,0 +1,80 @@
+{
+  "captured_at_unix": 1788313132.510717,
+  "cpu": {
+    "logical_cpus": 28,
+    "model": "Intel(R) Xeon(R) CPU E5-2683 v3 @ 2.00GHz",
+    "physical_cores": 14
+  },
+  "cuda_runtime": "torch=2.11.0+cu130 cuda=13.0",
+  "freetoken_sha": "c82a79206d9223cc9d4e94b92e780a4cab71fda7",
+  "gpu_topology": "\t\u001b[4mGPU0\tGPU1\tCPU Affinity\tNUMA Affinity\tGPU NUMA ID\u001b[0m\nGPU0\t X \tPHB\t0-27\t0\t\tN/A\nGPU1\tPHB\t X \t0-27\t0\t\tN/A\n\nLegend:\n\n  X    = Self\n  SYS  = Connection traversing PCIe as well as the SMP interconnect between NUMA nodes (e.g., QPI/UPI)\n  NODE = Connection traversing PCIe as well as the interconnect between PCIe Host Bridges within a NUMA node\n  PHB  = Connection traversing PCIe as well as a PCIe Host Bridge (typically the CPU)\n  PXB  = Connection traversing multiple PCIe bridges (without traversing the PCIe Host Bridge)\n  PIX  = Connection traversing at most a single PCIe bridge\n  NV#  = Connection traversing a bonded set of # NVLinks\n",
+  "gpus": [
+    {
+      "driver_version": "610.57.04",
+      "index": "0",
+      "memory.total": "12288",
+      "memory_total_bytes": "12884901888",
+      "name": "NVIDIA GeForce RTX 3060",
+      "pci.bus_id": "00000000:02:00.0",
+      "pci_bus_id": "00000000:02:00.0",
+      "pcie.link.gen.current": "1",
+      "pcie.link.gen.max": "3",
+      "pcie.link.width.current": "16",
+      "pcie.link.width.max": "16",
+      "uuid": "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099"
+    },
+    {
+      "driver_version": "610.57.04",
+      "index": "1",
+      "memory.total": "12288",
+      "memory_total_bytes": "12884901888",
+      "name": "NVIDIA GeForce RTX 3060",
+      "pci.bus_id": "00000000:03:00.0",
+      "pci_bus_id": "00000000:03:00.0",
+      "pcie.link.gen.current": "1",
+      "pcie.link.gen.max": "3",
+      "pcie.link.width.current": "16",
+      "pcie.link.width.max": "16",
+      "uuid": "GPU-d5c05739-96c1-7e49-89b6-bf54c2121c55"
+    }
+  ],
+  "hostname": "inferswarm01",
+  "interface": {
+    "addr": "[{\"ifindex\":2,\"ifname\":\"eno1\",\"flags\":[\"BROADCAST\",\"MULTICAST\",\"UP\",\"LOWER_UP\"],\"mtu\":1500,\"qdisc\":\"fq_codel\",\"operstate\":\"UP\",\"group\":\"default\",\"txqlen\":1000,\"link_type\":\"ether\",\"address\":\"dc:4a:3e:65:50:16\",\"broadcast\":\"ff:ff:ff:ff:ff:ff\",\"altnames\":[\"enp0s25\",\"enxdc4a3e655016\"],\"addr_info\":[{\"family\":\"inet\",\"local\":\"10.0.0.141\",\"prefixlen\":24,\"broadcast\":\"10.0.0.255\",\"scope\":\"global\",\"dynamic\":true,\"noprefixroute\":true,\"label\":\"eno1\",\"valid_life_time\":35363,\"preferred_life_time\":27523},{\"family\":\"inet6\",\"local\":\"fd28:e64f:c45c::934\",\"prefixlen\":128,\"scope\":\"global\",\"dynamic\":true,\"noprefixroute\":true,\"valid_life_time\":42107,\"preferred_life_time\":42107},{\"family\":\"inet6\",\"local\":\"2601:18c:9280:d0a6::934\",\"prefixlen\":128,\"scope\":\"global\",\"dynamic\":true,\"noprefixroute\":true,\"valid_life_time\":4307,\"preferred_life_time\":1607},{\"family\":\"inet6\",\"local\":\"fd28:e64f:c45c:0:4031:33a5:71da:971e\",\"prefixlen\":64,\"scope\":\"global\",\"dynamic\":true,\"mngtmpaddr\":true,\"noprefixroute\":true,\"valid_life_time\":5369,\"preferred_life_time\":2669},{\"family\":\"inet6\",\"local\":\"2601:18c:9280:d0a6:1d17:fb25:4d65:22c\",\"prefixlen\":64,\"scope\":\"global\",\"dynamic\":true,\"mngtmpaddr\":true,\"noprefixroute\":true,\"valid_life_time\":4440,\"preferred_life_time\":2669},{\"family\":\"inet6\",\"local\":\"fe80::b17f:821b:c732:4ff3\",\"prefixlen\":64,\"scope\":\"link\",\"valid_life_time\":4294967295,\"preferred_life_time\":4294967295}]}]\n",
+    "ethtool_driver": "driver: e1000e\nversion: 6.12.105+deb13-amd64\nfirmware-version: 0.1-4\nexpansion-rom-version: \nbus-info: 0000:00:19.0\nsupports-statistics: yes\nsupports-test: yes\nsupports-eeprom-access: yes\nsupports-register-dump: yes\nsupports-priv-flags: yes\n",
+    "ethtool_settings": "netlink error: Operation not permitted\nSettings for eno1:\n\tSupported ports: [ TP ]\n\tSupported link modes:   10baseT/Half 10baseT/Full\n\t                        100baseT/Half 100baseT/Full\n\t                        1000baseT/Full\n\tSupported pause frame use: Symmetric Receive-only\n\tSupports auto-negotiation: Yes\n\tSupported FEC modes: Not reported\n\tAdvertised link modes:  10baseT/Half 10baseT/Full\n\t                        100baseT/Half 100baseT/Full\n\t                        1000baseT/Full\n\tAdvertised pause frame use: Symmetric Receive-only\n\tAdvertised auto-negotiation: Yes\n\tAdvertised FEC modes: Not reported\n\tLink partner advertised link modes:  10baseT/Half 10baseT/Full\n\t                                     100baseT/Half 100baseT/Full\n\t                                     1000baseT/Full\n\tLink partner advertised pause frame use: Symmetric\n\tLink partner advertised auto-negotiation: Yes\n\tLink partner advertised FEC modes: Not reported\n\tSpeed: 1000Mb/s\n\tDuplex: Full\n\tAuto-negotiation: on\n\tPort: Twisted Pair\n\tPHYAD: 1\n\tTransceiver: internal\n\tMDI-X: off (auto)\n        Current message level: 0x00000007 (7)\n                               drv probe link\n\tLink detected: yes\n",
+    "ethtool_statistics": "NIC statistics:\n     rx_packets: 5589520\n     tx_packets: 21955692\n     rx_bytes: 5320422862\n     tx_bytes: 32429887409\n     rx_broadcast: 56056\n     tx_broadcast: 94\n     rx_multicast: 7199\n     tx_multicast: 4497\n     rx_errors: 0\n     tx_errors: 0\n     tx_dropped: 0\n     multicast: 7199\n     collisions: 0\n     rx_length_errors: 0\n     rx_over_errors: 0\n     rx_crc_errors: 0\n     rx_frame_errors: 0\n     rx_no_buffer_count: 0\n     rx_missed_errors: 0\n     tx_aborted_errors: 0\n     tx_carrier_errors: 0\n     tx_fifo_errors: 0\n     tx_heartbeat_errors: 0\n     tx_window_errors: 0\n     tx_abort_late_coll: 0\n     tx_deferred_ok: 0\n     tx_single_coll_ok: 0\n     tx_multi_coll_ok: 0\n     tx_timeout_count: 0\n     tx_restart_queue: 0\n     rx_long_length_errors: 0\n     rx_short_length_errors: 0\n     rx_align_errors: 0\n     tx_tcp_seg_good: 464087\n     tx_tcp_seg_failed: 0\n     rx_flow_control_xon: 1253\n     rx_flow_control_xoff: 1253\n     tx_flow_control_xon: 0\n     tx_flow_control_xoff: 0\n     rx_csum_offload_good: 5535381\n     rx_csum_offload_errors: 0\n     rx_header_split: 0\n     alloc_rx_buff_failed: 0\n     tx_smbus: 0\n     rx_smbus: 16532\n     dropped_smbus: 0\n     rx_dma_failed: 0\n     tx_dma_failed: 0\n     rx_hwtstamp_cleared: 0\n     uncorr_ecc_errors: 0\n     corr_ecc_errors: 0\n     tx_hwtstamp_timeouts: 0\n     tx_hwtstamp_skipped: 0\n",
+    "name": "eno1",
+    "route_to_peer": "10.0.0.219 dev eno1 src 10.0.0.141 uid 1000 \n    cache \n"
+  },
+  "kernel": "6.12.105+deb13-amd64",
+  "link": {
+    "duplex": "Full",
+    "mtu": "1500",
+    "speed": "1000Mb/s"
+  },
+  "memory": {
+    "measured_at_unix": 1788313132.5434551,
+    "mem_available_bytes": 131963944960,
+    "mem_available_kib": 128871040,
+    "mem_free_kib": 102227992,
+    "mem_total_bytes": 134984912896,
+    "mem_total_kib": 131821204,
+    "physical_installed_ram_bytes": 137438953472,
+    "swap_activity": {
+      "pswpin": 0,
+      "pswpout": 0
+    },
+    "swap_free_kib": 12596220,
+    "swap_total_kib": 12596220,
+    "swaps": "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n/dev/sdb3                               partition\t12596220\t0\t\t-2"
+  },
+  "model_checkpoint": {
+    "path": "/srv/models/nvidia/Qwen3.6-35B-A3B-NVFP4/491c2f1ea524c639598bf8fa787a93fed5a6fbce",
+    "revision_dir": "491c2f1ea524c639598bf8fa787a93fed5a6fbce"
+  },
+  "node_id": "node.inferswarm01",
+  "nvidia_driver": "610.57.04\n610.57.04",
+  "os_release": "PRETTY_NAME=\"Debian GNU/Linux 13 (trixie)\"\nNAME=\"Debian GNU/Linux\"\nVERSION_ID=\"13\"\nVERSION=\"13 (trixie)\"\nVERSION_CODENAME=trixie\nDEBIAN_VERSION_FULL=13.6\nID=debian\nHOME_URL=\"https://www.debian.org/\"\nSUPPORT_URL=\"https://www.debian.org/support\"\nBUG_REPORT_URL=\"https://bugs.debian.org/\"",
+  "schema": "inferswarm.r4.node-hardware-profile/1"
+}

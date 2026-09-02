@@ -1,0 +1,21 @@
+{
+  "backend": "torch-cuda/freetoken-r4-captured-block-runtime",
+  "node_a": {
+    "pytest": "9.1.1",
+    "python": "3.13.5",
+    "torch": "2.11.0+cu130",
+    "torch_cuda": "13.0",
+    "transformers": "5.16.1",
+    "triton": "3.6.0"
+  },
+  "node_b": {
+    "pytest": "9.1.1",
+    "python": "3.13.5",
+    "torch": "2.11.0+cu130",
+    "torch_cuda": "13.0",
+    "transformers": "5.16.1",
+    "triton": "3.6.0"
+  },
+  "producer_sha": "c82a79206d9223cc9d4e94b92e780a4cab71fda7",
+  "representation": "Qwen3.6-NVFP4/freetoken-native-resident-block-v1"
+}

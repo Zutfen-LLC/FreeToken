@@ -1,0 +1,142 @@
+{
+  "schema": "inferswarm.r5a.result/1",
+  "disposition": "R5A_STATIC_MULTI_NODE_SERVING_PASS",
+  "base_sha": "584c2ae77ff37b932f4da6cd2b1652b0696066a9",
+  "implementation_producer_sha": "c82a79206d9223cc9d4e94b92e780a4cab71fda7",
+  "newer_main_excluded_sha": "a2538a428baa4c6d823c76efe96cb3bc0cbd1f86",
+  "environment_digest": "sha256:f929cdc3567e24b3210f7dc9dbcc90692105e292aec01832b48ee62c56fa7d0e",
+  "participant_plan_digest": "sha256:6b2f967feabe6febf968eb925ba54ded29e73fb506ac48ee838367734f9a7369",
+  "planner_selected_execution_plan_digest": "sha256:04dcf8699c627782aed5eddf8b169a6e79cbe98e3828bec753c3a4a1fe72cb62",
+  "planner_decision_digest": "sha256:f3db931c58877170679c3e1f2946ffbd926a7eefe56b21aa189a06f691fdbbf8",
+  "serving_evidence_digest": "sha256:bb061bcddcee3d07a2624c9bfbb1a35a3b183f35fcaf6ada2e10993602ade654",
+  "model": {
+    "repository": "nvidia/Qwen3.6-35B-A3B-NVFP4",
+    "revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
+    "checkpoint_file_count": 17,
+    "identical_across_nodes": true
+  },
+  "physical_environment": {
+    "nodes": ["inferswarm01", "inferswarm03"],
+    "compute_units": [
+      {
+        "node": "inferswarm01",
+        "uuid": "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099",
+        "pci_bdf": "00000000:02:00.0",
+        "name": "NVIDIA GeForce RTX 3060"
+      },
+      {
+        "node": "inferswarm03",
+        "uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176",
+        "pci_bdf": "00000000:01:00.0",
+        "name": "NVIDIA GeForce RTX 3060"
+      }
+    ],
+    "network": "1GbE-full-duplex-MTU1500-eno1-enp5s0",
+    "preflight": "ALL_PREFLIGHT_CHECKS_PASSED"
+  },
+  "selection": {
+    "objective": "minimize median TTFT for matched W2/W4 generate-32 serving",
+    "selected_candidate": "resident-two-node-two-slot[slot-a=gpu.node-a.0,slot-b=gpu.node-b.0]",
+    "authorization": "AUTOMATIC_PLANNER_SELECTION",
+    "ranked_candidates": [
+      {
+        "rank": 1,
+        "candidate": "resident-two-node-two-slot[slot-a=gpu.node-a.0,slot-b=gpu.node-b.0]",
+        "median_ttft_ms": 1904.5799765000002
+      },
+      {
+        "rank": 2,
+        "candidate": "source-backed-single-resource[whole-model=gpu.node-a.0]",
+        "median_ttft_ms": 2624.839435
+      }
+    ],
+    "feasible_unranked": [
+      "resident-same-node-two-slot[slot-a=gpu.node-a.0,slot-b=gpu.node-a.1]"
+    ],
+    "unused_resources": [
+      {
+        "compute_unit_id": "gpu.node-a.1",
+        "reason": "not needed by the highest-ranked candidate"
+      }
+    ],
+    "r4_evidence": {
+      "presented": true,
+      "measurement": "2.947 Mb/s peak application demand against a 747.12 Mb/s limit",
+      "applicable": false,
+      "rejection_reason": "evidence context mismatch for runtime_context",
+      "influence": "rejected; did not affect admission or ranking"
+    }
+  },
+  "serving_path": "ordinary FreeToken OpenAI serving adapter -> GenSpec -> TokenizeMsg -> static InferSwarm controller -> planner -> frozen plan -> R4 backend-native runtime -> streamed response",
+  "correctness": {
+    "diagnostic_workloads": ["W2", "W4"],
+    "prompt_tokens_exact": true,
+    "generated_tokens_exact": true,
+    "selected_logits_within_frozen_threshold": true,
+    "boundary_checksums_match": true,
+    "nan_count": 0,
+    "inf_count": 0,
+    "realization_reconciliation": "MATCHED",
+    "silent_plan_substitution": false
+  },
+  "clean_matched_service": {
+    "methodology": "one warmup plus five measured repetitions per W2/W4 class",
+    "measured_requests": 10,
+    "median_ttft_ms": 1904.5799765000002,
+    "median_prefill_wall_ms": 1904.579149,
+    "median_prefill_tok_s": 45.8666034354321,
+    "median_decode_tok_s": 29.45834955400884,
+    "median_inter_token_latency_ns_p50": 33644216.0,
+    "median_inter_token_latency_ns_p95": 35545801.25,
+    "median_complete_request_wall_ms": 3023.1407335,
+    "median_measured_network_staging_protocol_residual_ms": 2170.7587745,
+    "median_measured_network_residual_fraction": 0.721415849084488,
+    "wire_bytes_tx_all_12_requests": 11797047,
+    "wire_bytes_rx_all_12_requests": 122535,
+    "semantic_payload_bytes_tx_all_12_requests": 11649024
+  },
+  "realization": {
+    "plan_frozen_before_heavyweight_realization": true,
+    "node_a_load_seconds": 45.59948115500083,
+    "node_b_load_seconds": 33.59077484000227,
+    "coordinator_realization_wall_seconds": 47.694016182,
+    "node_a_cuda_allocated_bytes": 10878279168,
+    "node_a_cuda_peak_bytes": 10887361024,
+    "node_b_cuda_allocated_bytes": 11170319360,
+    "node_b_cuda_peak_bytes": 11178744832,
+    "node_a_released_staging_bytes": 8636596224,
+    "node_b_released_staging_bytes": 9545711616,
+    "unexplained_persistent_host_mirror_bytes_each_node": 0,
+    "process_scoped_swap_reliance": false
+  },
+  "runtime_invariants": {
+    "fallbacks_each_node": 0,
+    "graph_recaptures_each_node": 0,
+    "host_expert_fetches_each_node": 0,
+    "resident_source_accesses_each_node": 0,
+    "steady_state_model_movement_bytes_each_node": 0,
+    "clean_graph_captures_each_node": 1,
+    "clean_graph_replays_each_node": 372
+  },
+  "bounded_concurrency": {
+    "bound": 2,
+    "workloads": ["W2", "W4"],
+    "max_outstanding_requests": 2,
+    "distinct_session_ids": true,
+    "same_frozen_plan_for_all_sessions": true,
+    "generated_tokens_exact": true,
+    "runtime_invariants_clean": true
+  },
+  "tests": {
+    "research": "190 passed",
+    "benchmarks": "554 passed",
+    "server": "578 passed, 1 unrelated deprecation warning"
+  },
+  "non_claims": [
+    "No production throughput or load claim",
+    "No elasticity, live membership, epoch transition, availability, failover, or recovery claim",
+    "No final public API, daemon, control-plane, or wire-protocol claim",
+    "No 2.5-GbE or heterogeneous-accelerator claim",
+    "No GLM-5.3 support or incorporation of newer FreeToken main"
+  ]
+}
