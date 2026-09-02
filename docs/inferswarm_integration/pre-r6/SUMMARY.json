@@ -1,0 +1,90 @@
+{
+  "schema": "inferswarm.pre-r6.integration-summary/1",
+  "issue": "Zutfen-LLC/inferswarm#64",
+  "disposition": "PRE_R6_INTEGRATION_REQUALIFICATION_PASS",
+  "accepted_r5b": {
+    "research_head": "00ccd01fede8d2ad21ee83104f3b998c89ff9d1f",
+    "physical_producer": "7dd945a67c04198ec2d9afe782a39c90e8141f5e",
+    "evidence_head": "b6f674b5bf0f76b9b40bd2f79e36cfc18cb6f7e6",
+    "disposition": "R5B_PLAN_EPOCH_RECOVERY_PASS"
+  },
+  "integration": {
+    "upstream_target": "6eca2d7d2b8576c7ad0ba62853df9f618cba929f",
+    "merge_base": "a05c26543f2d9a8cc2168fe789cdd4c92273378e",
+    "explicit_merge": "0f44f86f91db3c7a82f6d380c074a3731535f3a9",
+    "merge_parents": [
+      "00ccd01fede8d2ad21ee83104f3b998c89ff9d1f",
+      "6eca2d7d2b8576c7ad0ba62853df9f618cba929f"
+    ],
+    "final_qualification_producer": "0f44f86f91db3c7a82f6d380c074a3731535f3a9",
+    "conflicts": [
+      "python/freetoken/engine/engine.py",
+      "python/freetoken/models/nvfp4_banks.py"
+    ]
+  },
+  "native_rebuild": {
+    "nodes": ["inferswarm01", "inferswarm03"],
+    "extensions": ["_pinned_tensor", "_cpu_moe", "_ple_store"],
+    "fresh_for_qualification": true,
+    "upstream_baseline_rebuilt": true
+  },
+  "tests": {
+    "focused": {"passed": 26},
+    "research": {"passed": 199, "failed": 0},
+    "benchmarks": {"passed": 563, "failed": 0},
+    "server": {"passed": 583, "failed": 0, "warnings": 1},
+    "broad_upstream": {
+      "passed": 1214,
+      "skipped": 31,
+      "deselected": 58,
+      "failed": 6,
+      "integration_regressions": 0,
+      "upstream_or_environment_baseline": 5,
+      "collateral_poisoned_cuda_state": 1
+    }
+  },
+  "physical": {
+    "environment_digest": "sha256:13f6956ad9ec948c4b74094958f18082c41e788d74e7a47febe26432ed59f24c",
+    "participant_plan_digest": "sha256:75e01df4f78ac0ee92cb9e520a947253abbe4d69706b491d21cc59434e2c02ce",
+    "checkpoint_repository": "nvidia/Qwen3.6-35B-A3B-NVFP4",
+    "checkpoint_revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
+    "checkpoint_identical_across_nodes": true,
+    "runtime": {
+      "python": "3.13.5",
+      "torch": "2.11.0+cu130",
+      "torch_cuda": "13.0",
+      "transformers": "5.16.1",
+      "triton": "3.6.0"
+    },
+    "serving_smoke": {
+      "path": "/v1/chat/completions",
+      "generated_token_ids": [9764, 393],
+      "reasoning_content": "Let $",
+      "comparator": "EXACT_MATCH",
+      "fallbacks": 0,
+      "host_expert_fetches": 0,
+      "resident_source_accesses": 0,
+      "unexplained_persistent_host_mirror_bytes": 0,
+      "steady_model_state_movement_bytes": 0,
+      "reconciled": true,
+      "unplanned_persistent_materializations": 0,
+      "host_staging_current_bytes_at_boundary": 0,
+      "transient_staging_released_as_planned": true
+    },
+    "epoch_smoke": {
+      "generations": 2,
+      "generated_token_ids": [9764, 393],
+      "committed_epoch_ids_distinct": true,
+      "transition_status": "ACTIVATED",
+      "replay_range": [0, 1],
+      "replay_token_count": 1,
+      "single_mutable_authority": true,
+      "late_result_rejections": 1,
+      "late_result_reason": "RETIRED_OR_SUPERSEDED_EPOCH",
+      "all_epochs_reclaimed": true,
+      "postflight_gpu_execution_processes_absent": true
+    }
+  },
+  "historical_evidence_modified": false,
+  "r6_implementation_started": false
+}
