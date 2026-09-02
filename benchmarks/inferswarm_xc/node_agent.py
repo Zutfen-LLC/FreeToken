@@ -117,13 +117,17 @@ class _Session:
         digest_text = self._plan_digest or ""
         self._epoch_id = f"remote-realization:{digest_text.split(':')[-1][:12]}"
         started = time.time_ns()
-        runtime = self._server.build_runtime(plan)
+        built = self._server.build_runtime(plan)
+        # build_runtime returns the accepted RealizedStaticPlan wrapper for a
+        # network realization; the agent drives its runtime facade directly.
+        runtime = getattr(built, "runtime", built)
         try:
             self._accept_response(
                 request,
                 "REALIZE",
                 {
-                    "observation": runtime.observation,
+                    "observation": getattr(runtime, "observation", None)
+                    or getattr(built, "observation", {}),
                     "node_identity": self._server.node_identity(),
                     "realization_wall_ns": time.time_ns() - started,
                 },
