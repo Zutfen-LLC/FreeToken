@@ -73,8 +73,8 @@ The immutable R5A plan retains its digest, strategy/model identities,
 participants, selected Compute Units, representations/backends, state
 placement and authority, semantic boundaries, evidence audit, objective,
 policy, exclusions, lower-ranked feasible candidates, unused resources, and
-expected resource accounting. The selected R4-derived participant plan digest
-is bound inside it.
+expected resource accounting. The selected accepted R2 local plan or
+R4-derived network participant-plan digest is bound inside it.
 
 Immediately before realization, the resource-snapshot digest is rechecked.
 Observed participants, Compute Units, representations, backend choices, state
@@ -87,7 +87,7 @@ Before canonical model realization, both Nodes must mechanically pass:
 
 - identical expected producer SHA and clean trees;
 - exact hostname/Node identity;
-- selected GPU UUID and BDF;
+- all selected GPU UUIDs and BDFs, including Node A's secondary local-split GPU;
 - VRAM capacity plus 512-MiB reservation/headroom treatment;
 - runtime/package identity;
 - exact model repository/revision and per-file checkpoint hashes on both Nodes;
@@ -112,17 +112,22 @@ manifest.
   repetitions per class; diagnostic transfer hashing is disabled.
 - Ordinary local single-resource HTTP control: the same warmup/repetition and
   HTTP methodology under the legal source-backed shape.
-- Accepted local split control: rerun only if current compatibility/preflight
-  remains valid; otherwise retain an explicit exclusion rather than adapting
-  the old plan.
+- Diagnostic same-Node resident split HTTP arm: W2/W4 once under the accepted
+  R2 comparator and resident lifecycle.
+- Clean same-Node resident split HTTP arm: one W2/W4 warmup followed by five
+  measured repetitions per class, through the identical ordinary serving seam.
+- Matched placement economics compare the clean resident same-Node and
+  resident two-Node arms. Their compute-subtracted residual remains the stated
+  staging/transport/protocol residual and is never relabelled pure network time.
 - Planner-selected HTTP arm: run from the automatic frozen decision after the
   matched evidence catalog is built. If it is byte-identical to an already-run
   arm/configuration, reference that arm rather than manufacture duplicate work.
 - Bounded concurrency arm: exactly two outstanding requests (one W2 and one
-  W4), zero warmups, one repetition. The accepted static R4 connection executes
-  one boundary stream at a time; the serving surface may have both requests
-  outstanding and must retain distinct session identities, FIFO plan authority,
-  and zero cross-request state corruption. This is not a throughput/load claim.
+  W4), zero warmups, one repetition. The selected accepted static execution
+  primitive processes one boundary stream at a time; the serving surface may
+  have both requests outstanding and must retain distinct session identities,
+  FIFO plan authority, and zero cross-request state corruption. This is not a
+  throughput/load claim.
 
 ## Correctness
 
@@ -176,4 +181,3 @@ capacity headroom does not become an end-to-end claim.
 passing condition is supported by retained machine-readable evidence. A
 correct implementation with an unavailable physical prerequisite remains a
 reviewable blocked result, not a PASS.
-

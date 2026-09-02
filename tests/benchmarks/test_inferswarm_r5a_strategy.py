@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from inferswarm_r5a.strategy import (
+    LOCAL_SPLIT_SHAPE,
     NETWORK_SHAPE,
     accepted_r4_evidence,
     compile_candidate,
@@ -114,8 +115,57 @@ def test_network_compiler_retains_complete_frozen_plan_semantics():
     catalog = evidence_catalog(SHA, Path("."), [current])
     decision = plan(problem, snapshot, operator_policy(SHA), objective(SHA), catalog)
     selected = next(row for row in decision["evaluations"] if row["id"] == decision["selected_candidate_id"])
-    compiled = compile_candidate(selected, r4_plan={"digest": "sha256:r4"})
+    compiled = compile_candidate(
+        selected,
+        r4_plan={"digest": "sha256:r4"},
+        local_plan={"digest": "sha256:r2"},
+    )
     assert compiled["participants"] == ["node.inferswarm01", "node.inferswarm03"]
     assert compiled["strategy_realization"]["participant_plan_digest"] == "sha256:r4"
     assert compiled["semantic_boundaries"][0]["semantic_contract"]["decode_bytes"] == 8192
     assert compiled["expected_resource_accounting"]["strategy_host_lifecycle"]["release_after_final_residency"] is True
+
+
+def test_local_split_compiler_binds_accepted_r2_plan_without_network_nouns():
+    problem = planning_problem(SHA)
+    snapshot = resource_snapshot(_environment())
+    current = {
+        "id": "current-local-split-ttft",
+        "role": "RANKING_OBJECTIVE",
+        "producer_identity": SHA,
+        "evidence_identity": "arm-sha",
+        "shape_id": LOCAL_SPLIT_SHAPE,
+        "mapping": {"slot-a": "gpu.node-a.0", "slot-b": "gpu.node-a.1"},
+        "required_context": {
+            "model_revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
+            "runtime_context": "pre-r5-integrated-runtime",
+            "network_context": "1GbE-full-duplex-MTU1500-eno1-enp5s0",
+            "workload_geometry": "W2-W4-generate32-static",
+        },
+        "freshness": "CURRENT",
+        "measurement_status": "MEASURED",
+        "evidence_class": "MEASURED_R5A_MATCHED_HTTP_SERVING",
+        "confidence": "EXACT_CONTEXT",
+        "metric": {"name": "ttft_ms", "value": 400.0, "unit": "ms", "statistic": "median"},
+    }
+    decision = plan(
+        problem,
+        snapshot,
+        operator_policy(SHA),
+        objective(SHA),
+        evidence_catalog(SHA, Path("."), [current]),
+    )
+    selected = next(
+        row for row in decision["evaluations"]
+        if row["id"] == decision["selected_candidate_id"]
+    )
+    compiled = compile_candidate(
+        selected,
+        r4_plan={"digest": "sha256:r4"},
+        local_plan={"digest": "sha256:r2"},
+    )
+    assert compiled["participants"] == ["node.inferswarm01"]
+    assert compiled["strategy_realization"] == {
+        "path": "r2-local-split",
+        "participant_plan_digest": "sha256:r2",
+    }

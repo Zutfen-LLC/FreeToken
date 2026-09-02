@@ -45,8 +45,24 @@ except ModuleNotFoundError:  # tests put the repository's benchmarks/ on sys.pat
         run_gate,
     )
 from freetoken.research.n0_model_block import write_json_with_sha
+from freetoken.research.r2_local_split import validate_frozen_plan
 from freetoken.research.r3_planner import freeze
 from freetoken.research.r5a_serving import checkpoint_identity_from_gate
+
+from benchmarks.inferswarm_r2.freeze_plan import (
+    GPU_A_UUID as LOCAL_GPU_A_UUID,
+    GPU_B_UUID as LOCAL_GPU_B_UUID,
+    SAFETY_BYTES as LOCAL_SAFETY_BYTES,
+)
+
+
+LOCAL_REPRESENTATIONS = {
+    "checkpoint-native-host",
+    "freetoken-block-runtime-device",
+    "freetoken-captured-backend-device",
+    "freetoken-native-device",
+    "freetoken-nvfp4-slot-banks",
+}
 
 
 def runtime_versions() -> dict[str, Any]:
@@ -94,6 +110,103 @@ def _digest(value: Any) -> str:
     return "sha256:" + hashlib.sha256(payload).hexdigest()
 
 
+def validate_local_split_environment(
+    *,
+    plan: dict[str, Any],
+    profile_a: dict[str, Any],
+    identity_a: dict[str, Any],
+    producer_sha: str,
+) -> dict[str, Any]:
+    """Fail-close the current Node-A resources required by accepted R2."""
+    if identity_a.get("producer_sha") != producer_sha or not identity_a.get("tree_clean"):
+        raise RuntimeError("local split requires the exact clean R5A producer")
+    selected = {
+        uuid: _selected(profile_a, uuid)
+        for uuid in (LOCAL_GPU_A_UUID, LOCAL_GPU_B_UUID)
+    }
+    current_units = []
+    current_memory = []
+    for role, uuid in (("a", LOCAL_GPU_A_UUID), ("b", LOCAL_GPU_B_UUID)):
+        row = selected[uuid]
+        unit_id = f"gpu-{role}"
+        current_units.append(
+            {
+                "id": unit_id,
+                "stable_device_id": uuid,
+                "pci_bdf": row.get("pci_bus_id") or row.get("pci.bus_id"),
+                "model": row["name"],
+            }
+        )
+        current_memory.append(
+            {
+                "id": f"{unit_id}.vram",
+                "kind": "accelerator-vram",
+                "capacity_bytes": int(row["memory_total_bytes"]),
+            }
+        )
+    current_memory.append(
+        {
+            "id": "node-a.ram",
+            "kind": "system-ram",
+            "capacity_bytes": int(profile_a["memory"]["mem_total_bytes"]),
+        }
+    )
+    validation = validate_frozen_plan(
+        plan,
+        {
+            "model": dict(plan["model"]),
+            "resources": {
+                "nodes": [
+                    {
+                        "id": "node-a",
+                        "compute_units": current_units,
+                        "memory_resources": current_memory,
+                    }
+                ]
+            },
+        },
+    )
+    representations = {
+        item["representation"]
+        for participant in plan["participant_r1_plans"].values()
+        for item in participant["materializations"]
+    }
+    unsupported = sorted(representations - LOCAL_REPRESENTATIONS)
+    if unsupported:
+        raise RuntimeError(f"local split has unsupported representations: {unsupported}")
+    headroom = {}
+    for role, uuid in (("a", LOCAL_GPU_A_UUID), ("b", LOCAL_GPU_B_UUID)):
+        resource_id = f"gpu-{role}.vram"
+        capacity = int(selected[uuid]["memory_total_bytes"])
+        required = int(validation["required_bytes_by_memory"][resource_id])
+        if required + LOCAL_SAFETY_BYTES > capacity:
+            raise RuntimeError(f"local split {resource_id} lacks frozen VRAM headroom")
+        headroom[resource_id] = {
+            "uuid": uuid,
+            "pci_bdf": selected[uuid].get("pci_bus_id")
+            or selected[uuid].get("pci.bus_id"),
+            "capacity_bytes": capacity,
+            "reservation_bytes": LOCAL_SAFETY_BYTES,
+            "required_bytes": required,
+            "remaining_bytes": capacity - required,
+        }
+    return {
+        "schema": "inferswarm.r5a.local-split-preflight/1",
+        "result": "LOCAL_SPLIT_PREFLIGHT_PASSED",
+        "producer_sha": producer_sha,
+        "tree_clean": True,
+        "participant_plan_digest": plan["digest"],
+        "validation": validation,
+        "compute_units": current_units,
+        "vram_headroom": headroom,
+        "representation_backend": {
+            "representations": sorted(representations),
+            "backend": "accepted-r2-freetoken-captured-resident",
+            "compatible": True,
+        },
+    }
+
+
 def freeze_physical_environment(args) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     out = args.out_dir
     out.mkdir(parents=True, exist_ok=True)
@@ -133,6 +246,12 @@ def freeze_physical_environment(args) -> tuple[dict[str, Any], dict[str, Any], d
 
     r2_plan = json.loads(
         (Path(args.node_a_repo) / "docs/inferswarm_r2/frozen-plan.json").read_text()
+    )
+    local_split_gate = validate_local_split_environment(
+        plan=r2_plan,
+        profile_a=profile_a,
+        identity_a=identity_a,
+        producer_sha=args.producer_sha,
     )
     participant_plan = build_r4_plan(
         r2_plan,
@@ -206,6 +325,8 @@ def freeze_physical_environment(args) -> tuple[dict[str, Any], dict[str, Any], d
                 "model_revision_validated": True,
                 "representation_backend_compatible": True,
                 "participant_plan_digest": participant_plan["digest"],
+                "local_participant_plan_digest": r2_plan["digest"],
+                "local_split_preflight": local_split_gate,
             },
             "preflight_gate": gate,
         }
@@ -220,6 +341,7 @@ def freeze_physical_environment(args) -> tuple[dict[str, Any], dict[str, Any], d
     write_json_with_sha(out / "node-a-hardware.json", profile_a)
     write_json_with_sha(out / "node-b-hardware.json", profile_b)
     write_json_with_sha(out / "preflight-gate.json", gate)
+    write_json_with_sha(out / "local-split-gate.json", local_split_gate)
     write_json_with_sha(out / "participant-plan.json", participant_plan)
     write_json_with_sha(out / "frozen-environment.json", environment)
     return environment, participant_plan, gate

@@ -20,6 +20,7 @@ class R5AFrontendDispatcher:
     def __init__(self, config_path: str, server_config: Any) -> None:
         from benchmarks.inferswarm_r4.r4_plan import load_r4_plan
         from benchmarks.inferswarm_r5a.runtime import (
+            realize_local_split_plan,
             realize_network_plan,
             require_clean_exact_source,
         )
@@ -38,14 +39,26 @@ class R5AFrontendDispatcher:
         self.repository_root = Path(raw.get("repository_root") or path.parents[2]).resolve()
         environment_path = self._resolve(path, raw["environment"])
         r4_plan_path = self._resolve(path, raw["participant_plan"])
+        local_plan_path = self._resolve(
+            path,
+            raw.get(
+                "local_participant_plan",
+                str(self.repository_root / "docs/inferswarm_r2/frozen-plan.json"),
+            ),
+        )
         self.report_path = self._resolve(path, raw["report_out"])
         environment = json.loads(environment_path.read_text())
         require_frozen(environment, "R5A frozen environment")
         expected_sha = environment["implementation_commit"]
         require_clean_exact_source(self.repository_root, expected_sha)
         r4_plan = load_r4_plan(r4_plan_path)
+        local_plan = json.loads(local_plan_path.read_text())
         if r4_plan.get("provenance", {}).get("r4", {}).get("producer_sha") != expected_sha:
             raise RuntimeError("participant plan producer differs from frozen R5A source")
+        if local_plan.get("digest") != environment.get("compatibility", {}).get(
+            "local_participant_plan_digest"
+        ):
+            raise RuntimeError("local participant plan differs from frozen R5A environment")
         serving_records = []
         if raw.get("serving_evidence"):
             records_path = self._resolve(path, raw["serving_evidence"])
@@ -61,21 +74,32 @@ class R5AFrontendDispatcher:
         )
 
         def compiler(evaluation):
-            return compile_candidate(dict(evaluation), r4_plan=r4_plan)
+            return compile_candidate(
+                dict(evaluation), r4_plan=r4_plan, local_plan=local_plan
+            )
 
         def realizer(execution_plan):
-            if execution_plan["strategy_realization"]["path"] != "r4-persistent-boundary":
-                raise RuntimeError(
-                    "this bounded R5A bridge currently realizes only the selected legal "
-                    "two-node backend-native candidate; collect/refresh evidence first"
+            realization_path = execution_plan["strategy_realization"]["path"]
+            if realization_path == "r2-local-split":
+                return realize_local_split_plan(
+                    dict(execution_plan),
+                    local_plan=local_plan,
+                    local_plan_path=local_plan_path,
+                    model_path=server_config.model_path,
+                    diagnostic=bool(raw.get("diagnostic", False)),
+                    local_gate=environment["compatibility"]["local_split_preflight"],
                 )
-            return realize_network_plan(
-                dict(execution_plan),
-                r4_plan=r4_plan,
-                model_path=server_config.model_path,
-                peer_host=raw["peer_host"],
-                peer_port=int(raw.get("peer_port", 18485)),
-                diagnostic=bool(raw.get("diagnostic", False)),
+            if realization_path == "r4-persistent-boundary":
+                return realize_network_plan(
+                    dict(execution_plan),
+                    r4_plan=r4_plan,
+                    model_path=server_config.model_path,
+                    peer_host=raw["peer_host"],
+                    peer_port=int(raw.get("peer_port", 18485)),
+                    diagnostic=bool(raw.get("diagnostic", False)),
+                )
+            raise RuntimeError(
+                f"R5A selected unsupported realization path {realization_path!r}"
             )
 
         self.controller = StaticServingController(

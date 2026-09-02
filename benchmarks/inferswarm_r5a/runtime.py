@@ -10,6 +10,128 @@ from typing import Any
 from freetoken.research.r5a_serving import RealizedStaticPlan
 
 
+def require_current_local_split_devices(local_gate: dict[str, Any]) -> None:
+    """Recheck frozen UUID/BDF/capacity before any R2 child materializes."""
+    if local_gate.get("result") != "LOCAL_SPLIT_PREFLIGHT_PASSED":
+        raise RuntimeError("local split lacks a successful frozen preflight")
+    fields = "uuid,pci.bus_id,memory.total"
+    output = subprocess.check_output(
+        ["nvidia-smi", f"--query-gpu={fields}", "--format=csv,noheader,nounits"],
+        text=True,
+    )
+    current = {}
+    for line in output.splitlines():
+        uuid, bdf, total_mib = (item.strip() for item in line.split(","))
+        current[uuid] = {
+            "pci_bdf": bdf,
+            "capacity_bytes": int(total_mib) * 1024 * 1024,
+        }
+    for expected in local_gate["vram_headroom"].values():
+        actual = current.get(expected["uuid"])
+        if actual is None:
+            raise RuntimeError(f"frozen local GPU {expected['uuid']} is absent")
+        if actual["pci_bdf"] != expected["pci_bdf"]:
+            raise RuntimeError(f"frozen local GPU {expected['uuid']} BDF drifted")
+        if actual["capacity_bytes"] != expected["capacity_bytes"]:
+            raise RuntimeError(f"frozen local GPU {expected['uuid']} capacity drifted")
+        if (
+            expected["required_bytes"] + expected["reservation_bytes"]
+            > actual["capacity_bytes"]
+        ):
+            raise RuntimeError(f"frozen local GPU {expected['uuid']} lost headroom")
+
+
+class R2ServingRuntime:
+    """Ordinary-serving adapter around the accepted local R2 coordinator."""
+
+    def __init__(
+        self,
+        *,
+        execution_plan: dict[str, Any],
+        local_plan: dict[str, Any],
+        local_plan_path: Path,
+        model_path: str,
+        diagnostic: bool,
+        local_gate: dict[str, Any],
+    ) -> None:
+        from benchmarks.inferswarm_r2.coordinator import LocalSplitCoordinator
+        from benchmarks.inferswarm_r4.node_preflight import verify_checkpoint_revision
+        from freetoken.research.r2_local_split import plan_digest
+
+        participant_digest = execution_plan["strategy_realization"].get(
+            "participant_plan_digest"
+        )
+        calculated = f"sha256:{plan_digest(local_plan)}"
+        if participant_digest != local_plan.get("digest") or calculated != participant_digest:
+            raise RuntimeError("R5A plan does not bind an intact local participant plan")
+        if local_gate.get("participant_plan_digest") != participant_digest:
+            raise RuntimeError("local participant plan differs from frozen preflight")
+        if not local_gate.get("representation_backend", {}).get("compatible"):
+            raise RuntimeError("local representation/backend compatibility is not proven")
+        verify_checkpoint_revision(model_path, local_plan["model"]["revision"])
+        require_current_local_split_devices(local_gate)
+        self._execution_plan_digest = execution_plan["digest"]
+        self._coordinator = LocalSplitCoordinator(
+            plan_path=str(local_plan_path),
+            model_path=model_path,
+            diagnostic=diagnostic,
+            diagnostic_prefill_chunk=64,
+            host_staging_policy="release_after_final_residency",
+        )
+        self._sessions: list[dict[str, Any]] = []
+        self._closed = False
+        self._final_reports: dict[str, Any] | None = None
+
+    def generate(
+        self,
+        *,
+        session_id: int,
+        prompt_token_ids: list[int],
+        max_new_tokens: int,
+        on_token=None,
+    ) -> dict[str, Any]:
+        session = self._coordinator.run_session(
+            session_id=session_id,
+            prompt_ids=prompt_token_ids,
+            max_new_tokens=max_new_tokens,
+            prefill_chunk=64,
+            capture_steps={0, 1, 15, 31},
+            on_token=on_token,
+        )
+        session["plan_digest"] = self._execution_plan_digest
+        self._sessions.append(deepcopy(session))
+        return session
+
+    def report(self) -> dict[str, Any]:
+        participant_reports = (
+            deepcopy(self._final_reports)
+            if self._final_reports is not None
+            else self._coordinator.reports()
+        )
+        return {
+            "transport_accounting": {
+                "kind": "registered-pinned-host-staging",
+                "participant_plan_digest": self._coordinator.plan["digest"],
+                "block_a_activation_bytes": participant_reports["a"]["activation_bytes"],
+                "block_b_activation_bytes": participant_reports["b"]["activation_bytes"],
+                "block_a_control_rx_bytes": participant_reports["a"]["control_rx_bytes"],
+                "block_a_control_tx_bytes": participant_reports["a"]["control_tx_bytes"],
+                "block_b_control_rx_bytes": participant_reports["b"]["control_rx_bytes"],
+                "block_b_control_tx_bytes": participant_reports["b"]["control_tx_bytes"],
+            },
+            "ready": deepcopy(self._coordinator.ready),
+            "participants": deepcopy(participant_reports),
+            "sessions": deepcopy(self._sessions),
+        }
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._final_reports = self._coordinator.reports()
+        self._closed = True
+        self._coordinator.shutdown()
+
+
 class R4ServingRuntime:
     """One resident Block-A runtime and one persistent Node-B connection."""
 
@@ -181,9 +303,43 @@ def realize_network_plan(
     return RealizedStaticPlan(runtime=runtime, observation=observed)
 
 
+def realize_local_split_plan(
+    execution_plan: dict[str, Any],
+    *,
+    local_plan: dict[str, Any],
+    local_plan_path: Path,
+    model_path: str,
+    diagnostic: bool,
+    local_gate: dict[str, Any],
+) -> RealizedStaticPlan:
+    """Realize the selected same-node candidate through accepted R2."""
+    runtime = R2ServingRuntime(
+        execution_plan=execution_plan,
+        local_plan=local_plan,
+        local_plan_path=local_plan_path,
+        model_path=model_path,
+        diagnostic=diagnostic,
+        local_gate=local_gate,
+    )
+    observed = {
+        "plan_digest": execution_plan["digest"],
+        "participants": ["node.inferswarm01"],
+        "compute_units": ["gpu.node-a.0", "gpu.node-a.1"],
+        "representations": deepcopy(execution_plan["representations"]),
+        "backend_choices": deepcopy(execution_plan["backend_choices"]),
+        "state_placement": deepcopy(execution_plan["state_placement"]),
+        "state_authority": deepcopy(execution_plan["state_authority"]),
+        "semantic_boundaries": deepcopy(execution_plan["semantic_boundaries"]),
+    }
+    return RealizedStaticPlan(runtime=runtime, observation=observed)
+
+
 __all__ = [
+    "R2ServingRuntime",
     "R4ServingRuntime",
     "current_head",
+    "realize_local_split_plan",
     "realize_network_plan",
+    "require_current_local_split_devices",
     "require_clean_exact_source",
 ]

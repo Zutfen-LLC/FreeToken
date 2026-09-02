@@ -367,7 +367,7 @@ def evidence_catalog(
 
 
 def compile_candidate(
-    evaluation: dict[str, Any], *, r4_plan: dict[str, Any]
+    evaluation: dict[str, Any], *, r4_plan: dict[str, Any], local_plan: dict[str, Any]
 ) -> dict[str, Any]:
     """Compile generic selection into complete strategy-owned semantics."""
     shape = evaluation["shape_id"]
@@ -455,7 +455,10 @@ def compile_candidate(
                 "r2-local-split" if shape == LOCAL_SPLIT_SHAPE else
                 "ordinary-freetoken-source-offload"
             ),
-            "participant_plan_digest": r4_plan.get("digest") if shape == NETWORK_SHAPE else None,
+            "participant_plan_digest": (
+                r4_plan.get("digest") if shape == NETWORK_SHAPE else
+                local_plan.get("digest") if shape == LOCAL_SPLIT_SHAPE else None
+            ),
         },
     }
 

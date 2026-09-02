@@ -165,6 +165,7 @@ class LocalSplitCoordinator:
         prefill_chunk: int,
         capture_steps: set[int] | None = None,
         capture_prefill_state: bool = False,
+        on_token=None,
     ) -> dict:
         capture_steps = capture_steps or set()
         self.open(session_id)
@@ -189,6 +190,8 @@ class LocalSplitCoordinator:
                 boundary["generated_step"] = 0
                 generated.append(token)
                 first_token_ns = time.perf_counter_ns()
+                if on_token is not None:
+                    on_token(0, token, boundary)
         prefill_ended = first_token_ns
         decode_started = time.perf_counter_ns()
         while len(generated) < max_new_tokens:
@@ -204,6 +207,8 @@ class LocalSplitCoordinator:
             generated.append(token)
             boundary["generated_step"] = step
             boundaries.append(boundary)
+            if on_token is not None:
+                on_token(step, token, boundary)
         decode_ended = time.perf_counter_ns()
         self.close_session(session_id)
         decode_latencies = [
