@@ -271,6 +271,7 @@ class StaticServingController:
         self._completed: set[int] = set()
         self._requests: list[dict[str, Any]] = []
         self._max_outstanding = 0
+        self._last_runtime_report: dict[str, Any] | None = None
 
     def serve_tokens(
         self,
@@ -334,6 +335,20 @@ class StaticServingController:
             requests = deepcopy(self._requests)
             active = sorted(self._active)
             maximum = self._max_outstanding
+        # Runtime reports use the same accepted participant control channel as
+        # execution. Keep report traffic ordered with OPEN/CLOSE_SESSION. A
+        # status observer must not stall an active request, so it receives the
+        # most recent complete runtime snapshot if execution owns the channel.
+        if self._execution_lock.acquire(blocking=False):
+            try:
+                runtime_report = deepcopy(dict(self.runtime.report()))
+                self._last_runtime_report = deepcopy(runtime_report)
+            finally:
+                self._execution_lock.release()
+        else:
+            runtime_report = deepcopy(self._last_runtime_report) or {
+                "report_state": "DEFERRED_WHILE_EXECUTION_ACTIVE"
+            }
         return {
             "schema": "inferswarm.r5a.static-serving-report/1",
             "plan_digest": self.execution_plan["digest"],
@@ -349,11 +364,12 @@ class StaticServingController:
             "active_session_ids": active,
             "max_outstanding_requests": maximum,
             "requests": requests,
-            "runtime": deepcopy(dict(self.runtime.report())),
+            "runtime": runtime_report,
         }
 
     def close(self) -> None:
-        self.runtime.close()
+        with self._execution_lock:
+            self.runtime.close()
 
 
 __all__ = [

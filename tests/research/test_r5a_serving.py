@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from copy import deepcopy
 
 import pytest
@@ -245,6 +246,37 @@ class _Runtime:
 
     def close(self):
         pass
+
+
+def test_runtime_report_control_traffic_is_serialized_with_execution():
+    controller = _controller()
+    report_entered = threading.Event()
+    release_report = threading.Event()
+
+    def blocking_report():
+        report_entered.set()
+        assert release_report.wait(5)
+        return {"sessions": []}
+
+    controller.runtime.report = blocking_report
+    report_thread = threading.Thread(target=controller.report)
+    report_thread.start()
+    assert report_entered.wait(5)
+    request_thread = threading.Thread(
+        target=controller.serve_tokens,
+        kwargs={
+            "session_id": 7,
+            "prompt_token_ids": [1],
+            "max_new_tokens": 1,
+        },
+    )
+    request_thread.start()
+    time.sleep(0.05)
+    assert controller.runtime.sessions == []
+    release_report.set()
+    report_thread.join(5)
+    request_thread.join(5)
+    assert controller.runtime.sessions == [7]
 
 
 def _controller(*, override=None, observation_mutation=None, entered=None, release=None):
