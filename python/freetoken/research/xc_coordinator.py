@@ -88,17 +88,17 @@ class RemoteEpochRuntime:
         validate_response(response)
         if response.get("protocol") != PROTOCOL_ID:
             raise RemoteRealizationError("response names a different protocol")
+        if not response.get("ok"):
+            raise RemoteRealizationError(
+                f"node-agent {operation} failed: {response.get('error')}"
+            )
+        if response.get("operation") != operation:
+            raise RemoteRealizationError("response operation mismatch")
         if response.get("epoch_id") != self._epoch_id or response.get(
             "plan_digest"
         ) != self._plan_digest:
             raise RemoteRealizationError(
                 "response identity does not match the authorized epoch/plan"
-            )
-        if response.get("operation") != operation:
-            raise RemoteRealizationError("response operation mismatch")
-        if not response.get("ok"):
-            raise RemoteRealizationError(
-                f"node-agent {operation} failed: {response.get('error')}"
             )
         return response
 
