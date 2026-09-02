@@ -468,6 +468,17 @@ def main(argv: list[str] | None = None) -> int:
     config["config_path"] = args.config
     runtime = CoordinatorRuntime(config)
     server = ThreadingHTTPServer((args.host, args.port), make_handler(runtime))
+
+    import signal
+
+    def _graceful_shutdown(signum, frame):  # noqa: ARG001
+        # Retire/reclaim the remote epoch runtime and persist the final
+        # report before the process exits; a hard kill would leave the
+        # report claiming an ACTIVE epoch with no reclamation record.
+        server.shutdown()
+
+    signal.signal(signal.SIGTERM, _graceful_shutdown)
+    signal.signal(signal.SIGINT, _graceful_shutdown)
     print(
         json.dumps(
             {
