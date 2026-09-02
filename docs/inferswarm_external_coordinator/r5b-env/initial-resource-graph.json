@@ -4,9 +4,9 @@
     "gpu.node-a.1": "UNAVAILABLE_PARTICIPANT_NOT_STARTED",
     "gpu.node-b.0": "AVAILABLE"
   },
-  "environment_digest": "sha256:ddaf7dd67dbbfabc3ee83ff7feea842e7ea8acc5d29a01da73b6225c976723b0",
+  "environment_digest": "sha256:0fa73b4703a3c31143fac3dcb2dfe22542053f048bb526dd309476dff0235893",
   "gpu_a1_execution_participant_started": false,
   "hidden_gpu_a1_runtime_use": false,
-  "producer_sha": "84e531971d6c02530fd0d541da3478df7510f263",
+  "producer_sha": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd",
   "schema": "inferswarm.r5b.initial-resource-graph/1"
 }

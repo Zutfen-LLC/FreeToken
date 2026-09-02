@@ -93473,7 +93473,7 @@
     "transport_path_id": "link.node-a-to-node-b.tcp"
   },
   "created_from_r1_base": "6a242a34083c3080aa6d8f92625a6be4a0d124db",
-  "digest": "sha256:c339627e5b854fb6d6c8d1685ab4434e9d9067c68fb97db3d2b205633cd23530",
+  "digest": "sha256:0fe4c19ea5a0d77303257f8e200ad275876a43b77ae82716f1d403bec2ed0bb9",
   "execution": [
     {
       "compute_unit_id": "gpu-a",
@@ -187437,7 +187437,7 @@
       "node_a_hostname": "inferswarm01",
       "node_b_hardware_digest": null,
       "node_b_hostname": "inferswarm03",
-      "producer_sha": "84e531971d6c02530fd0d541da3478df7510f263",
+      "producer_sha": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd",
       "variable_changed": "node-network-locality-only"
     }
   },
@@ -187484,7 +187484,7 @@
             "kind": "gpu-vram"
           },
           {
-            "capacity_bytes": 134984912896,
+            "capacity_bytes": 134984929280,
             "id": "node-a.ram",
             "kind": "host-memory"
           }

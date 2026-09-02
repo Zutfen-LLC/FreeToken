@@ -1,8 +1,8 @@
 {
   "claim_scope": "accepted context-specific R5A ranking evidence, dependency-scoped to the unchanged physical R2/R4 runtime; not new measurements",
-  "digest": "sha256:1cae2f0a1c996c618f182fe15cee5712d6a2ad7e33525c354619590185220edb",
-  "environment_digest": "sha256:ddaf7dd67dbbfabc3ee83ff7feea842e7ea8acc5d29a01da73b6225c976723b0",
-  "implementation_commit": "84e531971d6c02530fd0d541da3478df7510f263",
+  "digest": "sha256:097e0d7ef0c93506615f8c55c881362bf1bbf2c814338363a064bc85f21181c8",
+  "environment_digest": "sha256:0fa73b4703a3c31143fac3dcb2dfe22542053f048bb526dd309476dff0235893",
+  "implementation_commit": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd",
   "records": [
     {
       "confidence": "DEPENDENCY_SCOPED_REQUALIFICATION",
@@ -20,7 +20,7 @@
         "unit": "ms",
         "value": 2630.5871575
       },
-      "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
+      "producer_identity": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd",
       "provenance": {
         "accepted_measurement": {
           "arm_id": "source-backed-single-resource-clean-http",
@@ -31,12 +31,12 @@
         "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
         "numeric_value_remeasured": false,
         "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
-        "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
+        "requalification_producer_sha": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd"
       },
       "required_context": {
         "model_revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
         "network_context": "1GbE-full-duplex-MTU1500-eno1-enp5s0",
-        "runtime_context": "sha256:61295737ad02c589216778caef8d6cf246c39a4db8fcf5e4af9072ca219c2aed",
+        "runtime_context": "sha256:6730f7185720f2451e16951a279b83fb5c3435056dfe2115e662f22911557d83",
         "workload_geometry": "W2-W4-generate32-static"
       },
       "role": "RANKING_OBJECTIVE",
@@ -58,7 +58,7 @@
         "unit": "ms",
         "value": 3305.816471
       },
-      "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
+      "producer_identity": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd",
       "provenance": {
         "accepted_measurement": {
           "arm_id": "source-backed-single-resource-clean-http",
@@ -69,12 +69,12 @@
         "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
         "numeric_value_remeasured": false,
         "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
-        "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
+        "requalification_producer_sha": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd"
       },
       "required_context": {
         "model_revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
         "network_context": "1GbE-full-duplex-MTU1500-eno1-enp5s0",
-        "runtime_context": "sha256:61295737ad02c589216778caef8d6cf246c39a4db8fcf5e4af9072ca219c2aed",
+        "runtime_context": "sha256:6730f7185720f2451e16951a279b83fb5c3435056dfe2115e662f22911557d83",
         "workload_geometry": "W2-W4-generate32-static"
       },
       "role": "RANKING_OBJECTIVE",
@@ -96,7 +96,7 @@
         "unit": "tok/s",
         "value": 46.0004088474295
       },
-      "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
+      "producer_identity": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd",
       "provenance": {
         "accepted_measurement": {
           "arm_id": "source-backed-single-resource-clean-http",
@@ -107,12 +107,12 @@
         "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
         "numeric_value_remeasured": false,
         "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
-        "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
+        "requalification_producer_sha": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd"
       },
       "required_context": {
         "model_revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
         "network_context": "1GbE-full-duplex-MTU1500-eno1-enp5s0",
-        "runtime_context": "sha256:61295737ad02c589216778caef8d6cf246c39a4db8fcf5e4af9072ca219c2aed",
+        "runtime_context": "sha256:6730f7185720f2451e16951a279b83fb5c3435056dfe2115e662f22911557d83",
         "workload_geometry": "W2-W4-generate32-static"
       },
       "role": "RANKING_OBJECTIVE",
@@ -135,7 +135,7 @@
         "unit": "ms",
         "value": 373.6170495
       },
-      "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
+      "producer_identity": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd",
       "provenance": {
         "accepted_measurement": {
           "arm_id": "same-node-resident-clean-http",
@@ -146,12 +146,12 @@
         "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
         "numeric_value_remeasured": false,
         "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
-        "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
+        "requalification_producer_sha": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd"
       },
       "required_context": {
         "model_revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
         "network_context": "1GbE-full-duplex-MTU1500-eno1-enp5s0",
-        "runtime_context": "sha256:61295737ad02c589216778caef8d6cf246c39a4db8fcf5e4af9072ca219c2aed",
+        "runtime_context": "sha256:6730f7185720f2451e16951a279b83fb5c3435056dfe2115e662f22911557d83",
         "workload_geometry": "W2-W4-generate32-static"
       },
       "role": "RANKING_OBJECTIVE",
@@ -174,7 +174,7 @@
         "unit": "ms",
         "value": 844.3860605
       },
-      "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
+      "producer_identity": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd",
       "provenance": {
         "accepted_measurement": {
           "arm_id": "same-node-resident-clean-http",
@@ -185,12 +185,12 @@
         "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
         "numeric_value_remeasured": false,
         "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
-        "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
+        "requalification_producer_sha": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd"
       },
       "required_context": {
         "model_revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
         "network_context": "1GbE-full-duplex-MTU1500-eno1-enp5s0",
-        "runtime_context": "sha256:61295737ad02c589216778caef8d6cf246c39a4db8fcf5e4af9072ca219c2aed",
+        "runtime_context": "sha256:6730f7185720f2451e16951a279b83fb5c3435056dfe2115e662f22911557d83",
         "workload_geometry": "W2-W4-generate32-static"
       },
       "role": "RANKING_OBJECTIVE",
@@ -213,7 +213,7 @@
         "unit": "tok/s",
         "value": 65.76624873330516
       },
-      "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
+      "producer_identity": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd",
       "provenance": {
         "accepted_measurement": {
           "arm_id": "same-node-resident-clean-http",
@@ -224,12 +224,12 @@
         "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
         "numeric_value_remeasured": false,
         "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
-        "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
+        "requalification_producer_sha": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd"
       },
       "required_context": {
         "model_revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
         "network_context": "1GbE-full-duplex-MTU1500-eno1-enp5s0",
-        "runtime_context": "sha256:61295737ad02c589216778caef8d6cf246c39a4db8fcf5e4af9072ca219c2aed",
+        "runtime_context": "sha256:6730f7185720f2451e16951a279b83fb5c3435056dfe2115e662f22911557d83",
         "workload_geometry": "W2-W4-generate32-static"
       },
       "role": "RANKING_OBJECTIVE",
@@ -252,7 +252,7 @@
         "unit": "ms",
         "value": 1877.4567285
       },
-      "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
+      "producer_identity": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd",
       "provenance": {
         "accepted_measurement": {
           "arm_id": "two-node-resident-clean-http",
@@ -263,12 +263,12 @@
         "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
         "numeric_value_remeasured": false,
         "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
-        "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
+        "requalification_producer_sha": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd"
       },
       "required_context": {
         "model_revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
         "network_context": "1GbE-full-duplex-MTU1500-eno1-enp5s0",
-        "runtime_context": "sha256:61295737ad02c589216778caef8d6cf246c39a4db8fcf5e4af9072ca219c2aed",
+        "runtime_context": "sha256:6730f7185720f2451e16951a279b83fb5c3435056dfe2115e662f22911557d83",
         "workload_geometry": "W2-W4-generate32-static"
       },
       "role": "RANKING_OBJECTIVE",
@@ -291,7 +291,7 @@
         "unit": "ms",
         "value": 3067.9846395
       },
-      "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
+      "producer_identity": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd",
       "provenance": {
         "accepted_measurement": {
           "arm_id": "two-node-resident-clean-http",
@@ -302,12 +302,12 @@
         "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
         "numeric_value_remeasured": false,
         "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
-        "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
+        "requalification_producer_sha": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd"
       },
       "required_context": {
         "model_revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
         "network_context": "1GbE-full-duplex-MTU1500-eno1-enp5s0",
-        "runtime_context": "sha256:61295737ad02c589216778caef8d6cf246c39a4db8fcf5e4af9072ca219c2aed",
+        "runtime_context": "sha256:6730f7185720f2451e16951a279b83fb5c3435056dfe2115e662f22911557d83",
         "workload_geometry": "W2-W4-generate32-static"
       },
       "role": "RANKING_OBJECTIVE",
@@ -330,7 +330,7 @@
         "unit": "tok/s",
         "value": 29.222968384878364
       },
-      "producer_identity": "84e531971d6c02530fd0d541da3478df7510f263",
+      "producer_identity": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd",
       "provenance": {
         "accepted_measurement": {
           "arm_id": "two-node-resident-clean-http",
@@ -341,12 +341,12 @@
         "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
         "numeric_value_remeasured": false,
         "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
-        "requalification_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263"
+        "requalification_producer_sha": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd"
       },
       "required_context": {
         "model_revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
         "network_context": "1GbE-full-duplex-MTU1500-eno1-enp5s0",
-        "runtime_context": "sha256:61295737ad02c589216778caef8d6cf246c39a4db8fcf5e4af9072ca219c2aed",
+        "runtime_context": "sha256:6730f7185720f2451e16951a279b83fb5c3435056dfe2115e662f22911557d83",
         "workload_geometry": "W2-W4-generate32-static"
       },
       "role": "RANKING_OBJECTIVE",

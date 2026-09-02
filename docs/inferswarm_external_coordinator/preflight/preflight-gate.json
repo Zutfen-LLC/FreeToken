@@ -2,8 +2,8 @@
   "checks": {
     "block_b_host_ram": {
       "linux_memtotal_bytes": 16619393024,
-      "mem_available_proven_at_unix": 1788376314.9402692,
-      "memavailable_bytes": 15208255488,
+      "mem_available_proven_at_unix": 1788381273.3988307,
+      "memavailable_bytes": 15189446656,
       "note": "MemTotal excludes firmware reservations; installed RAM proven via DMI",
       "physical_installed_ram_bytes": 17179869184
     },
@@ -67,14 +67,14 @@
         "dirty_entries": [],
         "hostname": "inferswarm01",
         "node_id": "node.inferswarm01",
-        "producer_sha": "84e531971d6c02530fd0d541da3478df7510f263",
+        "producer_sha": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd",
         "tree_clean": true
       },
       "node.inferswarm03": {
         "dirty_entries": [],
         "hostname": "inferswarm03",
         "node_id": "node.inferswarm03",
-        "producer_sha": "84e531971d6c02530fd0d541da3478df7510f263",
+        "producer_sha": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd",
         "tree_clean": true
       }
     },
@@ -96,7 +96,7 @@
       }
     }
   },
-  "frozen_producer_sha": "84e531971d6c02530fd0d541da3478df7510f263",
+  "frozen_producer_sha": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd",
   "result": "ALL_PREFLIGHT_CHECKS_PASSED",
   "schema": "inferswarm.r4.preflight-gate/1"
 }

@@ -1,7 +1,7 @@
 # InferSwarm external-Coordinator evidence (issue #67)
 
-Result: `EXTERNAL_COORDINATOR_SEPARATION_PASS` (re-earned under activation-
-derived remote epoch authority; see Supersession below)
+Result: `EXTERNAL_COORDINATOR_SEPARATION_PASS` (re-earned under full
+result-identity validation; see Supersession below)
 
 This directory retains the proof that the Coordinator is genuinely a
 replaceable control-plane role: request ingress, session identity, generic
@@ -22,7 +22,43 @@ remote epoch authority a function of the Execution Plan digest instead of
 Coordinator-owned epoch/generation authority. The historical evidence of
 that producer remains retained in git history (commit `861a404`, producer
 `df8a429`); it must not be cited as the final canonical proof. The corrected
-producer is `84e531971d6c…` (this directory).
+producer is `84e531971d6c…`, which was itself superseded by
+`2bcf33f6d6e5…` (this directory) because its result-side identity was
+incomplete — see the second supersession below. The `84e5319` evidence
+remains retained in git history (commit `1bc8bdf`).
+
+## Second supersession: result-identity validation (84e5319 → 2bcf33f)
+
+The `84e5319` producer proved activation-derived remote epoch authority, but
+successful result-side identity was still incomplete: the Node agent echoed
+`session_id` but not `position`, and Coordinator-side response validation
+checked protocol/operation/epoch/generation/realization/plan — but not the
+returned `scope_id`, `session_id`, or execution `position`. A syntactically
+valid response attributed to the wrong session or a wrong/stale execution
+position would therefore have been accepted.
+
+The final producer `2bcf33f6d6e5…` closes that gap:
+
+- The Node agent echoes the request's `position` on every successful
+  response (`scope_id` and `session_id` retained).
+- `RemoteEpochRuntime._request` compares the returned identity against the
+  exact request just sent: protocol, scope, epoch/generation/realization,
+  plan digest, operation, and — for correctness-bearing session operations —
+  session id and expected execution position. `GENERATE` additionally
+  verifies the runtime result's internal session identity.
+- Any mismatch raises before `on_token` or result commitment can occur.
+  TCP ordering is never the correctness mechanism: response identity is
+  compared against the request, not against socket arrival order.
+- Regression of record: `tests/research/test_xc_result_identity.py` (wrong
+  `scope_id`, wrong `session_id`, wrong `position`, stale previous position,
+  runtime-result session spoof, and controller-path wrong-session /
+  wrong-position fencing with no token emission and no committed ledger
+  mutation).
+- Minor consistency fixes in the same producer: the authorization is now
+  passed to accepting realizers by keyword
+  (`realization_authorization=…`), and the controller report's top-level
+  `active_realization_id` reflects the initial generation-0 activation
+  rather than remaining unset until a replacement.
 
 ## Epoch/generation authorization design (the corrected seam)
 
@@ -69,7 +105,7 @@ producer is `84e531971d6c…` (this directory).
   (protocol/scope/session/epoch/generation/realization/plan/position),
   sha256 result checksums. Not a public API.
 
-## Canonical run (producer 84e5319)
+## Canonical run (final producer 2bcf33f)
 
 One ordinary OpenAI-compatible `/v1/chat/completions` request entered on
 `inferswarm00` (54 prompt tokens, max_tokens 8, greedy, thinking enabled).
@@ -77,14 +113,16 @@ The generic planner physically executed on `inferswarm00` over the frozen
 resource snapshot and requalified ranking evidence; the selected
 resident-two-node-two-slot Execution Plan was frozen before realization;
 realization and all eight decode operations executed remotely under the
-Coordinator-authorized activation identity.
+Coordinator-authorized activation identity, with every successful response
+validated against the exact request just sent (scope/session/position
+included).
 
 - Wire epoch identity (Coordinator-authorized, activation-derived):
-  `research-generation-0:cbba220611a7` — carried by every remote
+  `research-generation-0:e26ccaf0c230` — carried by every remote
   REALIZE/GENERATE/REPORT/CLOSE exchange, never derived from the plan digest.
 - Realization authorization:
-  `realization-1-18d1975ba81bedba` (prospective epoch id, generation 0,
-  plan digest `sha256:cbba2206…`, allocated before realization and adopted
+  `realization-1-18d19bde41ebefa9` (prospective epoch id, generation 0,
+  plan digest `sha256:e26ccaf0…`, allocated before realization and adopted
   verbatim by the activated epoch).
 - Committed output: `[9764, 393, 45, 283, 220, 24, 22, 853]` — exactly the
   accepted R5A/R5B reference — with single-epoch/single-plan attribution,
@@ -105,36 +143,45 @@ processes, 1 MiB used) with every proof-specific process stopped.
 
 ## Regression of record
 
-`tests/research/test_xc_realization_authority.py` proves: same Execution
+`tests/research/test_xc_result_identity.py` proves: a syntactically valid
+remote response whose result identity does not match the exact request just
+sent — wrong `scope_id`, wrong `session_id`, wrong `position`, a stale
+previous position, or a runtime result attributed to another session — is
+rejected by the Coordinator before any token emission or ledger mutation,
+and the connection/scope fails closed.
+
+Retained alongside (from the earlier correction):
+`tests/research/test_xc_realization_authority.py` proves same Execution
 Plan digest does not imply same remote epoch authority. Generation-0
 activation of plan digest P → supersession → later activation of the SAME
 digest P under a distinct generation/realization authorization; distinct
 wire epoch/generation identity; an old remote result from the earlier
 authorization is rejected; committed session/output/accounting unchanged.
-Retained alongside: duplicate-position rejection, stale-controller-epoch
+Also retained: duplicate-position rejection, stale-controller-epoch
 rejection, mid-frame/disconnect fail-closed tests.
 
 ## Contents
 
-- `preflight/` — fresh R5A physical freeze against `84e5319` (environment
-  digest `sha256:e7a18da3…`, participant plan `sha256:c339627e…`,
+- `preflight/` — fresh R5A physical freeze against `2bcf33f` (environment
+  digest `sha256:b1158e4f…`, participant plan `sha256:0fe4c19e…`,
   ALL_PREFLIGHT_CHECKS_PASSED).
-- `r5b-env/` — epoch-layer frozen environment (`sha256:ddaf7dd6…`),
+- `r5b-env/` — epoch-layer frozen environment (`sha256:0fa73b47…`),
   participant plans, hardware and identity records.
 - `planning/` — requalified ranking evidence (9 records, dependency-scoped
   to the unchanged accepted R2/R4 runtime, per the accepted R5B pattern).
 - `lifecycle/` — the final serving report (sessions, epoch record with
   realization authorization, fencing injections, reclamation, final runtime
   report) and the client-side HTTP observable.
-- `regressions.json` — machine-readable regression summary (research 235,
-  benchmarks 563, server 583, xc focus 42, coordinator CPU-only 36; zero
+- `regressions.json` — machine-readable regression summary (research 242,
+  benchmarks 563, server 583, xc focus 49, coordinator CPU-only 165; zero
   failures).
 
-Physical producer SHA: `84e531971d6c02530fd0d541da3478df7510f263` (branch
+Physical producer SHA: `2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd` (branch
 `inferswarm-external-coordinator`, descended from the exact accepted
-Pre-R6 head `8cfcda4c`, superseding `df8a429e9110…` per above). Native
-extensions were verified present in-tree on both compute Nodes (unchanged
-by this producer, which touches only pure-Python control-plane modules).
+Pre-R6 head `8cfcda4c`, superseding `84e531971d6c…` which superseded
+`df8a429e9110…`, per above). Native extensions were verified present
+in-tree on both compute Nodes (rebuilt for this producer, which touches
+only pure-Python control-plane modules).
 
 ## Explicit non-claims
 

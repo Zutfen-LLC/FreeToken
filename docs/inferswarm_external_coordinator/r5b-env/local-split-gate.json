@@ -14,7 +14,7 @@
     }
   ],
   "participant_plan_digest": "sha256:6128dd6705d6d692df3d5fc11cc130dba5c010cfff40c0e4c5ec7c19e1b78ff0",
-  "producer_sha": "84e531971d6c02530fd0d541da3478df7510f263",
+  "producer_sha": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd",
   "representation_backend": {
     "backend": "accepted-r2-freetoken-captured-resident",
     "compatible": true,
