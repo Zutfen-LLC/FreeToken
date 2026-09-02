@@ -63,8 +63,13 @@
       "comparator": "EXACT_MATCH",
       "fallbacks": 0,
       "host_expert_fetches": 0,
+      "resident_source_accesses": 0,
+      "unexplained_persistent_host_mirror_bytes": 0,
+      "steady_model_state_movement_bytes": 0,
       "reconciled": true,
-      "unplanned_persistent_materializations": 0
+      "unplanned_persistent_materializations": 0,
+      "host_staging_current_bytes_at_boundary": 0,
+      "transient_staging_released_as_planned": true
     },
     "epoch_smoke": {
       "generations": 2,

@@ -46,8 +46,10 @@ An ordinary `/v1/chat/completions` request traversed the accepted OpenAI
 adapter, `GenSpec`, `TokenizeMsg`, epoch-aware controller, frozen plan,
 realization, and backend-native resident execution. It emitted the expected
 two-token prefix `[9764, 393]` (`"Let $"`) with exact comparator agreement,
-zero fallbacks, zero host expert fetches, matched realization, no unplanned
-persistent materialization, and released transient staging.
+zero fallbacks, zero unauthorized host expert/source fetches, zero unexplained
+persistent host-mirror bytes, zero steady-state model-state movement, matched
+realization, no unplanned persistent materialization, and released transient
+staging with zero current staging bytes at the lifecycle boundary.
 
 The focused two-epoch smoke used the accepted controller's existing
 `after_commit` research seam. It transitioned from the two-node resident plan
@@ -65,4 +67,3 @@ See `SUMMARY.json` for the machine-readable gate result, `CONFLICTS.md` for
 semantic resolutions, `TESTS.md` for regression classification,
 `NATIVE_REBUILD.md` for build provenance, and `MANIFEST.sha256` for retained
 artifact hashes.
-
