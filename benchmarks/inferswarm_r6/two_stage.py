@@ -80,6 +80,10 @@ def _stage_entry(*, role, adapter_data, model_path, connection):
     import traceback
 
     try:
+        from freetoken.distributed import set_tp_info, try_get_tp_info
+
+        if try_get_tp_info() is None:
+            set_tp_info(rank=0, size=1)
         runtime = GemmaDenseStage(
             role=role, model_path=model_path, adapter_data=dict(adapter_data)
         )
