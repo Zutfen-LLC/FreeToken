@@ -35,7 +35,7 @@ ROW_WIDTH = 3840
 BOUNDARY_CONTRACT = {
     "dtype": "bfloat16",
     "layout": "plane-major-contiguous",
-    "planes": 2,
+    "planes": 1,
     "row_width": ROW_WIDTH,
     "element_bytes": 2,
     "max_token_count": MAX_TOKEN_COUNT,
@@ -90,7 +90,7 @@ def serve(
         },
     )
 
-    buffer_bytes = 2 * MAX_TOKEN_COUNT * ROW_WIDTH * 2
+    buffer_bytes = MAX_TOKEN_COUNT * ROW_WIDTH * 2
     host_u8 = torch.empty(buffer_bytes, dtype=torch.uint8)
     stats = {"boundaries_served": 0, "activation_bytes_rx": 0, "result_bytes_tx": 0}
 
@@ -160,12 +160,12 @@ def serve(
                 checksum=payload_checksum(payload) if diagnostic else None,
                 payload=payload,
             )
-            host = (
+            hidden = (
                 torch.frombuffer(bytearray(payload), dtype=torch.uint8)
                 .view(torch.bfloat16)
-                .reshape(2, token_count, ROW_WIDTH)
+                .reshape(token_count, ROW_WIDTH)
+                .to(device="cuda:0", non_blocking=False)
             )
-            hidden = host[0].to(device="cuda:0", non_blocking=False)
             if header["operation"] == "prefill":
                 token, _logits = runtime.prefill(
                     None, hidden, int(header["position"])
@@ -189,7 +189,7 @@ def serve(
             frame = encode_frame(response)
             send_exact(conn, frame)
             stats["result_bytes_tx"] += len(frame)
-            del hidden, host
+            del hidden
     finally:
         try:
             Path(

@@ -189,12 +189,15 @@ def legal_candidates(model_path: str) -> dict[str, Any]:
             },
         ],
         "boundary_geometry": {
-            "planes": BOUNDARY_PLANES,
+            "planes": 1,
             "row_width": HIDDEN_SIZE,
             "dtype": "bfloat16",
-            "decode_bytes": BOUNDARY_PLANES * HIDDEN_SIZE * 2,
+            "note": "dense Gemma boundary carries the single residual-stream "
+            "hidden state (no separate residual plane; Qwen's 2-plane boundary "
+            "was a first-model artifact of its dual-stream blocks)",
+            "decode_bytes": HIDDEN_SIZE * 2,
             "prefill_chunk_rows": PREFILL_CHUNK,
-            "prefill_bytes": BOUNDARY_PLANES * PREFILL_CHUNK * HIDDEN_SIZE * 2,
+            "prefill_bytes": PREFILL_CHUNK * HIDDEN_SIZE * 2,
         },
     }
 
