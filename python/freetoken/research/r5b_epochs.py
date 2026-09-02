@@ -112,6 +112,7 @@ class Epoch:
     state: str = "ACTIVE"
     retired_at_ns: int | None = None
     reclaimed_at_ns: int | None = None
+    reclamation: Mapping[str, Any] | None = None
 
 
 def _now() -> int:
@@ -332,6 +333,9 @@ class EpochServingController:
         epoch.state = "RETIRED"
         epoch.retired_at_ns = _now()
         epoch.runtime.close()
+        epoch.reclamation = deepcopy(
+            dict(getattr(epoch.runtime, "reclamation_report", {}) or {})
+        )
         epoch.state = "RECLAIMED"
         epoch.reclaimed_at_ns = _now()
 
@@ -701,6 +705,7 @@ class EpochServingController:
                     "state": item.state,
                     "retired_at_ns": item.retired_at_ns,
                     "reclaimed_at_ns": item.reclaimed_at_ns,
+                    "reclamation": deepcopy(dict(item.reclamation or {})),
                     "reconciliation": deepcopy(dict(item.reconciliation)),
                     "execution_plan": deepcopy(dict(item.execution_plan)),
                     "planner_decision": deepcopy(dict(item.planner_decision)),

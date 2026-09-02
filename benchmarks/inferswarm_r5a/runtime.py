@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 import subprocess
 from copy import deepcopy
 from pathlib import Path
@@ -83,6 +84,7 @@ class R2ServingRuntime:
         self._final_reports: dict[str, Any] | None = None
         self._last_reports: dict[str, Any] | None = None
         self._failed_resources: list[dict[str, Any]] = []
+        self.reclamation_report: dict[str, Any] = {}
 
     def generate(
         self,
@@ -158,6 +160,17 @@ class R2ServingRuntime:
         self._final_reports = deepcopy(self._last_reports)
         self._closed = True
         self._coordinator.shutdown()
+        processes = getattr(self._coordinator, "processes", {})
+        self.reclamation_report = {
+            "kind": "accepted-r2-child-process-reclamation",
+            "participant_exit_codes": {
+                role: process.exitcode
+                for role, process in processes.items()
+            },
+            "all_participants_stopped": all(
+                not process.is_alive() for process in processes.values()
+            ),
+        }
 
 
 class R4ServingRuntime:
@@ -234,6 +247,7 @@ class R4ServingRuntime:
         )
         self._sessions: list[dict[str, Any]] = []
         self._closed = False
+        self.reclamation_report: dict[str, Any] = {}
 
     def generate(
         self,
@@ -276,8 +290,30 @@ class R4ServingRuntime:
         if self._closed:
             return
         self._closed = True
+        before = {
+            "allocated_bytes": int(self._torch.cuda.memory_allocated(0)),
+            "reserved_bytes": int(self._torch.cuda.memory_reserved(0)),
+        }
         self._coordinator.close()
         self._unregister(self._host_u8)
+        # The accepted R4 service historically ended with its process. R5B
+        # reuses it inside a longer-lived host process, so all owning references
+        # must be dropped before the replacement can materialize on GPU A0.
+        self._host_u8 = None
+        self._coordinator = None
+        self._backend_runtime = None
+        self._realized = None
+        gc.collect()
+        self._torch.cuda.empty_cache()
+        self._torch.cuda.synchronize(0)
+        self.reclamation_report = {
+            "kind": "accepted-r4-in-process-materialization-reclamation",
+            "before": before,
+            "after": {
+                "allocated_bytes": int(self._torch.cuda.memory_allocated(0)),
+                "reserved_bytes": int(self._torch.cuda.memory_reserved(0)),
+            },
+        }
 
 
 def current_head(repository_root: Path) -> str:
