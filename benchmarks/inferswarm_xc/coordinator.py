@@ -33,6 +33,26 @@ from .cpu_only import load_json_with_sha, printable_increment, write_json_with_s
 DEFAULT_MAX_OUTPUT_TOKENS = 32768
 
 
+def _require_clean_exact_source(repository_root: Path, expected_sha: str) -> None:
+    """Refuse to coordinate from a drifted or dirty source tree (CPU-only).
+
+    Mirrors the accepted R5A/R5B ``require_clean_exact_source`` gate without
+    importing the torch-carrying benchmarks module.
+    """
+    import subprocess
+
+    actual = subprocess.check_output(
+        ["git", "-C", str(repository_root), "rev-parse", "HEAD"], text=True
+    ).strip()
+    if actual != expected_sha:
+        raise RuntimeError(f"source SHA drift: {actual} != frozen {expected_sha}")
+    status = subprocess.check_output(
+        ["git", "-C", str(repository_root), "status", "--porcelain"], text=True
+    )
+    if status:
+        raise RuntimeError("external-Coordinator serving refuses a dirty source tree")
+
+
 def _ensure_repo_on_path() -> Path:
     repo_root = Path(__file__).resolve().parents[2]
     for entry in (str(repo_root / "benchmarks"),):
@@ -126,7 +146,11 @@ class CoordinatorRuntime:
         self.tokenizer_path = str(config["tokenizer_path"])
         self.node_agent_host = str(config["node_agent_host"])
         self.node_agent_port = int(config["node_agent_port"])
+        self.repository_root = Path(str(config["repository_root"])).resolve()
         environment = load_json_with_sha(_resolve(base, str(config["environment"])))
+        _require_clean_exact_source(
+            self.repository_root, environment["implementation_commit"]
+        )
         from benchmarks.inferswarm_r4.r4_plan import load_r4_plan
 
         r4_plan = load_r4_plan(Path(_resolve(base, str(config["participant_plan"]))))
@@ -235,12 +259,54 @@ class CoordinatorRuntime:
                 }
             )
 
+        inject_after_step = body.get("inferswarm_fencing_arm_after_step")
+        injections: list[dict[str, Any]] = []
+
+        def after_commit(step: int, ctrl: Any) -> None:
+            # Controlled negative arm: after one real authorized operation
+            # commits, route a stale/duplicate result carrying an already-used
+            # position and a retired epoch id through the same acceptance path
+            # and prove mechanical rejection without mutating the ledger.
+            if inject_after_step is None or step != int(inject_after_step):
+                return
+            ledger = ctrl._sessions.get(session_id)
+            if ledger is None:
+                return
+            active = ctrl.active_epoch
+            injections.append(
+                {
+                    "injection": "CONTROLLED_LATE_REAL_SERVING_RESULT",
+                    "accepted": ctrl.inject_late_result(
+                        epoch_id=active.epoch_id,
+                        plan_digest=active.execution_plan["digest"],
+                        session=ledger,
+                        position=ledger.committed_position - 1,  # duplicate
+                        token_id=int(events[-1]["token_id"]) if events else -1,
+                    ),
+                    "reason_attempted": "duplicate already-committed position",
+                }
+            )
+            injections.append(
+                {
+                    "injection": "CONTROLLED_STALE_EPOCH_RESULT",
+                    "accepted": ctrl.inject_late_result(
+                        epoch_id=active.epoch_id + "-retired",
+                        plan_digest=active.execution_plan["digest"],
+                        session=ledger,
+                        position=ledger.committed_position,
+                        token_id=424242,
+                    ),
+                    "reason_attempted": "retired/stale epoch identity",
+                }
+            )
+
         completed = self.controller.serve_tokens(
             session_id=session_id,
             prompt_token_ids=prompt_ids,
             max_new_tokens=maximum,
             sampling_inputs=sampling,
             on_token=on_token,
+            after_commit=after_commit if inject_after_step is not None else None,
         )
         all_ids = prompt_ids + [event["token_id"] for event in events]
         tail = self._decode_incremental(session_id, all_ids, finished=True)
@@ -254,6 +320,7 @@ class CoordinatorRuntime:
             "committed_plan_digests": completed["committed_plan_digests"],
             "request_wall_ns": time.time_ns() - started,
             "token_events": events,
+            "fencing_arm_injections": injections,
         }
         self.request_log.append(record)
         self._decode_states.pop(session_id, None)
