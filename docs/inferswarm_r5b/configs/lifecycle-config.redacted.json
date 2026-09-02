@@ -1,0 +1,14 @@
+{
+  "repository_root": "/home/zutfen/FreeToken-r5b",
+  "environment": "../preflight/frozen-environment.json",
+  "participant_plan": "../preflight/participant-plan.json",
+  "local_participant_plan": "docs/inferswarm_r2/frozen-plan.json",
+  "serving_evidence": "../planning/requalified-r5a-serving-evidence.json",
+  "report_out": "../lifecycle/serving-report.json",
+  "event_socket": "/tmp/inferswarm-r5b-events.sock",
+  "event_authentication": "HMAC-SHA256 secret withheld; execution file mode 0600",
+  "peer_host": "10.0.0.219",
+  "peer_port": 18485,
+  "objective": "ttft_ms",
+  "diagnostic": true
+}

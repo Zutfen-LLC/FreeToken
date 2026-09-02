@@ -1,0 +1,93 @@
+{
+  "content": "",
+  "inter_output_gaps_ns": [
+    1399389477,
+    72192927906,
+    57112854253,
+    1328735811,
+    1348055826,
+    72064212621,
+    2088638400
+  ],
+  "maximum_client_visible_inter_token_gap_ns": 72192927906,
+  "output_event_times_ns": [
+    49536055333284,
+    49537454722761,
+    49609647650667,
+    49666760504920,
+    49668089240731,
+    49669437296557,
+    49741501509178,
+    49743590147578
+  ],
+  "reasoning_content": "Let $N = 97_b",
+  "request_body": {
+    "chat_template_kwargs": {
+      "enable_thinking": true
+    },
+    "ignore_eos": true,
+    "max_tokens": 8,
+    "messages": [
+      {
+        "content": "Find the sum of all integer bases $b>9$ for which $17_b$ is a divisor of $97_b.$\nPlease reason step by step, and put your final answer within \\boxed{}.",
+        "role": "user"
+      }
+    ],
+    "model": "nvidia/Qwen3.6-35B-A3B-NVFP4",
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    },
+    "temperature": 0.0,
+    "top_k": -1,
+    "top_p": 1.0
+  },
+  "request_ended_ns": 49743639391619,
+  "request_entry_contract": "ordinary FreeToken OpenAI adapter -> GenSpec -> TokenizeMsg -> epoch-aware controller",
+  "request_path": "/v1/chat/completions",
+  "request_started_ns": 49534010598610,
+  "request_wall_ns": 209628793009,
+  "resource_events_sent": [
+    {
+      "payload": {
+        "event_id": "r5b-scale-up",
+        "expected_remaining_requests": 64,
+        "inject_late_result": true,
+        "kind": "AVAILABLE",
+        "resource_id": "gpu.node-a.1",
+        "resource_stability_confidence": 1.0,
+        "trusted_history_available": true
+      },
+      "sent_at_ns": 49536055654195
+    },
+    {
+      "payload": {
+        "event_id": "r5b-scale-down-loss",
+        "expected_remaining_requests": 64,
+        "kind": "PARTICIPANT_LOST",
+        "resource_id": "gpu.node-a.1",
+        "resource_stability_confidence": 1.0,
+        "trusted_history_available": true
+      },
+      "replacement_participant_launch_started_at_ns": null,
+      "sent_at_ns": 49609647864403
+    },
+    {
+      "payload": {
+        "event_id": "r5b-scale-back-up",
+        "expected_remaining_requests": 64,
+        "kind": "RETURNED",
+        "resource_id": "gpu.node-a.1",
+        "resource_stability_confidence": 1.0,
+        "trusted_history_available": true
+      },
+      "sent_at_ns": 49668089452558
+    }
+  ],
+  "schema": "inferswarm.r5b.http-lifecycle/1",
+  "usage": {
+    "completion_tokens": 8,
+    "prompt_tokens": 54,
+    "total_tokens": 62
+  }
+}

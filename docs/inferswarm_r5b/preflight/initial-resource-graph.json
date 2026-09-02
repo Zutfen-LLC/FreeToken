@@ -1,0 +1,12 @@
+{
+  "availability": {
+    "gpu.node-a.0": "AVAILABLE",
+    "gpu.node-a.1": "UNAVAILABLE_PARTICIPANT_NOT_STARTED",
+    "gpu.node-b.0": "AVAILABLE"
+  },
+  "environment_digest": "sha256:bc37a987b25f22d6100f2ed6a5d8f8b30c73cf11f98916446cc4dcdbe3cad121",
+  "gpu_a1_execution_participant_started": false,
+  "hidden_gpu_a1_runtime_use": false,
+  "producer_sha": "7dd945a67c04198ec2d9afe782a39c90e8141f5e",
+  "schema": "inferswarm.r5b.initial-resource-graph/1"
+}

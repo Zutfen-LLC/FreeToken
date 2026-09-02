@@ -1,0 +1,31 @@
+{
+  "schema": "inferswarm.r5b.test-summary/1",
+  "suites": {
+    "benchmarks": {
+      "expected_passed": 563,
+      "passed": true,
+      "warning_count": 0
+    },
+    "r5b_negative_arms": {
+      "cases": [
+        "failed preparation retains old authority",
+        "unrecoverable mutable state fails closed",
+        "retired result cannot change state or accounting",
+        "participant loss publication is atomic"
+      ],
+      "expected_passed": 4,
+      "passed": true,
+      "warning_count": 0
+    },
+    "research": {
+      "expected_passed": 199,
+      "passed": true,
+      "warning_count": 0
+    },
+    "server": {
+      "expected_passed": 581,
+      "passed": true,
+      "warning_count": 1
+    }
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "schema": "inferswarm.r5b.classified-anomalies/1",
+  "canonical_physical_producer": "7dd945a67c04198ec2d9afe782a39c90e8141f5e",
+  "records": [
+    {
+      "producer": "84402d9a33ada9a2e8684a19a16b8721dab25a9c",
+      "classification": "implementation assumption",
+      "gate": "accepted R2/R4 statistics require one decode interval; a one-token internal request has no median decode sample",
+      "resolution": "request two tokens, authorize only step zero, and explicitly discard the second speculative token"
+    },
+    {
+      "producer": "3848972aa7422c4aff03c3d8ee959867350f7c0a",
+      "classification": "runtime lifecycle defect",
+      "gate": "accepted R4 process-lifetime materializations remained resident and caused same-node realization OOM",
+      "resolution": "add explicit R4 ownership reclamation"
+    },
+    {
+      "producer": "17c0c94ebc1e05f7af0b17fe6fb5d4c3ed70b4a7",
+      "classification": "runtime lifecycle defect",
+      "gate": "process-global runtime context retained the reclaimed R4 allocation graph",
+      "resolution": "validate exact ownership and clear the global context and graph references before reclamation"
+    },
+    {
+      "producer": "70846c3a7fb879c69ba57f99a4900a2a3aea19b3",
+      "classification": "controller concurrency race",
+      "gate": "participant-loss publication raced physical worker termination and retirement, producing a broken pipe",
+      "resolution": "make event publication and controlled physical loss atomic with respect to event processing"
+    },
+    {
+      "producer": "ff4a9394812c351bf6533c2eebf5441895dcce11",
+      "classification": "accepted runtime lifecycle mismatch",
+      "gate": "a second R4 realization in one host process observed CUDA graph residency 17043456 bytes above the immutable plan and was correctly rejected",
+      "resolution": "run the unchanged accepted R4 runtime in a fresh epoch-lifetime child process"
+    },
+    {
+      "producer": "3274e2055476f795f4d25c3754a4db7dce3e3816",
+      "classification": "successful superseded proof",
+      "gate": "physical lifecycle passed but retired final runtime safety counters and explicit realization timestamps were not yet retained",
+      "resolution": "repeat under a new producer with complete final runtime and phase evidence"
+    },
+    {
+      "classification": "preflight operator-input rejection",
+      "gate": "two manually mistyped nonexistent producer SHAs were rejected before physical artifacts were accepted",
+      "resolution": "derive the final producer argument directly from git rev-parse HEAD"
+    }
+  ]
+}
