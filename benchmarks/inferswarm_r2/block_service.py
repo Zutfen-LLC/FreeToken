@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import signal
 import subprocess
 import time
 from multiprocessing import shared_memory
@@ -45,6 +46,9 @@ def service_entry(
     host_release_barrier=None,
 ) -> None:
     # The process is spawned before CUDA exists and pins its sole visible device by UUID.
+    # The host serving process owns terminal shutdown.  Children must remain alive
+    # long enough to emit final accounting and accept the coordinator's SHUTDOWN.
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
     os.environ["CUDA_VISIBLE_DEVICES"] = stable_gpu_uuid
     import torch
     from freetoken.research.r1_frozen_plan import realize_frozen_plan
