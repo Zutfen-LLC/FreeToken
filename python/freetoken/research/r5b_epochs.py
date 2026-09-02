@@ -114,6 +114,8 @@ class Epoch:
     reclaimed_at_ns: int | None = None
     reclamation: Mapping[str, Any] | None = None
     runtime_sessions: list[Mapping[str, Any]] = field(default_factory=list)
+    final_runtime_report: Mapping[str, Any] | None = None
+    runtime_report_failure: str | None = None
 
 
 def _now() -> int:
@@ -356,6 +358,12 @@ class EpochServingController:
     def _retire_and_reclaim(self, epoch: Epoch) -> None:
         epoch.state = "RETIRED"
         epoch.retired_at_ns = _now()
+        try:
+            epoch.final_runtime_report = deepcopy(dict(epoch.runtime.report()))
+        except Exception as exc:
+            # A physically failed participant may make its final report
+            # unavailable. Preserve that fact while still reclaiming it.
+            epoch.runtime_report_failure = f"{type(exc).__name__}: {exc}"
         epoch.runtime.close()
         epoch.reclamation = deepcopy(
             dict(getattr(epoch.runtime, "reclamation_report", {}) or {})
@@ -501,6 +509,9 @@ class EpochServingController:
         cutover_started = _now()
         if not overlap:
             self._retire_and_reclaim(old)
+            record["old_epoch_retired_at_ns"] = old.retired_at_ns
+            record["old_epoch_reclaimed_at_ns"] = old.reclaimed_at_ns
+            record["replacement_realization_started_at_ns"] = _now()
             try:
                 realized = self._realize(replacement_plan)
             except Exception as exc:
@@ -516,6 +527,7 @@ class EpochServingController:
                 session.failed = True
                 session.failure_reason = record["failure_reason"]
                 raise ActiveEpochLostError(record["failure_reason"]) from exc
+            record["replacement_realization_ended_at_ns"] = _now()
         assert realized is not None
         reconciliation = reconcile_realization(replacement_plan, realized.observation)
         self._generation += 1
@@ -536,6 +548,8 @@ class EpochServingController:
             self._epochs.append(replacement)
         if overlap:
             self._retire_and_reclaim(old)
+            record["old_epoch_retired_at_ns"] = old.retired_at_ns
+            record["old_epoch_reclaimed_at_ns"] = old.reclaimed_at_ns
         ended = _now()
         replay_range = [0, session.committed_position]
         record.update(
@@ -732,6 +746,10 @@ class EpochServingController:
                     "reclaimed_at_ns": item.reclaimed_at_ns,
                     "reclamation": deepcopy(dict(item.reclamation or {})),
                     "runtime_sessions": deepcopy(item.runtime_sessions),
+                    "final_runtime_report": deepcopy(
+                        dict(item.final_runtime_report or {})
+                    ),
+                    "runtime_report_failure": item.runtime_report_failure,
                     "reconciliation": deepcopy(dict(item.reconciliation)),
                     "execution_plan": deepcopy(dict(item.execution_plan)),
                     "planner_decision": deepcopy(dict(item.planner_decision)),
