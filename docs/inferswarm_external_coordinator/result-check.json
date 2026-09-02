@@ -1,0 +1,54 @@
+{
+  "schema": "inferswarm.xc.result/1",
+  "gate": "EXTERNAL_COORDINATOR_SEPARATION",
+  "implementation_producer_sha": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd",
+  "environment_digest": "sha256:0fa73b4703a3c31143fac3dcb2dfe22542053f048bb526dd309476dff0235893",
+  "committed_token_ids": [
+    9764,
+    393,
+    45,
+    283,
+    220,
+    24,
+    22,
+    853
+  ],
+  "expected_token_ids": [
+    9764,
+    393,
+    45,
+    283,
+    220,
+    24,
+    22,
+    853
+  ],
+  "checks": {
+    "exact_token_equality": true,
+    "single_epoch_attribution": true,
+    "single_plan_attribution": true,
+    "reconciliation_matched": true,
+    "session_not_failed": true,
+    "fencing_arm_rejected_all": true,
+    "fencing_rejections_retained": true,
+    "rejection_reasons": [
+      "NON_NEXT_COMMIT_POSITION",
+      "RETIRED_OR_SUPERSEDED_EPOCH"
+    ],
+    "epoch_reclaimed_after_shutdown": true,
+    "reclamation_recorded": true,
+    "final_runtime_report_retained": true,
+    "usage_counts": {
+      "runtime_generate_calls": 8
+    }
+  },
+  "passed": true,
+  "non_claims": [
+    "no Coordinator HA, election, consensus, or term fencing",
+    "no public Node-agent API or production wire protocol",
+    "no production daemon",
+    "no Gemma 4 support",
+    "no R6 architecture claim",
+    "no new Qwen placement/performance claims"
+  ]
+}

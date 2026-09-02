@@ -1,0 +1,75 @@
+{
+ "schema": "inferswarm.xc.anomaly-provenance/1",
+ "gate": "EXTERNAL_COORDINATOR_SEPARATION",
+ "superseded_physical_producer": {
+  "producer_sha": "df8a429e91102494fd04df04cf8c56b9b92855f5",
+  "evidence_commit": "861a404",
+  "what_it_proved": "physical Coordinator separation: CPU-only control plane on inferswarm00, remote realization/execution on inferswarm01/03, exact reference tokens, fencing, reclamation",
+  "why_superseded": "its remote wire epoch identity was plan-derived (remote-realization:<plan-digest-prefix>, derived independently on both sides) rather than activation-derived Coordinator epoch/generation authority; the same plan digest could therefore imply the same remote epoch authority, violating the requirement that every activation carry distinct epoch/generation authority",
+  "evidence_disposition": "retained in git history (commit 861a404); not deleted; not citable as the final canonical proof"
+ },
+ "corrected_physical_producer": {
+  "producer_sha": "84e531971d6c02530fd0d541da3478df7510f263",
+  "base": "8cfcda4c44065ceba4230dc548a12696093d5177 (accepted Pre-R6 head)",
+  "design": "realization-authorization record allocated by EpochServingController before realization (prospective authoritative epoch id, prospective generation, plan digest, unique realization-attempt nonce); passed to the realizer; adopted verbatim by the activated Epoch; failed/superseded/retired attempt identities are dead forever; wire binds epoch/generation/realization identity on REALIZE/GENERATE/REPORT/CLOSE; Node agent consumes (never derives) the Coordinator identity and refuses retired authorizations",
+  "canonical_run": {
+   "wire_epoch_id": "research-generation-0:cbba220611a7",
+   "realization_id": "realization-1-18d1975ba81bedba",
+   "committed_tokens": [
+    9764,
+    393,
+    45,
+    283,
+    220,
+    24,
+    22,
+    853
+   ],
+   "reconciliation_matched": true,
+   "fencing_rejections": [
+    "NON_NEXT_COMMIT_POSITION",
+    "RETIRED_OR_SUPERSEDED_EPOCH"
+   ],
+   "epoch_state_after_shutdown": "RECLAIMED",
+   "reclamation_kind": "remote-node-agent-epoch-close",
+   "gpu_census": "both nodes 1 MiB used, zero compute processes",
+   "coordinator_purity": "no /dev/nvidia*, no nvidia-smi, no nvidia kernel modules, 32 MB tokenizer metadata, zero .safetensors"
+  },
+  "status": "superseded by 2bcf33f (result-identity validation gap); evidence retained in git history (commit 1bc8bdf)"
+ },
+ "historical_r5_evidence_rerun": false,
+ "note": "Historical R5 evidence was not rerun, per gate instructions.",
+ "final_physical_producer": {
+  "producer_sha": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd",
+  "base": "8cfcda4c44065ceba4230dc548a12696093d5177 (accepted Pre-R6 head)",
+  "why_the_correction_was_needed": "the corrected remote wire bound Coordinator-owned epoch/generation/realization/plan on both ends, but successful result-side identity was incomplete: the Node agent echoed session_id but not position, and RemoteEpochRuntime._request validated neither the returned scope id, session id, nor execution position \u2014 a syntactically valid response attributed to the wrong session or position would have been accepted",
+  "design": "node agent echoes the request position on every successful response; coordinator response validation compares the returned identity against the exact request just sent (protocol, scope, epoch/generation/realization/plan, operation, session/position where applicable); GENERATE additionally verifies the runtime result session identity; any mismatch fails closed before on_token or result commitment, with no reliance on TCP ordering",
+  "canonical_run": {
+   "wire_epoch_id": "research-generation-0:e26ccaf0c230",
+   "realization_id": "realization-1-18d19bde41ebefa9",
+   "committed_tokens": [
+    9764,
+    393,
+    45,
+    283,
+    220,
+    24,
+    22,
+    853
+   ],
+   "reconciliation_matched": true,
+   "fencing_rejections": [
+    "NON_NEXT_COMMIT_POSITION",
+    "RETIRED_OR_SUPERSEDED_EPOCH"
+   ],
+   "epoch_state_after_shutdown": "RECLAIMED",
+   "reclamation_kind": "remote-node-agent-epoch-close",
+   "gpu_census": "both nodes 1 MiB used, zero compute processes",
+   "coordinator_purity": "xc control-plane modules import torch-free on inferswarm00"
+  },
+  "regression_of_record": {
+   "claim": "A correctness-bearing remote result must be attributable to the authorized session/request and expected execution position",
+   "test": "tests/research/test_xc_result_identity.py"
+  }
+ }
+}

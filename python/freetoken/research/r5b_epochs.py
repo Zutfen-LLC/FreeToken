@@ -8,6 +8,7 @@ resource-event replanning, activation, retirement, and late-result fencing.
 
 from __future__ import annotations
 
+import inspect
 import threading
 import time
 from collections import deque
@@ -109,6 +110,7 @@ class Epoch:
     runtime: EpochRuntime
     reconciliation: Mapping[str, Any]
     activated_at_ns: int
+    realization_authorization: Mapping[str, Any] | None = None
     state: str = "ACTIVE"
     retired_at_ns: int | None = None
     reclaimed_at_ns: int | None = None
@@ -120,6 +122,31 @@ class Epoch:
 
 def _now() -> int:
     return time.perf_counter_ns()
+
+
+_REALIZER_AUTH_PARAM = "realization_authorization"
+
+
+def _realizer_accepts_authorization(
+    realizer: Callable[..., RealizedStaticPlan]
+) -> bool:
+    """Does this realizer consume the Controller's activation authorization?
+
+    The generic realizer contract stays ``realizer(execution_plan)``; a
+    realizer that additionally consumes the Controller-owned realization
+    authorization declares the keyword explicitly.  Detection is by exact
+    parameter name only, at call time, so the contract stays research-internal
+    and unfrozen.
+    """
+    try:
+        parameters = inspect.signature(realizer).parameters
+    except (TypeError, ValueError):  # builtins / C callables without signatures
+        return False
+    parameter = parameters.get(_REALIZER_AUTH_PARAM)
+    return parameter is not None and parameter.kind in (
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        inspect.Parameter.KEYWORD_ONLY,
+    )
 
 
 def _event_copy(event: Mapping[str, Any]) -> dict[str, Any]:
@@ -180,27 +207,86 @@ class EpochServingController:
         self._completed_sessions: set[int] = set()
         self._generation = 0
         self._runtime_session_sequence = 0
+        self._realization_sequence = 0
+        self._active_realization_id: str | None = None
+        self._dead_realization_ids: dict[str, str] = {}
         self._closed = False
         decision, execution_plan = self._plan(
             initial_snapshot, override_candidate_id=initial_override_candidate_id
         )
-        realized = self._realize(execution_plan)
+        authorization = self._allocate_realization_authorization(
+            execution_plan["digest"], generation=0
+        )
+        realized = self._realize(execution_plan, authorization)
         activated = _now()
         self._active = Epoch(
-            epoch_id=self._epoch_id(self._generation, execution_plan["digest"]),
-            generation=self._generation,
+            epoch_id=str(authorization["epoch_id"]),
+            generation=int(authorization["generation"]),
             execution_plan=execution_plan,
             planner_decision=decision,
             resource_snapshot=initial_snapshot,
             runtime=realized.runtime,
             reconciliation=reconcile_realization(execution_plan, realized.observation),
             activated_at_ns=activated,
+            realization_authorization=deepcopy(dict(authorization)),
         )
         self._epochs.append(self._active)
+        # The initial activation's realization identity is live: the report's
+        # active_realization_id must reflect the generation-0 activation, not
+        # only later replacements.
+        self._adopt_realization_authorization(authorization)
 
     @staticmethod
     def _epoch_id(generation: int, plan_digest: str) -> str:
         return f"research-generation-{generation}:{plan_digest.split(':')[-1][:12]}"
+
+    def _allocate_realization_authorization(
+        self, plan_digest: str, *, generation: int | None = None
+    ) -> dict[str, Any]:
+        """Authorize one realization attempt before any heavyweight work.
+
+        Execution Plan identity and activation/epoch identity are separate
+        concepts: the same plan may legally be activated again in a later
+        generation, and every activation must carry distinct epoch/generation
+        authority.  The prospective authoritative epoch identity is therefore
+        allocated by the Controller *before* realization, handed to the
+        realizer as the activation authorization, and — for a successful
+        realization — used verbatim by the subsequently activated Epoch.
+
+        A unique realization-attempt identity accompanies the prospective
+        epoch/generation so a failed or superseded attempt is dead forever:
+        the same plan digest (or even the same generation slot, when a failed
+        attempt leaves a generation unused) can never re-authorize under an
+        old correctness-bearing attempt identity.  Contiguous activation
+        generations are preserved; attempt uniqueness lives in the nonce.
+        """
+        with self._lock:
+            if generation is None:
+                generation = self._generation + 1
+            self._realization_sequence += 1
+            attempt = self._realization_sequence
+        return {
+            "schema": "inferswarm.r5b.realization-authorization/1",
+            "epoch_id": self._epoch_id(generation, plan_digest),
+            "generation": generation,
+            "plan_digest": plan_digest,
+            "realization_id": f"realization-{attempt}-{time.time_ns():x}",
+            "attempt": attempt,
+            "allocated_at_ns": _now(),
+        }
+
+    def _release_realization_authorization(
+        self, authorization: Mapping[str, Any], *, reason: str
+    ) -> None:
+        """Retire an authorization that will never back a live epoch."""
+        with self._lock:
+            self._dead_realization_ids[str(authorization["realization_id"])] = reason
+
+    def _adopt_realization_authorization(
+        self, authorization: Mapping[str, Any]
+    ) -> None:
+        with self._lock:
+            self._active_realization_id = str(authorization["realization_id"])
 
     def _plan(
         self,
@@ -241,12 +327,44 @@ class EpochServingController:
         )
         return decision, execution_plan
 
-    def _realize(self, execution_plan: Mapping[str, Any]) -> RealizedStaticPlan:
-        realized = self.realizer(execution_plan)
+    def _realize(
+        self,
+        execution_plan: Mapping[str, Any],
+        authorization: Mapping[str, Any] | None = None,
+    ) -> RealizedStaticPlan:
+        if authorization is None:
+            authorization = self._allocate_realization_authorization(
+                execution_plan["digest"]
+            )
+        elif (
+            authorization.get("plan_digest") != execution_plan["digest"]
+            or authorization.get("epoch_id")
+            != self._epoch_id(int(authorization["generation"]), execution_plan["digest"])
+        ):
+            raise ValueError(
+                "realization authorization does not bind the execution plan"
+            )
+        call = self.realizer
+        try:
+            if _realizer_accepts_authorization(call):
+                realized = call(execution_plan, realization_authorization=authorization)
+            else:
+                realized = call(execution_plan)
+        except BaseException:
+            # The attempt identity is dead: it must never authorize remote
+            # correctness-bearing work later, and a later attempt of the same
+            # plan/generation slot gets a fresh unique identity.
+            self._release_realization_authorization(
+                authorization, reason="realization failed"
+            )
+            raise
         try:
             reconcile_realization(execution_plan, realized.observation)
         except Exception:
             realized.runtime.close()
+            self._release_realization_authorization(
+                authorization, reason="reconciliation failed"
+            )
             raise
         return realized
 
@@ -358,6 +476,10 @@ class EpochServingController:
     def _retire_and_reclaim(self, epoch: Epoch) -> None:
         epoch.state = "RETIRED"
         epoch.retired_at_ns = _now()
+        if epoch.realization_authorization is not None:
+            self._release_realization_authorization(
+                epoch.realization_authorization, reason="epoch retired"
+            )
         try:
             epoch.final_runtime_report = deepcopy(dict(epoch.runtime.report()))
         except Exception as exc:
@@ -484,9 +606,15 @@ class EpochServingController:
 
         overlap = bool(policy_decision.get("overlap_preparation", False))
         realized: RealizedStaticPlan | None = None
+        replacement_authorization = self._allocate_realization_authorization(
+            replacement_plan["digest"]
+        )
+        record["realization_authorization"] = deepcopy(
+            dict(replacement_authorization)
+        )
         try:
             if overlap:
-                realized = self._realize(replacement_plan)
+                realized = self._realize(replacement_plan, replacement_authorization)
             record["preparation_ended_at_ns"] = _now()
             record["preparation_mode"] = (
                 "MAKE_BEFORE_BREAK" if overlap else "SAFE_INTERRUPTED_COLD_CUTOVER"
@@ -513,7 +641,9 @@ class EpochServingController:
             record["old_epoch_reclaimed_at_ns"] = old.reclaimed_at_ns
             record["replacement_realization_started_at_ns"] = _now()
             try:
-                realized = self._realize(replacement_plan)
+                realized = self._realize(
+                    replacement_plan, replacement_authorization
+                )
             except Exception as exc:
                 record.update(
                     {
@@ -530,16 +660,18 @@ class EpochServingController:
             record["replacement_realization_ended_at_ns"] = _now()
         assert realized is not None
         reconciliation = reconcile_realization(replacement_plan, realized.observation)
-        self._generation += 1
+        self._generation = int(replacement_authorization["generation"])
+        self._adopt_realization_authorization(replacement_authorization)
         replacement = Epoch(
-            epoch_id=self._epoch_id(self._generation, replacement_plan["digest"]),
-            generation=self._generation,
+            epoch_id=str(replacement_authorization["epoch_id"]),
+            generation=int(replacement_authorization["generation"]),
             execution_plan=replacement_plan,
             planner_decision=decision,
             resource_snapshot=snapshot,
             runtime=realized.runtime,
             reconciliation=reconciliation,
             activated_at_ns=_now(),
+            realization_authorization=deepcopy(dict(replacement_authorization)),
         )
         with self._lock:
             if overlap:
@@ -738,6 +870,9 @@ class EpochServingController:
                     "generation": item.generation,
                     "plan_digest": item.execution_plan["digest"],
                     "candidate_id": item.execution_plan["candidate_id"],
+                    "realization_authorization": deepcopy(
+                        dict(item.realization_authorization or {})
+                    ),
                     "resource_snapshot_digest": item.resource_snapshot["digest"],
                     "planner_decision_digest": item.planner_decision["digest"],
                     "activated_at_ns": item.activated_at_ns,
@@ -762,6 +897,9 @@ class EpochServingController:
                 "active_epoch_id": active.epoch_id if active.state == "ACTIVE" else None,
                 "active_plan_digest": active.execution_plan["digest"],
                 "single_mutable_authority": active.state == "ACTIVE",
+                "active_realization_id": self._active_realization_id,
+                "realization_attempts": self._realization_sequence,
+                "dead_realization_ids": deepcopy(self._dead_realization_ids),
                 "epochs": epochs,
                 "resource_events": deepcopy(self._event_audit),
                 "transitions": deepcopy(self._transitions),

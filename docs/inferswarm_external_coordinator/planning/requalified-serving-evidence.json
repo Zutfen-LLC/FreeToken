@@ -1,0 +1,358 @@
+{
+  "claim_scope": "accepted context-specific R5A ranking evidence, dependency-scoped to the unchanged physical R2/R4 runtime; not new measurements",
+  "digest": "sha256:097e0d7ef0c93506615f8c55c881362bf1bbf2c814338363a064bc85f21181c8",
+  "environment_digest": "sha256:0fa73b4703a3c31143fac3dcb2dfe22542053f048bb526dd309476dff0235893",
+  "implementation_commit": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd",
+  "records": [
+    {
+      "confidence": "DEPENDENCY_SCOPED_REQUALIFICATION",
+      "evidence_class": "MEASURED_R5A_MATCHED_HTTP_SERVING_REQUALIFIED",
+      "evidence_identity": "15fb7bec3283d71bde0660c839425b9ee5694fdf0be902069d6b6cd7b015ed7c",
+      "freshness": "ACCEPTED_COMPATIBLE",
+      "id": "r5b-requalified-r5a-source-backed-single-resource-clean-http-ttft_ms",
+      "mapping": {
+        "whole-model": "gpu.node-a.0"
+      },
+      "measurement_status": "MEASURED",
+      "metric": {
+        "name": "ttft_ms",
+        "statistic": "median",
+        "unit": "ms",
+        "value": 2630.5871575
+      },
+      "producer_identity": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd",
+      "provenance": {
+        "accepted_measurement": {
+          "arm_id": "source-backed-single-resource-clean-http",
+          "artifact_sha256": "15fb7bec3283d71bde0660c839425b9ee5694fdf0be902069d6b6cd7b015ed7c"
+        },
+        "accepted_r5a_producer_identity": "60ea7bd9841a636a26bfe7f140dba04b0a562f03",
+        "accepted_r5a_record_id": "r5a-source-backed-single-resource-clean-http-ttft_ms",
+        "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
+        "numeric_value_remeasured": false,
+        "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+        "requalification_producer_sha": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd"
+      },
+      "required_context": {
+        "model_revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
+        "network_context": "1GbE-full-duplex-MTU1500-eno1-enp5s0",
+        "runtime_context": "sha256:6730f7185720f2451e16951a279b83fb5c3435056dfe2115e662f22911557d83",
+        "workload_geometry": "W2-W4-generate32-static"
+      },
+      "role": "RANKING_OBJECTIVE",
+      "shape_id": "source-backed-single-resource"
+    },
+    {
+      "confidence": "DEPENDENCY_SCOPED_REQUALIFICATION",
+      "evidence_class": "MEASURED_R5A_MATCHED_HTTP_SERVING_REQUALIFIED",
+      "evidence_identity": "15fb7bec3283d71bde0660c839425b9ee5694fdf0be902069d6b6cd7b015ed7c",
+      "freshness": "ACCEPTED_COMPATIBLE",
+      "id": "r5b-requalified-r5a-source-backed-single-resource-clean-http-complete_request_wall_ms",
+      "mapping": {
+        "whole-model": "gpu.node-a.0"
+      },
+      "measurement_status": "MEASURED",
+      "metric": {
+        "name": "complete_request_wall_ms",
+        "statistic": "median",
+        "unit": "ms",
+        "value": 3305.816471
+      },
+      "producer_identity": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd",
+      "provenance": {
+        "accepted_measurement": {
+          "arm_id": "source-backed-single-resource-clean-http",
+          "artifact_sha256": "15fb7bec3283d71bde0660c839425b9ee5694fdf0be902069d6b6cd7b015ed7c"
+        },
+        "accepted_r5a_producer_identity": "60ea7bd9841a636a26bfe7f140dba04b0a562f03",
+        "accepted_r5a_record_id": "r5a-source-backed-single-resource-clean-http-complete_request_wall_ms",
+        "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
+        "numeric_value_remeasured": false,
+        "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+        "requalification_producer_sha": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd"
+      },
+      "required_context": {
+        "model_revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
+        "network_context": "1GbE-full-duplex-MTU1500-eno1-enp5s0",
+        "runtime_context": "sha256:6730f7185720f2451e16951a279b83fb5c3435056dfe2115e662f22911557d83",
+        "workload_geometry": "W2-W4-generate32-static"
+      },
+      "role": "RANKING_OBJECTIVE",
+      "shape_id": "source-backed-single-resource"
+    },
+    {
+      "confidence": "DEPENDENCY_SCOPED_REQUALIFICATION",
+      "evidence_class": "MEASURED_R5A_MATCHED_HTTP_SERVING_REQUALIFIED",
+      "evidence_identity": "15fb7bec3283d71bde0660c839425b9ee5694fdf0be902069d6b6cd7b015ed7c",
+      "freshness": "ACCEPTED_COMPATIBLE",
+      "id": "r5b-requalified-r5a-source-backed-single-resource-clean-http-decode_tok_s",
+      "mapping": {
+        "whole-model": "gpu.node-a.0"
+      },
+      "measurement_status": "MEASURED",
+      "metric": {
+        "name": "decode_tok_s",
+        "statistic": "median",
+        "unit": "tok/s",
+        "value": 46.0004088474295
+      },
+      "producer_identity": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd",
+      "provenance": {
+        "accepted_measurement": {
+          "arm_id": "source-backed-single-resource-clean-http",
+          "artifact_sha256": "15fb7bec3283d71bde0660c839425b9ee5694fdf0be902069d6b6cd7b015ed7c"
+        },
+        "accepted_r5a_producer_identity": "60ea7bd9841a636a26bfe7f140dba04b0a562f03",
+        "accepted_r5a_record_id": "r5a-source-backed-single-resource-clean-http-decode_tok_s",
+        "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
+        "numeric_value_remeasured": false,
+        "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+        "requalification_producer_sha": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd"
+      },
+      "required_context": {
+        "model_revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
+        "network_context": "1GbE-full-duplex-MTU1500-eno1-enp5s0",
+        "runtime_context": "sha256:6730f7185720f2451e16951a279b83fb5c3435056dfe2115e662f22911557d83",
+        "workload_geometry": "W2-W4-generate32-static"
+      },
+      "role": "RANKING_OBJECTIVE",
+      "shape_id": "source-backed-single-resource"
+    },
+    {
+      "confidence": "DEPENDENCY_SCOPED_REQUALIFICATION",
+      "evidence_class": "MEASURED_R5A_MATCHED_HTTP_SERVING_REQUALIFIED",
+      "evidence_identity": "cd0a50efb3b72faa7db3cb7f4ab6fba05e0043f99cad1888e816592a8881eddb",
+      "freshness": "ACCEPTED_COMPATIBLE",
+      "id": "r5b-requalified-r5a-same-node-resident-clean-http-ttft_ms",
+      "mapping": {
+        "slot-a": "gpu.node-a.0",
+        "slot-b": "gpu.node-a.1"
+      },
+      "measurement_status": "MEASURED",
+      "metric": {
+        "name": "ttft_ms",
+        "statistic": "median",
+        "unit": "ms",
+        "value": 373.6170495
+      },
+      "producer_identity": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd",
+      "provenance": {
+        "accepted_measurement": {
+          "arm_id": "same-node-resident-clean-http",
+          "artifact_sha256": "cd0a50efb3b72faa7db3cb7f4ab6fba05e0043f99cad1888e816592a8881eddb"
+        },
+        "accepted_r5a_producer_identity": "60ea7bd9841a636a26bfe7f140dba04b0a562f03",
+        "accepted_r5a_record_id": "r5a-same-node-resident-clean-http-ttft_ms",
+        "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
+        "numeric_value_remeasured": false,
+        "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+        "requalification_producer_sha": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd"
+      },
+      "required_context": {
+        "model_revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
+        "network_context": "1GbE-full-duplex-MTU1500-eno1-enp5s0",
+        "runtime_context": "sha256:6730f7185720f2451e16951a279b83fb5c3435056dfe2115e662f22911557d83",
+        "workload_geometry": "W2-W4-generate32-static"
+      },
+      "role": "RANKING_OBJECTIVE",
+      "shape_id": "resident-same-node-two-slot"
+    },
+    {
+      "confidence": "DEPENDENCY_SCOPED_REQUALIFICATION",
+      "evidence_class": "MEASURED_R5A_MATCHED_HTTP_SERVING_REQUALIFIED",
+      "evidence_identity": "cd0a50efb3b72faa7db3cb7f4ab6fba05e0043f99cad1888e816592a8881eddb",
+      "freshness": "ACCEPTED_COMPATIBLE",
+      "id": "r5b-requalified-r5a-same-node-resident-clean-http-complete_request_wall_ms",
+      "mapping": {
+        "slot-a": "gpu.node-a.0",
+        "slot-b": "gpu.node-a.1"
+      },
+      "measurement_status": "MEASURED",
+      "metric": {
+        "name": "complete_request_wall_ms",
+        "statistic": "median",
+        "unit": "ms",
+        "value": 844.3860605
+      },
+      "producer_identity": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd",
+      "provenance": {
+        "accepted_measurement": {
+          "arm_id": "same-node-resident-clean-http",
+          "artifact_sha256": "cd0a50efb3b72faa7db3cb7f4ab6fba05e0043f99cad1888e816592a8881eddb"
+        },
+        "accepted_r5a_producer_identity": "60ea7bd9841a636a26bfe7f140dba04b0a562f03",
+        "accepted_r5a_record_id": "r5a-same-node-resident-clean-http-complete_request_wall_ms",
+        "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
+        "numeric_value_remeasured": false,
+        "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+        "requalification_producer_sha": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd"
+      },
+      "required_context": {
+        "model_revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
+        "network_context": "1GbE-full-duplex-MTU1500-eno1-enp5s0",
+        "runtime_context": "sha256:6730f7185720f2451e16951a279b83fb5c3435056dfe2115e662f22911557d83",
+        "workload_geometry": "W2-W4-generate32-static"
+      },
+      "role": "RANKING_OBJECTIVE",
+      "shape_id": "resident-same-node-two-slot"
+    },
+    {
+      "confidence": "DEPENDENCY_SCOPED_REQUALIFICATION",
+      "evidence_class": "MEASURED_R5A_MATCHED_HTTP_SERVING_REQUALIFIED",
+      "evidence_identity": "cd0a50efb3b72faa7db3cb7f4ab6fba05e0043f99cad1888e816592a8881eddb",
+      "freshness": "ACCEPTED_COMPATIBLE",
+      "id": "r5b-requalified-r5a-same-node-resident-clean-http-decode_tok_s",
+      "mapping": {
+        "slot-a": "gpu.node-a.0",
+        "slot-b": "gpu.node-a.1"
+      },
+      "measurement_status": "MEASURED",
+      "metric": {
+        "name": "decode_tok_s",
+        "statistic": "median",
+        "unit": "tok/s",
+        "value": 65.76624873330516
+      },
+      "producer_identity": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd",
+      "provenance": {
+        "accepted_measurement": {
+          "arm_id": "same-node-resident-clean-http",
+          "artifact_sha256": "cd0a50efb3b72faa7db3cb7f4ab6fba05e0043f99cad1888e816592a8881eddb"
+        },
+        "accepted_r5a_producer_identity": "60ea7bd9841a636a26bfe7f140dba04b0a562f03",
+        "accepted_r5a_record_id": "r5a-same-node-resident-clean-http-decode_tok_s",
+        "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
+        "numeric_value_remeasured": false,
+        "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+        "requalification_producer_sha": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd"
+      },
+      "required_context": {
+        "model_revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
+        "network_context": "1GbE-full-duplex-MTU1500-eno1-enp5s0",
+        "runtime_context": "sha256:6730f7185720f2451e16951a279b83fb5c3435056dfe2115e662f22911557d83",
+        "workload_geometry": "W2-W4-generate32-static"
+      },
+      "role": "RANKING_OBJECTIVE",
+      "shape_id": "resident-same-node-two-slot"
+    },
+    {
+      "confidence": "DEPENDENCY_SCOPED_REQUALIFICATION",
+      "evidence_class": "MEASURED_R5A_MATCHED_HTTP_SERVING_REQUALIFIED",
+      "evidence_identity": "e66d78b799275b7dcadecb28f8e4a6746861a3f9182f0c1cdc4041de9ab25620",
+      "freshness": "ACCEPTED_COMPATIBLE",
+      "id": "r5b-requalified-r5a-two-node-resident-clean-http-ttft_ms",
+      "mapping": {
+        "slot-a": "gpu.node-a.0",
+        "slot-b": "gpu.node-b.0"
+      },
+      "measurement_status": "MEASURED",
+      "metric": {
+        "name": "ttft_ms",
+        "statistic": "median",
+        "unit": "ms",
+        "value": 1877.4567285
+      },
+      "producer_identity": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd",
+      "provenance": {
+        "accepted_measurement": {
+          "arm_id": "two-node-resident-clean-http",
+          "artifact_sha256": "e66d78b799275b7dcadecb28f8e4a6746861a3f9182f0c1cdc4041de9ab25620"
+        },
+        "accepted_r5a_producer_identity": "60ea7bd9841a636a26bfe7f140dba04b0a562f03",
+        "accepted_r5a_record_id": "r5a-two-node-resident-clean-http-ttft_ms",
+        "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
+        "numeric_value_remeasured": false,
+        "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+        "requalification_producer_sha": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd"
+      },
+      "required_context": {
+        "model_revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
+        "network_context": "1GbE-full-duplex-MTU1500-eno1-enp5s0",
+        "runtime_context": "sha256:6730f7185720f2451e16951a279b83fb5c3435056dfe2115e662f22911557d83",
+        "workload_geometry": "W2-W4-generate32-static"
+      },
+      "role": "RANKING_OBJECTIVE",
+      "shape_id": "resident-two-node-two-slot"
+    },
+    {
+      "confidence": "DEPENDENCY_SCOPED_REQUALIFICATION",
+      "evidence_class": "MEASURED_R5A_MATCHED_HTTP_SERVING_REQUALIFIED",
+      "evidence_identity": "e66d78b799275b7dcadecb28f8e4a6746861a3f9182f0c1cdc4041de9ab25620",
+      "freshness": "ACCEPTED_COMPATIBLE",
+      "id": "r5b-requalified-r5a-two-node-resident-clean-http-complete_request_wall_ms",
+      "mapping": {
+        "slot-a": "gpu.node-a.0",
+        "slot-b": "gpu.node-b.0"
+      },
+      "measurement_status": "MEASURED",
+      "metric": {
+        "name": "complete_request_wall_ms",
+        "statistic": "median",
+        "unit": "ms",
+        "value": 3067.9846395
+      },
+      "producer_identity": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd",
+      "provenance": {
+        "accepted_measurement": {
+          "arm_id": "two-node-resident-clean-http",
+          "artifact_sha256": "e66d78b799275b7dcadecb28f8e4a6746861a3f9182f0c1cdc4041de9ab25620"
+        },
+        "accepted_r5a_producer_identity": "60ea7bd9841a636a26bfe7f140dba04b0a562f03",
+        "accepted_r5a_record_id": "r5a-two-node-resident-clean-http-complete_request_wall_ms",
+        "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
+        "numeric_value_remeasured": false,
+        "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+        "requalification_producer_sha": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd"
+      },
+      "required_context": {
+        "model_revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
+        "network_context": "1GbE-full-duplex-MTU1500-eno1-enp5s0",
+        "runtime_context": "sha256:6730f7185720f2451e16951a279b83fb5c3435056dfe2115e662f22911557d83",
+        "workload_geometry": "W2-W4-generate32-static"
+      },
+      "role": "RANKING_OBJECTIVE",
+      "shape_id": "resident-two-node-two-slot"
+    },
+    {
+      "confidence": "DEPENDENCY_SCOPED_REQUALIFICATION",
+      "evidence_class": "MEASURED_R5A_MATCHED_HTTP_SERVING_REQUALIFIED",
+      "evidence_identity": "e66d78b799275b7dcadecb28f8e4a6746861a3f9182f0c1cdc4041de9ab25620",
+      "freshness": "ACCEPTED_COMPATIBLE",
+      "id": "r5b-requalified-r5a-two-node-resident-clean-http-decode_tok_s",
+      "mapping": {
+        "slot-a": "gpu.node-a.0",
+        "slot-b": "gpu.node-b.0"
+      },
+      "measurement_status": "MEASURED",
+      "metric": {
+        "name": "decode_tok_s",
+        "statistic": "median",
+        "unit": "tok/s",
+        "value": 29.222968384878364
+      },
+      "producer_identity": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd",
+      "provenance": {
+        "accepted_measurement": {
+          "arm_id": "two-node-resident-clean-http",
+          "artifact_sha256": "e66d78b799275b7dcadecb28f8e4a6746861a3f9182f0c1cdc4041de9ab25620"
+        },
+        "accepted_r5a_producer_identity": "60ea7bd9841a636a26bfe7f140dba04b0a562f03",
+        "accepted_r5a_record_id": "r5a-two-node-resident-clean-http-decode_tok_s",
+        "basis": "R5B adds orchestration above the unchanged accepted R2/R4 realizers and reruns their focused regressions",
+        "numeric_value_remeasured": false,
+        "regression_evidence": "docs/inferswarm_r5b/test-summary.json",
+        "requalification_producer_sha": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd"
+      },
+      "required_context": {
+        "model_revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
+        "network_context": "1GbE-full-duplex-MTU1500-eno1-enp5s0",
+        "runtime_context": "sha256:6730f7185720f2451e16951a279b83fb5c3435056dfe2115e662f22911557d83",
+        "workload_geometry": "W2-W4-generate32-static"
+      },
+      "role": "RANKING_OBJECTIVE",
+      "shape_id": "resident-two-node-two-slot"
+    }
+  ],
+  "schema": "inferswarm.r5b.serving-evidence-derivative/1",
+  "source_digest": "sha256:d367a2b1002641a010dccda3554c3c756a13c0b55e4c3629dcc4117f72c52941"
+}

@@ -1,0 +1,45 @@
+{
+ "schema": "inferswarm.xc.regression-summary/1",
+ "producer_sha": "2bcf33f6d6e5dc9fc5c13e37e7110833cbad0fcd",
+ "evidence_head_note": "regressions run against the final physical producer tree on inferswarm01 (FreeToken-xc @ 2bcf33f) and the CPU-only coordinator inferswarm00 (repos/FreeToken-xc @ 2bcf33f)",
+ "environment": {
+  "host": "inferswarm01",
+  "python": "3.13.5",
+  "torch": "2.11.0+cu130"
+ },
+ "suites": {
+  "research": {
+   "passed": 242,
+   "failed": 0,
+   "prior_producer_84e5319": 235,
+   "delta": "+7 result-identity validation regression tests (test_xc_result_identity.py)"
+  },
+  "benchmarks": {
+   "passed": 563,
+   "failed": 0,
+   "prior_producer_84e5319": 563,
+   "delta": "0"
+  },
+  "server": {
+   "passed": 583,
+   "failed": 0,
+   "prior_producer_84e5319": 583,
+   "delta": "0"
+  },
+  "xc_focus": {
+   "passed": 49,
+   "failed": 0,
+   "note": "xc wire/seam/coordinator-epoch/realization-authority/result-identity + r5b epochs"
+  },
+  "coordinator_control_plane_cpu_only": {
+   "passed": 165,
+   "failed": 0,
+   "note": "torch-free venv on inferswarm00; purity gate: xc control-plane modules (xc_coordinator, xc_wire, node_agent) import torch-free; broader than the prior 36-test set, same accepted modules plus test_xc_result_identity.py; torch-dependent research modules (test_n0_model_block, test_r2_v2_workflow, test_r3_acceptance_hardening, test_r4_preflight_gate, test_r5a_preflight, and the torch-importing case of test_r3_qwen_strategy) are excluded on the CPU-only host by construction"
+  }
+ },
+ "regression_of_record": {
+  "claim": "A correctness-bearing remote result must be attributable to the authorized session/request and expected execution position",
+  "test": "tests/research/test_xc_result_identity.py",
+  "passed": true
+ }
+}
