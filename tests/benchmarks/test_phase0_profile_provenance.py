@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from benchmarks.inferswarm_phase0 import cli
-from benchmarks.inferswarm_phase0 import hardware_profile
-from benchmarks.inferswarm_phase0.gpu import GpuSelection
+from inferswarm_phase0 import cli
+from inferswarm_phase0 import hardware_profile
+from inferswarm_phase0.gpu import GpuSelection
 
 INFERSWARM_COMMIT = "1" * 40
 

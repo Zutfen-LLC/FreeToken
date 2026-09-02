@@ -1,0 +1,41 @@
+{
+  "schema": "inferswarm.pre-r5.integration-smoke/1",
+  "recorded_at": "2026-09-01T20:39:56-04:00",
+  "producer_freetoken_sha": "e1c68e91b59a09e5ddb113828f43f71bbe127898",
+  "plan_digest": "sha256:dacd3f763d13e46362be64b2af5174b3904a2f6200b7a5200c40f6485d658deb",
+  "arm": "diagnostic",
+  "classes": ["W2"],
+  "all_generated_exact": true,
+  "all_selected_logits_within_threshold": true,
+  "all_boundary_checksums_match": true,
+  "wire_accounting": {
+    "frames_rx": 34,
+    "frames_tx": 34,
+    "framing_control_bytes_tx": 15139,
+    "result_control_bytes_rx": 12966,
+    "semantic_payload_bytes_tx": 696320,
+    "tcp_nodelay": true,
+    "wire_bytes_rx": 12966,
+    "wire_bytes_tx": 711459
+  },
+  "node_b": {
+    "boundaries_served": 32,
+    "activation_bytes_rx": 696320,
+    "result_bytes_tx": 12966,
+    "checksum_mismatches": 0,
+    "staging_process_vm_swap_kib": 0,
+    "swap_reliance": false,
+    "fallbacks": 0,
+    "graph_recaptures": 0,
+    "host_expert_fetches": 0,
+    "resident_source_accesses": 0,
+    "steady_model_state_movement_bytes": 0,
+    "unexplained_persistent_host_mirror_bytes": 0,
+    "resident_only": true
+  },
+  "artifact_sha256": {
+    "temporary_plan": "337f41bf7b9b0d747cff12ef108f946746875684776f6c1c9be05b64db058f07",
+    "node_a_result": "2397fe38ef005feba804b22b4b5d69ac0c7488f09f91f4b767703afa409f4ec6",
+    "node_b_final_report": "96ac11e5c1a2da21d79cd8c0115244350bf60687a387334ecb1d15c7c833faef"
+  }
+}
