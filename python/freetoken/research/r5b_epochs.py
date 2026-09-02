@@ -231,6 +231,10 @@ class EpochServingController:
             realization_authorization=deepcopy(dict(authorization)),
         )
         self._epochs.append(self._active)
+        # The initial activation's realization identity is live: the report's
+        # active_realization_id must reflect the generation-0 activation, not
+        # only later replacements.
+        self._adopt_realization_authorization(authorization)
 
     @staticmethod
     def _epoch_id(generation: int, plan_digest: str) -> str:
@@ -343,7 +347,7 @@ class EpochServingController:
         call = self.realizer
         try:
             if _realizer_accepts_authorization(call):
-                realized = call(execution_plan, authorization)
+                realized = call(execution_plan, realization_authorization=authorization)
             else:
                 realized = call(execution_plan)
         except BaseException:

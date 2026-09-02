@@ -265,6 +265,11 @@ class TestExternalCoordinatorEpochFlow:
         )
         report = controller.report()
         assert report["single_mutable_authority"] is True
+        # The top-level active realization reflects the initial generation-0
+        # activation, not only a later replacement.
+        assert report["active_realization_id"] == (
+            report["epochs"][0]["realization_authorization"]["realization_id"]
+        )
         session = report["sessions"][0]
         assert session["generated_token_ids"] == EXPECTED_TOKENS[:4]
         assert all(session["committed_epoch_ids"])

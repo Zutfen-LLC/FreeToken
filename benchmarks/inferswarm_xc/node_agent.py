@@ -83,6 +83,7 @@ class _Session:
             "protocol": PROTOCOL_ID,
             "scope_id": self._scope_id,
             "session_id": request.get("session_id"),
+            "position": request.get("position"),
             "epoch_id": self._epoch_id,
             "generation": self._generation,
             "realization_id": self._realization_id,

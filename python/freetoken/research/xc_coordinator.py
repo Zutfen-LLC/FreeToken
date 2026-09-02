@@ -69,7 +69,14 @@ class RemoteEpochRuntime:
         self.observation = deepcopy(dict(observation))
         self.reclamation_report: dict[str, Any] = {}
 
-    def _request(self, operation: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def _request(
+        self,
+        operation: str,
+        payload: dict[str, Any],
+        *,
+        expected_session_id: int | None = None,
+        expected_position: int | None = None,
+    ) -> dict[str, Any]:
         if self._closed and operation != "CLOSE":
             raise RemoteRealizationError("remote epoch runtime is closed")
         with self._lock:
@@ -92,6 +99,13 @@ class RemoteEpochRuntime:
                     f"node-agent exchange for {operation} failed: {exc}"
                 ) from exc
         validate_response(response)
+        # Fail closed against any response that does not match the exact
+        # request just sent: protocol, scope, epoch/generation/realization,
+        # plan digest, operation, and — for correctness-bearing session
+        # operations — the session and expected execution position.  The
+        # response identity is compared against the request, never against
+        # "whatever arrived on the socket next": TCP ordering is not the
+        # correctness mechanism.
         if response.get("protocol") != PROTOCOL_ID:
             raise RemoteRealizationError("response names a different protocol")
         if not response.get("ok"):
@@ -100,6 +114,10 @@ class RemoteEpochRuntime:
             )
         if response.get("operation") != operation:
             raise RemoteRealizationError("response operation mismatch")
+        if response.get("scope_id") != self._scope_id:
+            raise RemoteRealizationError(
+                "response scope identity does not match the request scope"
+            )
         if (
             response.get("epoch_id") != self._epoch_id
             or response.get("generation") != self._generation
@@ -110,6 +128,16 @@ class RemoteEpochRuntime:
                 "response identity does not match the authorized epoch/generation/"
                 "realization/plan"
             )
+        if expected_session_id is not None:
+            if response.get("session_id") != expected_session_id:
+                raise RemoteRealizationError(
+                    "response session identity does not match the requested session"
+                )
+            if response.get("position") != expected_position:
+                raise RemoteRealizationError(
+                    "response execution position does not match the expected "
+                    "execution position of the request just sent"
+                )
         return response
 
     def generate(
@@ -121,19 +149,30 @@ class RemoteEpochRuntime:
         on_token: Callable[[int, int, Mapping[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         self._operation_sequence += 1
+        position = self._operation_sequence
+        session_id = int(session_id)
         response = self._request(
             "GENERATE",
             {
-                "session_id": int(session_id),
-                "position": self._operation_sequence,
+                "session_id": session_id,
+                "position": position,
                 "prompt_token_ids": [int(t) for t in prompt_token_ids],
                 "max_new_tokens": int(max_new_tokens),
             },
+            expected_session_id=session_id,
+            expected_position=position,
         )
         result = dict(response["result"])
         if result.get("plan_digest") != self._plan_digest:
             raise RemoteRealizationError(
                 "remote runtime silently substituted a plan"
+            )
+        # The runtime-level session identity carried inside the result must
+        # match the session this facade requested: a result attributed to any
+        # other runtime session is not attributable to this request.
+        if result.get("session_id") != session_id:
+            raise RemoteRealizationError(
+                "runtime result session identity does not match the requested session"
             )
         if response.get("result_checksum") != body_checksum(result):
             raise RemoteRealizationError("remote result checksum mismatch")
