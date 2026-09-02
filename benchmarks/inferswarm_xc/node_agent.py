@@ -53,6 +53,8 @@ class _Session:
         self._scope_id = server.scope_id
         self._runtime = None
         self._epoch_id: str | None = None
+        self._generation: int | None = None
+        self._realization_id: str | None = None
         self._plan_digest: str | None = None
         self._generate_sequence = 0
         self._closed = False
@@ -82,6 +84,8 @@ class _Session:
             "scope_id": self._scope_id,
             "session_id": request.get("session_id"),
             "epoch_id": self._epoch_id,
+            "generation": self._generation,
+            "realization_id": self._realization_id,
             "plan_digest": self._plan_digest,
             "operation": operation,
             "ok": True,
@@ -100,9 +104,12 @@ class _Session:
         if self._runtime is None and request.get("operation") != "REALIZE":
             raise _AgentError("no authorized realization for this connection")
         if request.get("operation") != "REALIZE":
-            if request.get("epoch_id") != self._epoch_id or request.get(
-                "plan_digest"
-            ) != self._plan_digest:
+            if (
+                request.get("epoch_id") != self._epoch_id
+                or request.get("generation") != self._generation
+                or request.get("realization_id") != self._realization_id
+                or request.get("plan_digest") != self._plan_digest
+            ):
                 raise _AgentError(
                     "request identity does not match the authorized realization"
                 )
@@ -113,9 +120,40 @@ class _Session:
         plan = request.get("execution_plan")
         if not isinstance(plan, dict) or not isinstance(plan.get("digest"), str):
             raise _AgentError("REALIZE lacks a frozen execution plan with a digest")
+        epoch_id = request.get("epoch_id")
+        generation = request.get("generation")
+        realization_id = request.get("realization_id")
+        if not isinstance(epoch_id, str) or not epoch_id:
+            raise _AgentError("REALIZE lacks the Coordinator-authorized epoch identity")
+        if isinstance(generation, bool) or not isinstance(generation, int):
+            raise _AgentError("REALIZE lacks the Coordinator-authorized generation")
+        if not isinstance(realization_id, str) or not realization_id:
+            raise _AgentError(
+                "REALIZE lacks the Coordinator realization-attempt identity"
+            )
+        # Activation/epoch identity is Coordinator-owned authority, consumed
+        # from the wire.  The agent must never derive it from the plan digest:
+        # the same plan may legally be activated again in a later generation,
+        # and every activation must carry distinct epoch/generation authority.
+        plan_tag = plan["digest"].split(":")[-1][:12]
+        if epoch_id.startswith("remote-realization:"):
+            raise _AgentError(
+                "refusing plan-derived epoch identity; activation authority "
+                "must come from the Coordinator epoch/generation"
+            )
+        expected = f"research-generation-{generation}:{plan_tag}"
+        if epoch_id != expected:
+            raise _AgentError(
+                "epoch identity does not bind the authorized generation and plan"
+            )
+        if self._server.authorization_retired(realization_id):
+            raise _AgentError(
+                "realization authorization is retired and can never be accepted"
+            )
         self._plan_digest = plan["digest"]
-        digest_text = self._plan_digest or ""
-        self._epoch_id = f"remote-realization:{digest_text.split(':')[-1][:12]}"
+        self._epoch_id = epoch_id
+        self._generation = generation
+        self._realization_id = realization_id
         started = time.time_ns()
         built = self._server.build_runtime(plan)
         # build_runtime returns the accepted RealizedStaticPlan wrapper for a
@@ -134,12 +172,18 @@ class _Session:
             )
         except BaseException:
             runtime.close()
+            # A failed realization attempt is dead: never accept it later.
+            self._server.retire_authorization(
+                realization_id, reason="realization failed"
+            )
             raise
         self._runtime = runtime
         self.audit.append(
             {
                 "operation": "REALIZE",
                 "epoch_id": self._epoch_id,
+                "generation": self._generation,
+                "realization_id": self._realization_id,
                 "plan_digest": self._plan_digest,
                 "authorized_at_ns": time.time_ns(),
             }
@@ -185,10 +229,18 @@ class _Session:
         reclamation = dict(getattr(self._runtime, "reclamation_report", {}) or {})
         self._runtime.close()
         self._runtime = None
+        # The closed epoch's realization authorization is dead: the Node
+        # agent must never accept it again, even for the same plan digest.
+        self._server.retire_authorization(
+            str(self._realization_id), reason="epoch closed"
+        )
         self._accept_response(request, "CLOSE", final_report)
         self.audit.append(
             {
                 "operation": "CLOSE",
+                "epoch_id": self._epoch_id,
+                "generation": self._generation,
+                "realization_id": self._realization_id,
                 "closed_at_ns": time.time_ns(),
                 "reclamation": deepcopy(reclamation),
             }
@@ -238,6 +290,11 @@ class _Session:
                     self._runtime.close()
                 except Exception:
                     pass
+                # Torn-down without CLOSE: the authorization is dead.
+                if self._realization_id is not None:
+                    self._server.retire_authorization(
+                        self._realization_id, reason="session torn down"
+                    )
             try:
                 self._conn.close()
             except OSError:
@@ -254,6 +311,27 @@ class NodeAgent:
         self._audit_lock = threading.Lock()
         self._audit: list[dict[str, Any]] = []
         self._build_lock = threading.Lock()
+        self._authorization_lock = threading.Lock()
+        # Retired realization authorizations can never be accepted again,
+        # even for the same plan digest or generation slot: a closed epoch's
+        # correctness-bearing identity is dead forever.
+        self._retired_authorizations: set[str] = set()
+
+    def retire_authorization(self, realization_id: str, reason: str) -> None:
+        with self._authorization_lock:
+            self._retired_authorizations.add(realization_id)
+        self.audit(
+            {
+                "authorization_retired": True,
+                "realization_id": realization_id,
+                "reason": reason,
+                "retired_at_ns": time.time_ns(),
+            }
+        )
+
+    def authorization_retired(self, realization_id: str) -> bool:
+        with self._authorization_lock:
+            return realization_id in self._retired_authorizations
 
     def audit(self, record: dict[str, Any]) -> None:
         with self._audit_lock:

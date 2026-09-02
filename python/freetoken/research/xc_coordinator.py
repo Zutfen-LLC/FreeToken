@@ -51,6 +51,8 @@ class RemoteEpochRuntime:
         sock: socket.socket,
         scope_id: str,
         epoch_id: str,
+        generation: int,
+        realization_id: str,
         plan_digest: str,
         observation: Mapping[str, Any],
     ) -> None:
@@ -58,6 +60,8 @@ class RemoteEpochRuntime:
         self._lock = threading.Lock()
         self._scope_id = scope_id
         self._epoch_id = epoch_id
+        self._generation = int(generation)
+        self._realization_id = realization_id
         self._plan_digest = plan_digest
         self._operation_sequence = 0
         self._closed = False
@@ -74,6 +78,8 @@ class RemoteEpochRuntime:
                 "protocol": PROTOCOL_ID,
                 "scope_id": self._scope_id,
                 "epoch_id": self._epoch_id,
+                "generation": self._generation,
+                "realization_id": self._realization_id,
                 "plan_digest": self._plan_digest,
                 "operation": operation,
                 **payload,
@@ -94,11 +100,15 @@ class RemoteEpochRuntime:
             )
         if response.get("operation") != operation:
             raise RemoteRealizationError("response operation mismatch")
-        if response.get("epoch_id") != self._epoch_id or response.get(
-            "plan_digest"
-        ) != self._plan_digest:
+        if (
+            response.get("epoch_id") != self._epoch_id
+            or response.get("generation") != self._generation
+            or response.get("realization_id") != self._realization_id
+            or response.get("plan_digest") != self._plan_digest
+        ):
             raise RemoteRealizationError(
-                "response identity does not match the authorized epoch/plan"
+                "response identity does not match the authorized epoch/generation/"
+                "realization/plan"
             )
         return response
 
@@ -173,22 +183,41 @@ class RemoteNodeAgentConnection:
         self._scope_id = scope_id
 
     def realize(
-        self, execution_plan: Mapping[str, Any], *, timeout: float = 900.0
+        self,
+        execution_plan: Mapping[str, Any],
+        realization_authorization: Mapping[str, Any] | None = None,
+        *,
+        timeout: float = 900.0,
     ) -> RemoteEpochRuntime:
-        """Authorize one remote realization of the frozen Execution Plan."""
+        """Authorize one remote realization of the frozen Execution Plan.
+
+        The epoch/generation and realization-attempt identity are consumed
+        from the Coordinator's activation authorization; they are never
+        derived here from the plan digest.
+        """
         plan = deepcopy(dict(execution_plan))
         digest = plan["digest"]
+        if realization_authorization is None:
+            raise RemoteRealizationError(
+                "remote realization requires the Coordinator's realization "
+                "authorization (epoch/generation/attempt identity)"
+            )
+        if realization_authorization.get("plan_digest") != digest:
+            raise RemoteRealizationError(
+                "realization authorization does not bind this execution plan"
+            )
         try:
             sock = socket.create_connection((self._host, self._port), timeout=timeout)
         except OSError as exc:
             raise RemoteRealizationError(
                 f"cannot reach node agent at {self._host}:{self._port}: {exc}"
             ) from exc
-        epoch_id = f"remote-realization:{digest.split(':')[-1][:12]}"
         runtime = RemoteEpochRuntime(
             sock=sock,
             scope_id=self._scope_id,
-            epoch_id=epoch_id,
+            epoch_id=str(realization_authorization["epoch_id"]),
+            generation=int(realization_authorization["generation"]),
+            realization_id=str(realization_authorization["realization_id"]),
             plan_digest=digest,
             observation={},
         )
@@ -212,13 +241,22 @@ class RemoteNodeAgentConnection:
 def make_remote_realizer(
     *, host: str, port: int, scope_id: str
 ) -> Callable[[Mapping[str, Any]], RealizedStaticPlan]:
-    """Build an ``EpochServingController`` realizer over the remote seam."""
+    """Build an ``EpochServingController`` realizer over the remote seam.
 
-    def realizer(execution_plan: Mapping[str, Any]) -> RealizedStaticPlan:
+    The realizer consumes the Controller-allocated realization authorization
+    (prospective authoritative epoch id, generation, plan digest, and unique
+    realization-attempt identity) so remote realization is authorized under a
+    real Coordinator-owned activation identity.
+    """
+
+    def realizer(
+        execution_plan: Mapping[str, Any],
+        realization_authorization: Mapping[str, Any] | None = None,
+    ) -> RealizedStaticPlan:
         connection = RemoteNodeAgentConnection(
             host=host, port=port, scope_id=scope_id
         )
-        runtime = connection.realize(execution_plan)
+        runtime = connection.realize(execution_plan, realization_authorization)
         # Coordinator-side reconciliation against the frozen plan runs here,
         # on the CPU-only control plane, exactly as in accepted R5A/R5B.
         reconcile_realization(execution_plan, runtime.observation)

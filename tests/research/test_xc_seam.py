@@ -86,6 +86,20 @@ PLAN_DIGEST = "sha256:" + "b" * 64
 SCOPE = "scope/test-xc"
 
 
+def _authorization(plan, generation=2, attempt=1, realization_id=None):
+    """A Coordinator-shaped realization authorization for the plan."""
+    tag = plan["digest"].split(":")[-1][:12]
+    return {
+        "schema": "inferswarm.r5b.realization-authorization/1",
+        "epoch_id": f"research-generation-{generation}:{tag}",
+        "generation": generation,
+        "plan_digest": plan["digest"],
+        "realization_id": realization_id or f"realization-{attempt}-{attempt:012x}",
+        "attempt": attempt,
+        "allocated_at_ns": 1,
+    }
+
+
 def _frozen_plan():
     """A minimal, genuinely frozen execution plan (digest verifiable)."""
     from freetoken.research.r3_planner import freeze
@@ -198,7 +212,7 @@ def _connect(port):
 class TestRemoteRealization:
     def test_realize_generate_close_round_trip(self, agent):
         plan = _frozen_plan()
-        runtime = _connect(agent.port).realize(plan)
+        runtime = _connect(agent.port).realize(plan, _authorization(plan))
         assert runtime.observation["plan_digest"] == plan["digest"]
         result = runtime.generate(
             session_id=1, prompt_token_ids=[9764, 393], max_new_tokens=2
@@ -216,7 +230,9 @@ class TestRemoteRealization:
             "kind": "request",
             "protocol": PROTOCOL_ID,
             "scope_id": SCOPE,
-            "epoch_id": "remote-realization:x",
+            "epoch_id": "research-generation-1:bbbbbbbbbbbb",
+            "generation": 1,
+            "realization_id": "realization-9-fff",
             "plan_digest": PLAN_DIGEST,
             "operation": "GENERATE",
             "session_id": 1,
@@ -235,10 +251,12 @@ class TestRemoteRealization:
             host="127.0.0.1", port=agent.port, scope_id="scope/other"
         )
         with pytest.raises(RemoteRealizationError):
-            connection.realize(_frozen_plan())
+            connection.realize(_frozen_plan(), _authorization(_frozen_plan()))
 
     def test_stale_position_rejected(self, agent):
-        runtime = _connect(agent.port).realize(_frozen_plan())
+        runtime = _connect(agent.port).realize(
+            _frozen_plan(), _authorization(_frozen_plan())
+        )
         sock = runtime._sock
         # sequence 1 (fresh) then a replay of position 1 -> stale
         runtime.generate(session_id=1, prompt_token_ids=[1], max_new_tokens=1)
@@ -247,6 +265,8 @@ class TestRemoteRealization:
             "protocol": PROTOCOL_ID,
             "scope_id": SCOPE,
             "epoch_id": runtime._epoch_id,
+            "generation": runtime._generation,
+            "realization_id": runtime._realization_id,
             "plan_digest": runtime._plan_digest,
             "operation": "GENERATE",
             "session_id": 1,
@@ -264,13 +284,17 @@ class TestRemoteRealization:
             runtime.report()
 
     def test_plan_digest_mismatch_rejected(self, agent):
-        runtime = _connect(agent.port).realize(_frozen_plan())
+        runtime = _connect(agent.port).realize(
+            _frozen_plan(), _authorization(_frozen_plan())
+        )
         sock = runtime._sock
         body = {
             "kind": "request",
             "protocol": PROTOCOL_ID,
             "scope_id": SCOPE,
             "epoch_id": runtime._epoch_id,
+            "generation": runtime._generation,
+            "realization_id": runtime._realization_id,
             "plan_digest": "sha256:" + "c" * 64,
             "operation": "REPORT",
         }
@@ -281,13 +305,17 @@ class TestRemoteRealization:
         sock.close()
 
     def test_result_checksum_tamper_detected_by_client(self, agent):
-        runtime = _connect(agent.port).realize(_frozen_plan())
+        runtime = _connect(agent.port).realize(
+            _frozen_plan(), _authorization(_frozen_plan())
+        )
         sock = runtime._sock
         request = {
             "kind": "request",
             "protocol": PROTOCOL_ID,
             "scope_id": SCOPE,
             "epoch_id": runtime._epoch_id,
+            "generation": runtime._generation,
+            "realization_id": runtime._realization_id,
             "plan_digest": runtime._plan_digest,
             "operation": "GENERATE",
             "session_id": 7,
@@ -307,7 +335,9 @@ class TestRemoteRealization:
         runtime.close()
 
     def test_disconnect_during_exchange_fails_closed(self, agent):
-        runtime = _connect(agent.port).realize(_frozen_plan())
+        runtime = _connect(agent.port).realize(
+            _frozen_plan(), _authorization(_frozen_plan())
+        )
         sock = runtime._sock
         # half-send a request then kill the socket
         frame = encode_frame(
@@ -316,6 +346,8 @@ class TestRemoteRealization:
                 "protocol": PROTOCOL_ID,
                 "scope_id": SCOPE,
                 "epoch_id": runtime._epoch_id,
+            "generation": runtime._generation,
+            "realization_id": runtime._realization_id,
                 "plan_digest": runtime._plan_digest,
                 "operation": "REPORT",
             }
@@ -331,7 +363,7 @@ class TestMakeRemoteRealizer:
         realizer = make_remote_realizer(
             host="127.0.0.1", port=agent.port, scope_id=SCOPE
         )
-        realized = realizer(_frozen_plan())
+        realized = realizer(_frozen_plan(), _authorization(_frozen_plan()))
         assert realized.observation["plan_digest"] == realized.observation["plan_digest"]
         result = realized.runtime.generate(
             session_id=1, prompt_token_ids=[9764], max_new_tokens=1

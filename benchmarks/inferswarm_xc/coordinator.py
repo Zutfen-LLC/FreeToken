@@ -252,6 +252,7 @@ class CoordinatorRuntime:
                     "step": step,
                     "token_id": int(token_id),
                     "epoch_id": commit.get("epoch_id"),
+                    "generation": commit.get("generation"),
                     "plan_digest": commit.get("plan_digest"),
                     "position": commit.get("position"),
                     "committed_at_ns": commit.get("committed_at_ns"),

@@ -51,15 +51,20 @@ OPERATIONS = frozenset(
     }
 )
 
-# Every request/response carries this immutable identity.  The Node agent
-# rejects a request whose identity disagrees with its currently authorized
-# realization; the Coordinator rejects a result that does not match its
-# current session/epoch/plan/operation position.
+# Every request/response carries this immutable identity.  The epoch/generation
+# and the realization authorization identity are Coordinator-owned activation
+# authority: the Node agent consumes them and never derives epoch identity from
+# the Execution Plan digest.  The Node agent rejects a request whose identity
+# disagrees with its currently authorized realization; the Coordinator rejects
+# a result that does not match its current session/epoch/plan/operation
+# position.
 IDENTITY_FIELDS = (
     "protocol",  # wire protocol id + version
     "scope_id",  # Swarm/test-scope identity
     "session_id",  # Coordinator session identity (null for REALIZE/CLOSE)
-    "epoch_id",  # Coordinator-authorized epoch/generation
+    "epoch_id",  # Coordinator-authorized epoch identity
+    "generation",  # Coordinator-authorized activation generation
+    "realization_id",  # Coordinator realization-authorization (attempt) identity
     "plan_digest",  # frozen Execution Plan digest
     "operation",  # operation identity
     "position",  # expected execution/commit position where applicable
@@ -185,6 +190,33 @@ def validate_request(body: Mapping[str, Any]) -> dict[str, Any]:
     }
     if identity["protocol"] != PROTOCOL_ID:
         raise XCWireError(f"unsupported protocol id {identity['protocol']!r}")
+    if operation == "REALIZE":
+        # REALIZE is the authorization act: it must carry the Coordinator's
+        # prospective authoritative epoch/generation and a unique
+        # realization-attempt identity.  The epoch identity must not be a
+        # bare function of the plan digest.
+        _require_int(body, "generation", minimum=0)
+        realization_id = _require_str(body, "realization_id")
+        epoch_id = _require_str(body, "epoch_id")
+        if not realization_id.startswith("realization-"):
+            raise XCWireError("realization_id must name a realization attempt")
+        if _require_str(body, "epoch_id").startswith("remote-realization:"):
+            # The legacy plan-derived epoch namespace: activation authority
+            # must come from the Coordinator epoch/generation, never from
+            # the Execution Plan digest alone.
+            raise XCWireError(
+                "epoch identity is plan-derived; activation authority must come "
+                "from the Coordinator epoch/generation"
+            )
+        identity["generation"] = int(body["generation"])
+        identity["realization_id"] = realization_id
+    else:
+        # Correctness-bearing operations must re-bind the authorized
+        # activation identity on every exchange.
+        _require_int(body, "generation", minimum=0)
+        _require_str(body, "realization_id")
+        identity["generation"] = int(body["generation"])
+        identity["realization_id"] = str(body["realization_id"])
     for key in ("session_id", "position", "max_new_tokens"):
         if key in body and body[key] is not None:
             _require_int(body, key)
@@ -217,6 +249,9 @@ def validate_response(body: Mapping[str, Any]) -> None:
     if body["ok"]:
         for key in ("protocol", "epoch_id", "plan_digest", "operation"):
             _require_str(body, key)
+        if body.get("operation") in OPERATIONS:
+            _require_int(body, "generation", minimum=0)
+            _require_str(body, "realization_id")
     else:
         _require_str(body, "error")
     if "result" in body and not body["ok"]:
@@ -239,6 +274,8 @@ def identity_of(body: Mapping[str, Any]) -> dict[str, Any]:
         "scope_id": body.get("scope_id"),
         "session_id": body.get("session_id"),
         "epoch_id": body.get("epoch_id"),
+        "generation": body.get("generation"),
+        "realization_id": body.get("realization_id"),
         "plan_digest": body.get("plan_digest"),
         "operation": body.get("operation"),
         "position": body.get("position"),
