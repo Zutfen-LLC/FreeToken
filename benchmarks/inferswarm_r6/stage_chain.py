@@ -172,11 +172,15 @@ class GemmaStageChainRuntime:
         self.stages: list[Any] = []
         try:
             for spec in stage_specs:
+                shared = spec["adapter_data"].get("declared_shared_state")
+                # Tied-embedding shared state materializes ONLY on the stages
+                # that own the embedding (first) and the tied lm_head (last);
+                # a middle stage owns neither and must not fetch it.
+                if spec["role"] == "middle":
+                    shared = None
                 common = {
                     "runtime_capacity_tokens": runtime_capacity_tokens,
-                    "declared_shared_state": spec["adapter_data"].get(
-                        "declared_shared_state"
-                    ),
+                    "declared_shared_state": shared,
                 }
                 self.stages.append(
                     StageClient(
