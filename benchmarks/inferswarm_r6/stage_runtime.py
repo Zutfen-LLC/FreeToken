@@ -238,7 +238,13 @@ class GemmaDenseStage:
         # construction never touches accelerator memory).
         with torch.device("meta"), torch_dtype(torch.bfloat16):
             modules = _StageModules(self.config, spec, self.full_config)
-            if spec.owns_embeddings:
+            # The tied lm_head: the LAST stage materializes the shared
+            # embedding table too (declared shared state), not just the first.
+            needs_table = spec.owns_embeddings or (
+                spec.owns_final_norm_head
+                and bool(getattr(self.full_config, "tie_word_embeddings", False))
+            )
+            if needs_table:
                 from freetoken.layers import VocabParallelEmbedding
 
                 modules.embed_tokens = VocabParallelEmbedding(
