@@ -287,6 +287,7 @@ def run_session(
     prefill_chunk: int,
     capture_steps: set[int] | None = None,
     capture_prefill_state: bool = False,
+    on_token=None,
 ) -> dict:
     """One generation session over the persistent connection (coordinator clock)."""
 
@@ -313,6 +314,8 @@ def run_session(
         if final:
             generated.append(token)
             first_token_ns = time.perf_counter_ns()
+            if on_token is not None:
+                on_token(0, token, boundary)
     prefill_ended = first_token_ns or time.perf_counter_ns()
     decode_started = time.perf_counter_ns()
     while len(generated) < max_new_tokens:
@@ -327,6 +330,8 @@ def run_session(
         generated.append(token)
         boundary["generated_step"] = step
         boundaries.append(boundary)
+        if on_token is not None:
+            on_token(step, token, boundary)
     decode_ended = time.perf_counter_ns()
     decode_latencies = [
         item["step_wall_ns"] for item in boundaries if item["operation"] == "decode"

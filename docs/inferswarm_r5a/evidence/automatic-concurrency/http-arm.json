@@ -1,0 +1,161 @@
+{
+  "bounded_concurrency": 2,
+  "classes": [
+    "W2",
+    "W4"
+  ],
+  "instrumentation_after": {
+    "instance_id": "b1f54da3-2caf-4cab-a6fe-c5c6adcca01f",
+    "prefill": {
+      "enabled": true,
+      "measurement": "CUDA-event elapsed time around the prefill model forward(s) of one request, summed over chunks. Excludes tokenization, scheduling, sampling, detokenization and the HTTP/SSE hop -- all of which TTFT includes.",
+      "observed": 0,
+      "records": []
+    },
+    "runtime_config": {
+      "mode": "inferswarm-r5a-static-serving",
+      "plan_digest": "sha256:11c9e21c51c2bdd037ec8644f656a7333ac7878e1ee31ff71c99220a6e2aea17"
+    },
+    "runtime_config_unavailable": null,
+    "schema": "freetoken.instrumentation/1"
+  },
+  "instrumentation_before": {
+    "instance_id": "b1f54da3-2caf-4cab-a6fe-c5c6adcca01f",
+    "prefill": {
+      "enabled": true,
+      "measurement": "CUDA-event elapsed time around the prefill model forward(s) of one request, summed over chunks. Excludes tokenization, scheduling, sampling, detokenization and the HTTP/SSE hop -- all of which TTFT includes.",
+      "observed": 0,
+      "records": []
+    },
+    "runtime_config": {
+      "mode": "inferswarm-r5a-static-serving",
+      "plan_digest": "sha256:11c9e21c51c2bdd037ec8644f656a7333ac7878e1ee31ff71c99220a6e2aea17"
+    },
+    "runtime_config_unavailable": null,
+    "schema": "freetoken.instrumentation/1"
+  },
+  "measured_repetitions_per_class": 1,
+  "model": "nvidia/Qwen3.6-35B-A3B-NVFP4",
+  "new_prefill_records": [],
+  "origin": "http://127.0.0.1:1925",
+  "request_entry_contract": "ordinary FreeToken OpenAI serving adapter -> GenSpec -> TokenizeMsg",
+  "request_path": "/v1/chat/completions",
+  "requests": [
+    {
+      "class_id": "W2",
+      "complete_request_wall_ns": 3317841422,
+      "content": "",
+      "decode_observation_wall_ns": 1088739621,
+      "decode_tok_s": 28.4732909522726,
+      "finish_reason": "length",
+      "first_output_ns": 34863825174071,
+      "output_event_count": 32,
+      "output_event_interval_p50_ns": 15565573,
+      "output_event_intervals_ns": [
+        206766293,
+        18058441,
+        15037744,
+        14908602,
+        15165860,
+        15162449,
+        15134822,
+        15340003,
+        15447776,
+        15537327,
+        15553253,
+        15573704,
+        15608789,
+        15563851,
+        221510778,
+        18378379,
+        15238004,
+        15292710,
+        15339339,
+        15589882,
+        15565882,
+        15596511,
+        15607241,
+        15565573,
+        15642798,
+        15577001,
+        15786313,
+        15539898,
+        15522993,
+        15580680,
+        219845433
+      ],
+      "reasoning_content": "Let $N = 97_b$ and $D = 17_b$.\nThe base $b$ is an integer greater than 9.",
+      "repetition": 0,
+      "request_ended_ns": 34864913913692,
+      "request_ordinal": 0,
+      "request_started_ns": 34861596072270,
+      "sample_kind": "measured",
+      "ttft_ns": 2229101801,
+      "usage": {
+        "completion_tokens": 32,
+        "prompt_tokens": 54,
+        "total_tokens": 86
+      }
+    },
+    {
+      "class_id": "W4",
+      "complete_request_wall_ns": 5970709404,
+      "content": "",
+      "decode_observation_wall_ns": 1065779708,
+      "decode_tok_s": 29.086686270442673,
+      "finish_reason": "length",
+      "first_output_ns": 34866501627176,
+      "output_event_count": 32,
+      "output_event_interval_p50_ns": 15531144,
+      "output_event_intervals_ns": [
+        202722618,
+        17486328,
+        14660685,
+        14616403,
+        14735428,
+        14910516,
+        15090992,
+        15132033,
+        15241244,
+        15363866,
+        15435432,
+        15586224,
+        15607045,
+        15616199,
+        211498877,
+        17610918,
+        14768542,
+        14933400,
+        15069511,
+        15328394,
+        15420163,
+        15630737,
+        15451729,
+        15576520,
+        15531144,
+        15561317,
+        15531620,
+        15633514,
+        15973102,
+        15545370,
+        215716941
+      ],
+      "reasoning_content": "Here's a thinking process:\n\n1.  **Understand User Query:**\n   - **Context:** InferSwarm is testing whether resident MoE (",
+      "repetition": 0,
+      "request_ended_ns": 34867567406884,
+      "request_ordinal": 1,
+      "request_started_ns": 34861596697480,
+      "sample_kind": "measured",
+      "ttft_ns": 4904929696,
+      "usage": {
+        "completion_tokens": 32,
+        "prompt_tokens": 121,
+        "total_tokens": 153
+      }
+    }
+  ],
+  "schema": "inferswarm.r5a.http-serving-arm/1",
+  "server_instance_id": "b1f54da3-2caf-4cab-a6fe-c5c6adcca01f",
+  "warmups_per_class": 0,
+  "workload_manifest_sha256": "10f81e5418a71a68f387632de422c3337cc7ba0518111a8746ad856d0210b24a"
+}

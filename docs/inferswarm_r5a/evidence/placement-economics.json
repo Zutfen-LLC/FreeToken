@@ -1,0 +1,37 @@
+{
+  "environment_digest": "sha256:bedf54e6602800f5b179e7ae7eb9eec816cdf1c49181a7ecc4ca904247b9fce2",
+  "local_arm_id": "same-node-resident-clean-http",
+  "methodology": {
+    "same_generation_settings": true,
+    "same_model_workloads": true,
+    "same_ordinary_serving_entry": true,
+    "same_warmups_repetitions": true
+  },
+  "metrics": {
+    "complete_request_wall_ms": {
+      "evidence_label": "MEASURED_MATCHED_PLACEMENT_COMPARISON",
+      "resident_same_node": 844.3860605,
+      "resident_two_node": 3067.9846395,
+      "two_node_minus_same_node": 2223.598579,
+      "two_node_over_same_node": 3.633390913255134
+    },
+    "decode_tok_s": {
+      "evidence_label": "MEASURED_MATCHED_PLACEMENT_COMPARISON",
+      "resident_same_node": 65.76624873330516,
+      "resident_two_node": 29.222968384878364,
+      "two_node_minus_same_node": -36.5432803484268,
+      "two_node_over_same_node": 0.44434598213717713
+    },
+    "ttft_ms": {
+      "evidence_label": "MEASURED_MATCHED_PLACEMENT_COMPARISON",
+      "resident_same_node": 373.6170495,
+      "resident_two_node": 1877.4567285,
+      "two_node_minus_same_node": 1503.8396790000002,
+      "two_node_over_same_node": 5.025083119232758
+    }
+  },
+  "network_arm_id": "two-node-resident-clean-http",
+  "producer_freetoken_sha": "60ea7bd9841a636a26bfe7f140dba04b0a562f03",
+  "residual_interpretation": "step wall minus Block A compute minus Block B compute remains a combined staging/transport/protocol residual in both arms; it is not pure network time",
+  "schema": "inferswarm.r5a.network-placement-economics/1"
+}

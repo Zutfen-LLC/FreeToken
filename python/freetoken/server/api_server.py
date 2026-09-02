@@ -187,6 +187,8 @@ class FrontendManager:
     # handler) tears these down itself, AFTER setting _SHUTTING_DOWN, so the supervisor observes
     # the shutdown flag before the ensuing deaths. See _terminate_backend_workers.
     backend_processes: List[Any] = field(default_factory=list)
+    # Temporary R5A research dispatcher. None preserves the normal worker/ZMQ path.
+    inferswarm_r5a_dispatcher: Any = None
     # Event loop the listener runs on, captured when the listener starts (_create_listener_once).
     # Lets a cross-thread caller — the supervisor thread's failure callback — marshal rebuild
     # future resolution back onto the loop (asyncio Futures are not thread-safe). None until the
@@ -338,6 +340,11 @@ class FrontendManager:
             self.initialized = True
 
     async def send_one(self, msg: BaseTokenizerMsg):
+        if self.inferswarm_r5a_dispatcher is not None:
+            if self._loop is None:
+                self._loop = asyncio.get_running_loop()
+            await self.inferswarm_r5a_dispatcher.submit(msg, self)
+            return
         self._create_listener_once()
         await self.send_tokenizer.put(msg)
 
@@ -397,6 +404,8 @@ class FrontendManager:
         await self.send_one(AbortMsg(uid=uid))
 
     def shutdown(self):
+        if self.inferswarm_r5a_dispatcher is not None:
+            self.inferswarm_r5a_dispatcher.close()
         self.send_tokenizer.stop()
         self.recv_tokenizer.stop()
         # Tear the workers down ourselves (best-effort). _SHUTTING_DOWN is already set by the
@@ -1045,6 +1054,35 @@ def run_api_server(config: ServerArgs, start_backend: Callable[[], "Any"], run_s
             encoder=BaseTokenizerMsg.encoder,
         ),
     )
+
+    if config.inferswarm_r5a_config is not None:
+        # Planning and complete plan freeze happen inside the dispatcher before
+        # its realizer is called.  No conventional heavyweight backend is
+        # launched in this bounded research mode.
+        from .inferswarm_r5a import R5AFrontendDispatcher
+
+        _GLOBAL_STATE.inferswarm_r5a_dispatcher = R5AFrontendDispatcher(
+            config.inferswarm_r5a_config, config
+        )
+        _GLOBAL_STATE.maintenance_state = "serving"
+        _GLOBAL_STATE.ready_at = time.monotonic()
+        _GLOBAL_STATE.runtime_config = {
+            "mode": "inferswarm-r5a-static-serving",
+            "plan_digest": _GLOBAL_STATE.inferswarm_r5a_dispatcher.controller.execution_plan[
+                "digest"
+            ],
+        }
+        logger.info(
+            "API server is ready with frozen InferSwarm R5A plan %s on %s:%s",
+            _GLOBAL_STATE.runtime_config["plan_digest"],
+            host,
+            port,
+        )
+        if run_shell:
+            _serve_and_run_shell(host, port)
+            return
+        uvicorn.run(app, host=host, port=port)
+        return
 
     from .supervisor import LoadProgress, run_backend_supervisor
 

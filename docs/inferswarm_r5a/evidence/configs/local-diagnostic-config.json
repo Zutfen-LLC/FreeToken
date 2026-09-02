@@ -1,0 +1,12 @@
+{
+  "repository_root": "/home/zutfen/FreeToken-r5a",
+  "environment": "preflight/frozen-environment.json",
+  "participant_plan": "preflight/participant-plan.json",
+  "local_participant_plan": "/home/zutfen/FreeToken-r5a/docs/inferswarm_r2/frozen-plan.json",
+  "report_out": "local-resident-diagnostic/serving-report.json",
+  "peer_host": "10.0.0.219",
+  "peer_port": 18485,
+  "objective": "ttft_ms",
+  "override_candidate_id": "resident-same-node-two-slot[slot-a=gpu.node-a.0,slot-b=gpu.node-a.1]",
+  "diagnostic": true
+}

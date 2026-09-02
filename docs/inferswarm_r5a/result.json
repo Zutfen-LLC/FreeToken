@@ -1,0 +1,196 @@
+{
+  "schema": "inferswarm.r5a.result/2",
+  "disposition": "R5A_STATIC_MULTI_NODE_SERVING_PASS",
+  "base_sha": "584c2ae77ff37b932f4da6cd2b1652b0696066a9",
+  "implementation_producer_sha": "60ea7bd9841a636a26bfe7f140dba04b0a562f03",
+  "newer_main_excluded_sha": "a2538a428baa4c6d823c76efe96cb3bc0cbd1f86",
+  "environment_digest": "sha256:bedf54e6602800f5b179e7ae7eb9eec816cdf1c49181a7ecc4ca904247b9fce2",
+  "two_node_participant_plan_digest": "sha256:bc306ddb4076f4c7ed72dbb9effef9ef08ba402b20b0ec35b609c92feb94a584",
+  "local_participant_plan_digest": "sha256:6128dd6705d692df3d5fc11cc130dba5c010cfff40c0e4c5ec7c19e1b78ff0",
+  "planner_decision_digest": "sha256:9a5131fa96d3d8129a60ca6edb8664e5bf0e9f9aac705002005b82f2e5a44980",
+  "planner_selected_execution_plan_digest": "sha256:11c9e21c51c2bdd037ec8644f656a7333ac7878e1ee31ff71c99220a6e2aea17",
+  "matched_serving_evidence_digest": "sha256:d367a2b1002641a010dccda3554c3c756a13c0b55e4c3629dcc4117f72c52941",
+  "model": {
+    "repository": "nvidia/Qwen3.6-35B-A3B-NVFP4",
+    "revision": "491c2f1ea524c639598bf8fa787a93fed5a6fbce",
+    "checkpoint_file_count": 17,
+    "identical_across_nodes": true
+  },
+  "physical_environment": {
+    "preflight": "ALL_PREFLIGHT_CHECKS_PASSED",
+    "local_split_preflight": "LOCAL_SPLIT_PREFLIGHT_PASSED",
+    "network": "1GbE-full-duplex-MTU1500-eno1-enp5s0",
+    "compute_units": [
+      {
+        "node": "inferswarm01",
+        "logical_id": "gpu.node-a.0",
+        "uuid": "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099",
+        "pci_bdf": "00000000:02:00.0",
+        "vram_total_bytes": 12884901888,
+        "required_bytes": 10861202432,
+        "reservation_bytes": 536870912
+      },
+      {
+        "node": "inferswarm01",
+        "logical_id": "gpu.node-a.1",
+        "uuid": "GPU-d5c05739-96c1-7e49-89b6-bf54c2121c55",
+        "pci_bdf": "00000000:03:00.0",
+        "vram_total_bytes": 12884901888,
+        "required_bytes": 11170278912,
+        "reservation_bytes": 536870912
+      },
+      {
+        "node": "inferswarm03",
+        "logical_id": "gpu.node-b.0",
+        "uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176",
+        "pci_bdf": "00000000:01:00.0",
+        "vram_total_bytes": 12884901888,
+        "required_bytes": 11170278912,
+        "reservation_bytes": 536870912
+      }
+    ]
+  },
+  "selection": {
+    "objective": "minimize median TTFT for matched W2/W4 generate-32 serving",
+    "selected_candidate": "resident-same-node-two-slot[slot-a=gpu.node-a.0,slot-b=gpu.node-a.1]",
+    "authorization": "AUTOMATIC_PLANNER_SELECTION",
+    "ranked_candidates": [
+      {
+        "rank": 1,
+        "candidate": "resident-same-node-two-slot[slot-a=gpu.node-a.0,slot-b=gpu.node-a.1]",
+        "median_ttft_ms": 373.6170495
+      },
+      {
+        "rank": 2,
+        "candidate": "resident-two-node-two-slot[slot-a=gpu.node-a.0,slot-b=gpu.node-b.0]",
+        "median_ttft_ms": 1877.4567285
+      },
+      {
+        "rank": 3,
+        "candidate": "source-backed-single-resource[whole-model=gpu.node-a.0]",
+        "median_ttft_ms": 2630.5871575
+      }
+    ],
+    "unused_resources": [
+      {
+        "compute_unit_id": "gpu.node-b.0",
+        "reason": "not needed by the highest-ranked candidate"
+      }
+    ],
+    "r4_evidence": {
+      "presented": true,
+      "measurement": "2.947 Mb/s peak application demand against a 747.12 Mb/s limit",
+      "applicable": false,
+      "rejection_reason": "evidence context mismatch for runtime_context",
+      "influence": "rejected; did not affect admission or ranking"
+    }
+  },
+  "serving_path": "ordinary FreeToken OpenAI serving adapter -> GenSpec -> TokenizeMsg -> static InferSwarm controller -> generic planner -> frozen plan -> strategy realizer -> accepted R2 or R4 backend-native runtime -> streamed response",
+  "correctness": {
+    "diagnostic_arms": [
+      "same-node resident R2 split W2/W4",
+      "two-node resident R4 split W2/W4"
+    ],
+    "prompt_tokens_exact": true,
+    "generated_tokens_exact": true,
+    "selected_logits_within_frozen_threshold": true,
+    "boundary_checksums_match": true,
+    "nan_count": 0,
+    "inf_count": 0,
+    "realization_reconciliation": "MATCHED",
+    "silent_plan_substitution": false
+  },
+  "matched_service": {
+    "methodology": "one warmup plus five measured repetitions per W2/W4 class",
+    "measured_requests_per_arm": 10,
+    "source_backed_single_resource": {
+      "median_ttft_ms": 2630.5871575,
+      "median_complete_request_wall_ms": 3305.816471,
+      "median_decode_tok_s": 46.0004088474295
+    },
+    "same_node_resident": {
+      "median_ttft_ms": 373.6170495,
+      "median_prefill_wall_ms": 373.6160045,
+      "median_prefill_tok_s": 227.35741388670147,
+      "median_decode_tok_s": 65.76624873330516,
+      "median_inter_token_latency_ns_p50": 15126953.5,
+      "median_inter_token_latency_ns_p95": 15182565.0,
+      "median_complete_request_wall_ms": 844.3860605,
+      "median_staging_transport_protocol_residual_ms": 46.4570595,
+      "median_residual_fraction": 0.055692910366487935,
+      "activation_bytes_all_12_requests": 11649024
+    },
+    "two_node_resident": {
+      "median_ttft_ms": 1877.4567285,
+      "median_prefill_wall_ms": 1877.45589,
+      "median_prefill_tok_s": 47.12242424944087,
+      "median_decode_tok_s": 29.222968384878364,
+      "median_inter_token_latency_ns_p50": 33798012.0,
+      "median_inter_token_latency_ns_p95": 35537606.25,
+      "median_complete_request_wall_ms": 3067.9846395,
+      "median_staging_transport_protocol_residual_ms": 2248.426914,
+      "median_residual_fraction": 0.7318173599547223,
+      "wire_bytes_tx_all_12_requests": 11797047,
+      "wire_bytes_rx_all_12_requests": 122529,
+      "semantic_payload_bytes_tx_all_12_requests": 11649024
+    },
+    "network_placement_economics": {
+      "two_node_minus_same_node_ttft_ms": 1503.839679,
+      "two_node_over_same_node_ttft": 5.025083119232758,
+      "two_node_minus_same_node_request_wall_ms": 2223.598579,
+      "two_node_over_same_node_request_wall": 3.633390913255134,
+      "two_node_minus_same_node_decode_tok_s": -36.5432803484268,
+      "residual_interpretation": "combined staging/transport/protocol residual; not pure network time"
+    }
+  },
+  "realization": {
+    "plan_frozen_before_heavyweight_realization": true,
+    "same_node_realization_wall_seconds": 68.131071624,
+    "two_node_realization_wall_seconds": 47.826231041,
+    "same_node_block_a_load_seconds": 62.44980166699679,
+    "same_node_block_b_load_seconds": 62.99834108300274,
+    "two_node_block_a_load_seconds": 45.70156556400616,
+    "two_node_block_b_load_seconds": 34.267361849000736,
+    "staging_bytes_released_block_a": 8636596224,
+    "staging_bytes_released_block_b": 9545711616,
+    "process_scoped_swap_reliance": false
+  },
+  "runtime_invariants": {
+    "fallbacks_each_block": 0,
+    "graph_recaptures_each_block": 0,
+    "host_expert_fetches_each_block": 0,
+    "resident_source_accesses_each_block": 0,
+    "steady_state_model_movement_bytes_each_block": 0,
+    "unexplained_persistent_host_mirror_bytes_each_block": 0,
+    "clean_graph_captures_each_block": 1,
+    "clean_graph_replays_each_block": 372
+  },
+  "bounded_concurrency": {
+    "bound": 2,
+    "workloads": ["W2", "W4"],
+    "selected_candidate": "resident-same-node-two-slot[slot-a=gpu.node-a.0,slot-b=gpu.node-a.1]",
+    "max_outstanding_requests": 2,
+    "distinct_session_ids": true,
+    "same_frozen_plan_for_all_sessions": true,
+    "generated_tokens_exact": true,
+    "runtime_invariants_clean": true
+  },
+  "teardown_observation": {
+    "node_b_exit_code": 1,
+    "reason": "accepted R4 service fail-closed on coordinator terminal zero-byte disconnect after final report capture",
+    "serving_requests_complete_before_teardown": true,
+    "runtime_fallback": false
+  },
+  "tests": {
+    "research": "193 passed",
+    "benchmarks": "559 passed",
+    "server": "578 passed, 1 unrelated deprecation warning"
+  },
+  "non_claims": [
+    "No production throughput or load claim",
+    "No elasticity, live membership, epoch transition, availability, failover, or recovery claim",
+    "No final public API, daemon, control-plane, or wire-protocol claim",
+    "No 2.5-GbE or heterogeneous-accelerator claim",
+    "No GLM-5.3 support or incorporation of newer FreeToken main"
+  ]
+}

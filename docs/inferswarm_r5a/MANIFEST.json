@@ -1,0 +1,241 @@
+{
+  "schema": "inferswarm.r5a.artifact-manifest/1",
+  "implementation_producer_sha": "60ea7bd9841a636a26bfe7f140dba04b0a562f03",
+  "artifacts": [
+    {
+      "path": "METHODOLOGY.md",
+      "bytes": 8898,
+      "sha256": "9dd57221062a6a050b1ff8422dd1b7c934c75059473ed985b3533a8848f04b08"
+    },
+    {
+      "path": "README.md",
+      "bytes": 6109,
+      "sha256": "5b8ce7b33845c5ebfbc2642cd2eb7c0abf1cb7f87c0e30bd6dafa4e7b7ac2816"
+    },
+    {
+      "path": "evidence/automatic-concurrency/http-arm.json",
+      "bytes": 4751,
+      "sha256": "ec43b08b838b32ab2b68760b2764a8950dfbc02e6f50aba01c19ce716dbacfe4"
+    },
+    {
+      "path": "evidence/automatic-concurrency/serving-report.json",
+      "bytes": 57315504,
+      "sha256": "2170c619f52740690917d3ee96a90c0b2ff05484b5cf4e546e466dec8dab99f6"
+    },
+    {
+      "path": "evidence/automatic-concurrency/summary.json",
+      "bytes": 195184,
+      "sha256": "ecf66ad32a85aa39f7775b8cb32ba6dbc2036d2cac2567a1f4117935026f345f"
+    },
+    {
+      "path": "evidence/configs/automatic-concurrency-config.json",
+      "bytes": 474,
+      "sha256": "0138bdcb173390864348e3aeb3d0b6b03994b9987c769fea6b7d17dea89b8a08"
+    },
+    {
+      "path": "evidence/configs/local-clean-config.json",
+      "bytes": 518,
+      "sha256": "a37394167f0292902a0fa9e2fb3806ebab5c329d088ccfd8daa282b44eb50007"
+    },
+    {
+      "path": "evidence/configs/local-diagnostic-config.json",
+      "bytes": 522,
+      "sha256": "fe2a6381ae418b50c8bb0d447f6e7207f0540ce1564ea21eca624c7272b3416e"
+    },
+    {
+      "path": "evidence/configs/network-clean-config.json",
+      "bytes": 510,
+      "sha256": "630b0585a25b30d3e12ea686abea12646b90b6013ece5710e7cf55ce51028f1f"
+    },
+    {
+      "path": "evidence/configs/network-diagnostic-config.json",
+      "bytes": 514,
+      "sha256": "0e5fe8c3dbe59fac4bb229f3858e76c42ea1dd90f6cf2193e06e327954539e53"
+    },
+    {
+      "path": "evidence/local-resident-clean/evidence.json",
+      "bytes": 3968,
+      "sha256": "44352e7fbb2d66130a15e607e9aeb82c9f73656982bc26a722104fe489da70e7"
+    },
+    {
+      "path": "evidence/local-resident-clean/http-arm.json",
+      "bytes": 18649,
+      "sha256": "f9b30215779a470e803738792a246fd96f700ec7061463e0680b19c4e800e65a"
+    },
+    {
+      "path": "evidence/local-resident-clean/serving-report.json",
+      "bytes": 733851,
+      "sha256": "d381fcfd925014064c1ddf987e77c93315f0addf2717b5721ac95e0f4c4bba16"
+    },
+    {
+      "path": "evidence/local-resident-clean/summary.json",
+      "bytes": 213933,
+      "sha256": "cd0a50efb3b72faa7db3cb7f4ab6fba05e0043f99cad1888e816592a8881eddb"
+    },
+    {
+      "path": "evidence/local-resident-diagnostic/http-arm.json",
+      "bytes": 4752,
+      "sha256": "c91789334e90b43b6849790e533a55f401097e53b955e00588ccc34c562b338f"
+    },
+    {
+      "path": "evidence/local-resident-diagnostic/serving-report.json",
+      "bytes": 57272992,
+      "sha256": "24f5fa39f22f2e16e101b85a16d09cbcdffe41978f6c90d2c3965f7ea3f85a36"
+    },
+    {
+      "path": "evidence/local-resident-diagnostic/summary.json",
+      "bytes": 195166,
+      "sha256": "db488e4bedea1e902b4cb21577992b89b20c965c86a662ef52de7c00a61fa3cd"
+    },
+    {
+      "path": "evidence/matched-serving-evidence.json",
+      "bytes": 11403,
+      "sha256": "4280846d4a01f9695b8704d70924d3402876814def1edf19b1393632602182a4"
+    },
+    {
+      "path": "evidence/network-clean/evidence.json",
+      "bytes": 3962,
+      "sha256": "8e8b509ce6a00e8836ad282db556d4f7d21491efb6b7449597a1398fdb2f21bf"
+    },
+    {
+      "path": "evidence/network-clean/http-arm.json",
+      "bytes": 18690,
+      "sha256": "8505a438580c5e0928ff09e49a7815c32d26c1bfe65dac27a730c5706e7f5bcd"
+    },
+    {
+      "path": "evidence/network-clean/node-b-final.json",
+      "bytes": 63397,
+      "sha256": "bd056db231288a49687c9ba92f9d0500ced21d84bd6bb81c2911ab99ef126695"
+    },
+    {
+      "path": "evidence/network-clean/node-b-ready.json",
+      "bytes": 64738,
+      "sha256": "471ec596686f6fa68a712018a0e721161d4b17fad4d1b398baf8dde5d8924a9b"
+    },
+    {
+      "path": "evidence/network-clean/serving-report.json",
+      "bytes": 361419,
+      "sha256": "96d73fca37f894e3a58f1b5fd93b3b7162ca9eb4b71564844b62b706ab60c0e1"
+    },
+    {
+      "path": "evidence/network-clean/summary.json",
+      "bytes": 122553,
+      "sha256": "e66d78b799275b7dcadecb28f8e4a6746861a3f9182f0c1cdc4041de9ab25620"
+    },
+    {
+      "path": "evidence/network-clean/teardown.json",
+      "bytes": 602,
+      "sha256": "e5bf9216329c7d3e3e03b26e5a80579a92f90afaad414fee2c2e423e20790517"
+    },
+    {
+      "path": "evidence/network-diagnostic/http-arm.json",
+      "bytes": 4746,
+      "sha256": "08e83ccb23978c54671135e71a12ce42b76c102a5d061c084694183699a2d5f3"
+    },
+    {
+      "path": "evidence/network-diagnostic/node-b-final.json",
+      "bytes": 63392,
+      "sha256": "e3bb768825ad1273f5f88bf8ff4d28616984f4dc63919e552534e89d68831319"
+    },
+    {
+      "path": "evidence/network-diagnostic/node-b-ready.json",
+      "bytes": 64737,
+      "sha256": "e009c5f288fde5b6ae5f260679c091e4d910e3bf129883e0c9b719bd233c3a24"
+    },
+    {
+      "path": "evidence/network-diagnostic/serving-report.json",
+      "bytes": 154815,
+      "sha256": "590687102fa1272c00fa8a75edd0b16422e5cec8049ccb7d74755563e059f43c"
+    },
+    {
+      "path": "evidence/network-diagnostic/summary.json",
+      "bytes": 103671,
+      "sha256": "272c14b3552b1d86d6187e156e2b7e7c9ff9799eb805ea344c66b33060da2d47"
+    },
+    {
+      "path": "evidence/network-diagnostic/teardown.json",
+      "bytes": 604,
+      "sha256": "15a96f01c2c7667d4f8573e424c604b26cff7efbbfade67928413f8ead171a57"
+    },
+    {
+      "path": "evidence/placement-economics.json",
+      "bytes": 1569,
+      "sha256": "b55543663cf4d9e1dc05520c44571e3534793d041aa7a5a8f6c5492678017fa4"
+    },
+    {
+      "path": "evidence/preflight/frozen-environment.json",
+      "bytes": 14076,
+      "sha256": "b52d9a8412e3eb9090f00fb441d1eee06e8f6a1f8005899f918b17733e53080a"
+    },
+    {
+      "path": "evidence/preflight/local-split-gate.json",
+      "bytes": 2276,
+      "sha256": "3c6cd64e0c25f38a368b0a75acbba5ce6f0c476ccbc7890487d0565d4a4cea86"
+    },
+    {
+      "path": "evidence/preflight/node-a-hardware.json",
+      "bytes": 7981,
+      "sha256": "6e95f92e5ba732cb1454edf9f3cec4a11433df206bddcc7d7d4b4ab12897b33b"
+    },
+    {
+      "path": "evidence/preflight/node-b-hardware.json",
+      "bytes": 8728,
+      "sha256": "ce6496e0dd5d9ec83def38d6055c7f5f7f59ee303d11277bb09cb9aa7b4d87f4"
+    },
+    {
+      "path": "evidence/preflight/participant-plan.json",
+      "bytes": 14829585,
+      "sha256": "bb3aadb6972c0eea464eb5e8841087c788867ed276fe37bef19d0825040f85ac"
+    },
+    {
+      "path": "evidence/preflight/preflight-gate.json",
+      "bytes": 4434,
+      "sha256": "3ee4b4cb2c4c1d2531cc733f104b1b823054a80dcc27948ddf57e91fc04c8f1b"
+    },
+    {
+      "path": "evidence/preflight/raw/checkpoint-manifest.json",
+      "bytes": 3331,
+      "sha256": "adad9511f3301a164985dcf170963ed38689eeda95cba1bb12586a5eed0f427b"
+    },
+    {
+      "path": "evidence/preflight/raw/identity-a.json",
+      "bytes": 174,
+      "sha256": "5924e5fa2d52e1c35aa3d8f4f8181f0b3322c139addc65bce42f22d47f266eca"
+    },
+    {
+      "path": "evidence/preflight/raw/identity-b.json",
+      "bytes": 174,
+      "sha256": "86c80f8a23089279877dc8b04a007d0c7ca0d176826b2d6e10e76d4fbe4eb4af"
+    },
+    {
+      "path": "evidence/preflight/raw/runtime-versions.json",
+      "bytes": 546,
+      "sha256": "dc72e826c9b0c564dd4b6424b5748dc5b99220dcf72c2303a70afa2405221329"
+    },
+    {
+      "path": "evidence/source-local/evidence.json",
+      "bytes": 3953,
+      "sha256": "0e5c670a987389941d0f3a54b5d81fb22bf894dc6ccb0b906f4cee93cbd77d71"
+    },
+    {
+      "path": "evidence/source-local/http-arm.json",
+      "bytes": 36707,
+      "sha256": "5bb312467f1f9a757505e90888ba7020899f1547c359f1ffeea95652f66f369c"
+    },
+    {
+      "path": "evidence/source-local/summary.json",
+      "bytes": 28944,
+      "sha256": "15fb7bec3283d71bde0660c839425b9ee5694fdf0be902069d6b6cd7b015ed7c"
+    },
+    {
+      "path": "result.json",
+      "bytes": 8269,
+      "sha256": "0b7625eb5a1949ca82bee38690c299459cd7aba21ec2ca6ac420aa9bad5f246d"
+    },
+    {
+      "path": "test-summary.json",
+      "bytes": 1024,
+      "sha256": "719a007724fa2b68674e480737d720956a9ccf77f4a9e8e96da33f19fa6c201c"
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "schema": "inferswarm.r5a.test-summary/1",
+  "implementation_producer_sha": "60ea7bd9841a636a26bfe7f140dba04b0a562f03",
+  "environment": {
+    "python": "/home/zutfen/FreeToken/.venv/bin/python",
+    "pythonpath": "/home/zutfen/FreeToken-r5a:/home/zutfen/FreeToken-r5a/python:/home/zutfen/FreeToken-r5a/benchmarks"
+  },
+  "focused": {
+    "scope": "R5A serving lifecycle, local realizer, planner evidence, and placement economics",
+    "result": "PASS",
+    "passed": 11,
+    "failed": 0
+  },
+  "suite_regressions": [
+    {
+      "scope": "tests/research",
+      "result": "PASS",
+      "passed": 193,
+      "failed": 0,
+      "elapsed_seconds": 8.81
+    },
+    {
+      "scope": "tests/benchmarks",
+      "result": "PASS",
+      "passed": 559,
+      "failed": 0,
+      "elapsed_seconds": 18.28
+    },
+    {
+      "scope": "tests/server",
+      "result": "PASS",
+      "passed": 578,
+      "failed": 0,
+      "warnings": 1,
+      "warning_class": "StarletteDeprecationWarning",
+      "elapsed_seconds": 10.99
+    }
+  ]
+}
