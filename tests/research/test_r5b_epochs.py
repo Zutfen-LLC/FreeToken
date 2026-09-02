@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+import time
 from copy import deepcopy
 
 import pytest
@@ -256,6 +258,53 @@ def _controller(*, fail_candidate=None):
         transition_strategy=_Strategy(),
         transition_policy=transition_policy,
     )
+
+
+def test_loss_injection_is_atomic_with_event_publication():
+    controller = _controller()
+    runtime = controller.active_epoch.runtime
+    loss_started = threading.Event()
+    release_loss = threading.Event()
+
+    def controlled_loss(resource_id):
+        assert resource_id == "a0"
+        loss_started.set()
+        assert release_loss.wait(2)
+
+    runtime.fail_resource = controlled_loss
+    snapshot = _snapshot(a1=True, b0=True, label="post-loss")
+    event = {
+        "event_id": "loss-race-regression",
+        "kind": "PARTICIPANT_LOST",
+        "resource_id": "a0",
+        "authenticated": True,
+        "observed_at_ns": 1,
+        "resource_snapshot_digest": snapshot["digest"],
+        "active_plan_executable": False,
+    }
+    submit = threading.Thread(
+        target=controller.submit_resource_event, args=(event, snapshot)
+    )
+    submit.start()
+    assert loss_started.wait(1)
+
+    session = SessionLedger(7, [1], 1, {})
+    processed = threading.Event()
+
+    def process():
+        controller._process_event(session)
+        processed.set()
+
+    processing = threading.Thread(target=process)
+    processing.start()
+    time.sleep(0.02)
+    assert not processed.is_set()
+    assert controller._transitions == []
+    release_loss.set()
+    submit.join(2)
+    processing.join(2)
+    assert processed.is_set()
+    assert controller.report()["transitions"][0]["status"] == "ACTIVATED"
 
 
 def _event(snapshot, event_id, kind, resource, **extra):

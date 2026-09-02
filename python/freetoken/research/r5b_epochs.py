@@ -113,6 +113,7 @@ class Epoch:
     retired_at_ns: int | None = None
     reclaimed_at_ns: int | None = None
     reclamation: Mapping[str, Any] | None = None
+    runtime_sessions: list[Mapping[str, Any]] = field(default_factory=list)
 
 
 def _now() -> int:
@@ -258,17 +259,36 @@ class EpochServingController:
         require_frozen(snapshot, "post-event resource snapshot")
         if copied.get("resource_snapshot_digest") != snapshot.get("digest"):
             raise ValueError("resource event does not bind the supplied snapshot")
+        # Publishing a participant-loss event and causing its controlled physical
+        # loss are one controller operation.  Holding the state lock prevents the
+        # serving thread from dequeuing the event and retiring the runtime while
+        # this thread is still terminating that runtime's participant.
         with self._lock:
+            audit = {**deepcopy(copied), "accepted": True}
             self._events.append((copied, snapshot))
-            self._event_audit.append({**deepcopy(copied), "accepted": True})
-            runtime = self._active.runtime
-        if copied.get("active_plan_executable", True) is False:
-            fail_resource = getattr(runtime, "fail_resource", None)
-            if fail_resource is None:
-                raise ActiveEpochLostError(
-                    "runtime has no controlled participant-loss seam"
-                )
-            fail_resource(str(copied["resource_id"]))
+            self._event_audit.append(audit)
+            if copied.get("active_plan_executable", True) is False:
+                fail_resource = getattr(self._active.runtime, "fail_resource", None)
+                if fail_resource is None:
+                    self._events.pop()
+                    audit.update(
+                        {
+                            "accepted": False,
+                            "failure_reason": "runtime has no controlled participant-loss seam",
+                        }
+                    )
+                    raise ActiveEpochLostError(audit["failure_reason"])
+                try:
+                    fail_resource(str(copied["resource_id"]))
+                except Exception as exc:
+                    self._events.pop()
+                    audit.update(
+                        {
+                            "accepted": False,
+                            "failure_reason": f"{type(exc).__name__}: {exc}",
+                        }
+                    )
+                    raise
 
     def _runtime_session_id(self, logical_session_id: int) -> int:
         self._runtime_session_sequence += 1
@@ -604,6 +624,7 @@ class EpochServingController:
                         continue
                 if result.get("plan_digest") != epoch.execution_plan["digest"]:
                     raise RealizationMismatchError("runtime silently substituted a plan")
+                epoch.runtime_sessions.append(deepcopy(result))
                 token = (
                     token_holder[-1]
                     if token_holder
@@ -706,6 +727,7 @@ class EpochServingController:
                     "retired_at_ns": item.retired_at_ns,
                     "reclaimed_at_ns": item.reclaimed_at_ns,
                     "reclamation": deepcopy(dict(item.reclamation or {})),
+                    "runtime_sessions": deepcopy(item.runtime_sessions),
                     "reconciliation": deepcopy(dict(item.reconciliation)),
                     "execution_plan": deepcopy(dict(item.execution_plan)),
                     "planner_decision": deepcopy(dict(item.planner_decision)),
