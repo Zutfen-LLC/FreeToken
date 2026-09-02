@@ -22,6 +22,7 @@ FEASIBLE_UNRANKED = "FEASIBLE_UNRANKED"
 TECHNICALLY_INFEASIBLE = "TECHNICALLY_INFEASIBLE"
 INTEGRITY_EXCLUDED = "INTEGRITY_EXCLUDED"
 POLICY_EXCLUDED = "POLICY_EXCLUDED"
+EVIDENCE_EXCLUDED = "EVIDENCE_EXCLUDED"
 
 
 class PlanningInputError(ValueError):
@@ -319,24 +320,55 @@ def _applicable_evidence(
     catalog: Mapping[str, Any],
     objective: Mapping[str, Any],
     planning_context: Mapping[str, Any],
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Audit every record and return ranking and admission evidence separately.
+
+    R3 only had objective-valued records, so records for another metric were
+    silently skipped.  R5A needs accepted path/capacity evidence to be visible
+    even when the declared ranking objective is an end-to-end service metric.
+    ``role=ADMISSION_CONSTRAINT`` is deliberately generic: the strategy binds
+    the record to a candidate/context and supplies a normalized comparison.
+    """
     applicable = []
+    admission = []
     considered = []
-    for record in sorted(catalog.get("records", []), key=lambda item: item["id"]):
-        if record.get("metric", {}).get("name") != objective.get("metric"):
-            continue
+    records = sorted(
+        catalog.get("records", []),
+        key=lambda item: (
+            item.get("metric", {}).get("name") != objective.get("metric"),
+            item["id"],
+        ),
+    )
+    for record in records:
         reasons = _context_mismatches(record, planning_context, candidate)
         metric = record.get("metric", {})
-        if metric.get("unit") != objective.get("unit"):
-            reasons.append(
-                f"metric unit mismatch: evidence {metric.get('unit')!r}, "
-                f"objective {objective.get('unit')!r}"
-            )
-        if metric.get("statistic") != objective.get("statistic"):
-            reasons.append(
-                f"metric statistic mismatch: evidence {metric.get('statistic')!r}, "
-                f"objective {objective.get('statistic')!r}"
-            )
+        role = record.get("role", "RANKING_OBJECTIVE")
+        if role == "RANKING_OBJECTIVE":
+            if metric.get("name") != objective.get("metric"):
+                reasons.append(
+                    f"objective metric mismatch: evidence {metric.get('name')!r}, "
+                    f"objective {objective.get('metric')!r}"
+                )
+            if metric.get("unit") != objective.get("unit"):
+                reasons.append(
+                    f"metric unit mismatch: evidence {metric.get('unit')!r}, "
+                    f"objective {objective.get('unit')!r}"
+                )
+            if metric.get("statistic") != objective.get("statistic"):
+                reasons.append(
+                    f"metric statistic mismatch: evidence {metric.get('statistic')!r}, "
+                    f"objective {objective.get('statistic')!r}"
+                )
+        elif role == "ADMISSION_CONSTRAINT":
+            constraint = record.get("constraint", {})
+            if constraint.get("comparison") not in ("LTE", "GTE"):
+                reasons.append("admission constraint comparison must be LTE or GTE")
+            if not isinstance(constraint.get("threshold"), (int, float)):
+                reasons.append("admission constraint lacks a numeric threshold")
+            if metric.get("unit") != constraint.get("unit"):
+                reasons.append("admission metric and threshold units differ")
+        else:
+            reasons.append(f"unsupported evidence role {role!r}")
         audit = {
             "evidence_id": record["id"],
             "applicable": not reasons,
@@ -351,10 +383,39 @@ def _applicable_evidence(
                 "statistic": metric.get("statistic"),
             },
         }
-        considered.append(audit)
-        if not reasons:
+        # Preserve the accepted R3 audit shape byte-for-byte for legacy records;
+        # R5A records opt in to the richer generic identity/provenance fields.
+        for key in ("producer_identity", "evidence_identity", "measurement_status"):
+            if key in record:
+                audit[key] = deepcopy(record[key])
+        if "role" in record:
+            audit["role"] = role
+        if "constraint" in record:
+            audit["constraint"] = deepcopy(record["constraint"])
+        if "provenance" in record:
+            audit["provenance"] = deepcopy(record["provenance"])
+        if role == "ADMISSION_CONSTRAINT" and not reasons:
+            threshold = float(record["constraint"]["threshold"])
+            value = float(metric["value"])
+            comparison = record["constraint"]["comparison"]
+            passed = value <= threshold if comparison == "LTE" else value >= threshold
+            audit["constraint_passed"] = passed
+            if "role" in record:
+                audit["influence"] = (
+                    "candidate admitted by applicable constraint"
+                    if passed
+                    else "candidate excluded by applicable constraint"
+                )
+            admission.append(dict(record))
+        elif role == "RANKING_OBJECTIVE" and not reasons:
+            if "role" in record or "provenance" in record:
+                audit["influence"] = "included in declared-objective ranking aggregate"
             applicable.append(dict(record))
-    return applicable, considered
+        else:
+            if "role" in record or "provenance" in record:
+                audit["influence"] = "rejected; did not affect admission or ranking"
+        considered.append(audit)
+    return applicable, admission, considered
 
 
 def plan(
@@ -396,9 +457,16 @@ def plan(
         policy_ok, policy_reasons = _evaluate_policy(
             candidate, snapshot, policy, technical["memory_accounting"]
         )
-        applicable, evidence_audit = _applicable_evidence(
+        applicable, admission, evidence_audit = _applicable_evidence(
             candidate, evidence_catalog, objective, planning_context
         )
+        failed_constraints = []
+        for record in admission:
+            value = float(record["metric"]["value"])
+            threshold = float(record["constraint"]["threshold"])
+            comparison = record["constraint"]["comparison"]
+            if not (value <= threshold if comparison == "LTE" else value >= threshold):
+                failed_constraints.append(record["id"])
         metric = None
         state = TECHNICALLY_INFEASIBLE
         if technical["technically_feasible"]:
@@ -406,9 +474,11 @@ def plan(
                 state = INTEGRITY_EXCLUDED
             elif not policy_ok:
                 state = POLICY_EXCLUDED
+            elif failed_constraints:
+                state = EVIDENCE_EXCLUDED
             else:
                 state = FEASIBLE_UNRANKED
-            if integrity_ok and policy_ok and applicable:
+            if integrity_ok and policy_ok and not failed_constraints and applicable:
                 # One immutable catalog may contain repetitions; rank its declared aggregate.
                 values = [float(record["metric"]["value"]) for record in applicable]
                 metric = statistics.median(values)
@@ -423,6 +493,8 @@ def plan(
                 "policy_reasons": policy_reasons,
                 "evidence": evidence_audit,
                 "applicable_evidence_ids": [item["id"] for item in applicable],
+                "applicable_admission_evidence_ids": [item["id"] for item in admission],
+                "failed_admission_evidence_ids": failed_constraints,
                 "objective_metric": (
                     {
                         "name": objective["metric"],

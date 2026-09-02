@@ -33,6 +33,22 @@ def test_parser_accepts_no_secondary_without_changing_defaults():
     assert args.inferswarm_experimental_d2_graph_remote is False
     assert args.inferswarm_remote_mode == "overlap"
     assert args.inferswarm_mechanism_max_steps == 256
+    assert args.inferswarm_r5a_config is None
+
+
+def test_r5a_static_serving_config_is_a_separate_research_mode():
+    args = _parse("--inferswarm-r5a-config", "/tmp/r5a.json")
+    assert args.inferswarm_r5a_config == "/tmp/r5a.json"
+
+
+def test_r5a_static_serving_refuses_historical_execution_flags():
+    with pytest.raises(SystemExit):
+        _parse(
+            "--inferswarm-r5a-config",
+            "/tmp/r5a.json",
+            "--inferswarm-secondary-gpu",
+            SECONDARY_UUID,
+        )
 
 
 def test_parser_accepts_exactly_one_secondary_spec():
