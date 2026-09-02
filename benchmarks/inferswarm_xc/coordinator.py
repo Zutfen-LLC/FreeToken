@@ -475,7 +475,10 @@ def main(argv: list[str] | None = None) -> int:
         # Retire/reclaim the remote epoch runtime and persist the final
         # report before the process exits; a hard kill would leave the
         # report claiming an ACTIVE epoch with no reclamation record.
-        server.shutdown()
+        # shutdown() blocks until serve_forever() returns, and this handler
+        # runs on the thread that is inside serve_forever -- so the stop
+        # must come from a helper thread or it deadlocks.
+        threading.Thread(target=server.shutdown, daemon=True).start()
 
     signal.signal(signal.SIGTERM, _graceful_shutdown)
     signal.signal(signal.SIGINT, _graceful_shutdown)
