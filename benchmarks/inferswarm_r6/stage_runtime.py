@@ -9,7 +9,6 @@ tied lm_head, hybrid SWA/full attention over the triton backend.
 
 from __future__ import annotations
 
-import gc
 import hashlib
 import os
 import resource
@@ -18,7 +17,6 @@ from pathlib import Path
 from typing import Any
 
 import torch
-
 from freetoken.research.host_reclamation import snapshot_host_memory
 from freetoken.research.r6_dense_census import DenseBlockSpec
 
@@ -79,6 +77,15 @@ def _vmstat() -> dict[str, int]:
     }
 
 
+def _rusage_counters() -> dict[str, int]:
+    usage = resource.getrusage(resource.RUSAGE_SELF)
+    return {
+        "minor_page_faults": usage.ru_minflt,
+        "major_page_faults": usage.ru_majflt,
+        "swaps": usage.ru_nswap,
+    }
+
+
 def _tensor_bytes(value) -> int:
     if isinstance(value, torch.Tensor):
         return value.numel() * value.element_size()
@@ -89,6 +96,192 @@ def _tensor_bytes(value) -> int:
     return 0
 
 
+_SUPPORTED_FLOAT_DTYPES = frozenset(
+    {torch.float16, torch.bfloat16, torch.float32, torch.float64}
+)
+
+
+def _copy_checkpoint_tensor(
+    destination: torch.Tensor,
+    source: torch.Tensor,
+    *,
+    raw_key: str,
+) -> None:
+    if tuple(destination.shape) != tuple(source.shape):
+        raise RuntimeError(
+            f"shape mismatch for {raw_key}: source {tuple(source.shape)} != "
+            f"destination {tuple(destination.shape)}"
+        )
+    if source.dtype != destination.dtype and not (
+        source.dtype in _SUPPORTED_FLOAT_DTYPES
+        and destination.dtype in _SUPPORTED_FLOAT_DTYPES
+    ):
+        raise RuntimeError(
+            f"unsupported dtype conversion for {raw_key}: "
+            f"{source.dtype} -> {destination.dtype}"
+        )
+    destination.copy_(source, non_blocking=False)
+
+
+def materialize_dense_state(
+    *,
+    expected_state: dict[str, torch.Tensor],
+    reader,
+    device: torch.device | str,
+    rename_key,
+    merge_rule_for,
+    k_eq_v_k_keys: frozenset[str] = frozenset(),
+) -> tuple[dict[str, torch.Tensor], int]:
+    """Materialize planned state directly into its final device tensors.
+
+    Merge groups are validated entirely from safetensors headers before any
+    data mapping opens.  Q/K/V and gate/up sources are copied one at a time
+    into final destination slices; no source tensor survives its context and
+    no CPU concatenation is constructed.
+    """
+    standalone: dict[str, str] = {}
+    groups: dict[str, dict[str, Any]] = {}
+    destinations: dict[str, str] = {}
+
+    for raw_key in sorted(reader.allowed_keys):
+        renamed = rename_key(raw_key)
+        if renamed is None or not renamed.startswith("model."):
+            raise RuntimeError(f"planned key {raw_key} failed rename -> {renamed!r}")
+        rule_ref = merge_rule_for(renamed)
+        if rule_ref is None:
+            if renamed not in expected_state:
+                raise RuntimeError(
+                    f"planned key {raw_key} (-> {renamed}) has no module destination"
+                )
+            if renamed in destinations:
+                raise RuntimeError(f"duplicate destination component {renamed}")
+            destinations[renamed] = raw_key
+            standalone[raw_key] = renamed
+            continue
+
+        merged_key, rule = rule_ref
+        if merged_key not in expected_state:
+            raise RuntimeError(f"merged key {merged_key} has no module destination")
+        group = groups.setdefault(merged_key, {"rule": rule, "sources": {}})
+        if (
+            group["rule"].fused_suffix != rule.fused_suffix
+            or group["rule"].slots != rule.slots
+        ):
+            raise RuntimeError(f"inconsistent merge rules for {merged_key}")
+        sources = group["sources"]
+        if rule.slot in sources:
+            raise RuntimeError(f"duplicate merge component {merged_key}:{rule.slot}")
+        sources[rule.slot] = raw_key
+
+    copies_by_raw: dict[str, list[tuple[str, str, int, tuple[int, ...]]]] = {}
+    for merged_key, group in groups.items():
+        rule = group["rule"]
+        sources = dict(group["sources"])
+        k_source = sources.get("k")
+        if k_source in k_eq_v_k_keys:
+            if "v" in sources:
+                raise RuntimeError(
+                    f"duplicate K=V merge component {merged_key}: checkpoint has v"
+                )
+            sources["v"] = k_source
+        missing = [slot for slot in rule.slots if slot not in sources]
+        unexpected = sorted(set(sources) - set(rule.slots))
+        if missing or unexpected:
+            raise RuntimeError(
+                f"incomplete merge group {merged_key}: missing={missing}, "
+                f"unexpected={unexpected}"
+            )
+
+        expected = expected_state[merged_key]
+        offset = 0
+        for slot in rule.slots:
+            raw_key = sources[slot]
+            record = reader.record(raw_key)
+            if not record.shape:
+                raise RuntimeError(f"merge component {raw_key} must have rank >= 1")
+            if tuple(record.shape[1:]) != tuple(expected.shape[1:]):
+                raise RuntimeError(
+                    f"shape mismatch for {raw_key}: trailing dimensions "
+                    f"{record.shape[1:]} != {tuple(expected.shape[1:])}"
+                )
+            rows = record.shape[0]
+            copies_by_raw.setdefault(raw_key, []).append(
+                (merged_key, slot, offset, record.shape)
+            )
+            offset += rows
+        if offset != expected.shape[0]:
+            raise RuntimeError(
+                f"shape mismatch for {merged_key}: merged rows {offset} != "
+                f"destination rows {expected.shape[0]}"
+            )
+        if merged_key in destinations:
+            raise RuntimeError(f"duplicate final destination {merged_key}")
+        destinations[merged_key] = "merge"
+
+    missing_destinations = sorted(set(expected_state) - set(destinations))
+    if missing_destinations:
+        raise RuntimeError(f"module state never planned: {missing_destinations[:5]}")
+
+    loaded: dict[str, torch.Tensor] = {}
+    filled: set[tuple[str, str]] = set()
+    fusion_source_peak_live_bytes = 0
+    for raw_key in sorted(reader.allowed_keys):
+        with reader.open_tensor(raw_key) as source:
+            if raw_key in standalone:
+                destination_key = standalone[raw_key]
+                expected = expected_state[destination_key]
+                destination = torch.empty(
+                    tuple(expected.shape), dtype=expected.dtype, device=device
+                )
+                _copy_checkpoint_tensor(destination, source, raw_key=raw_key)
+                loaded[destination_key] = destination
+                continue
+
+            source_bytes = source.numel() * source.element_size()
+            fusion_source_peak_live_bytes = max(
+                fusion_source_peak_live_bytes, source_bytes
+            )
+            for merged_key, slot, offset, shape in copies_by_raw.get(raw_key, []):
+                expected = expected_state[merged_key]
+                destination = loaded.get(merged_key)
+                if destination is None:
+                    destination = torch.empty(
+                        tuple(expected.shape), dtype=expected.dtype, device=device
+                    )
+                    loaded[merged_key] = destination
+                target = destination.narrow(0, offset, shape[0])
+                _copy_checkpoint_tensor(target, source, raw_key=raw_key)
+                marker = (merged_key, slot)
+                if marker in filled:
+                    raise RuntimeError(f"duplicate merge copy {merged_key}:{slot}")
+                filled.add(marker)
+
+    reader.assert_all_fetched()
+    for merged_key, group in groups.items():
+        missing = [
+            slot for slot in group["rule"].slots if (merged_key, slot) not in filled
+        ]
+        if missing:
+            raise RuntimeError(
+                f"merge destination {merged_key} missing copies {missing}"
+            )
+    if reader.host_staging_current_bytes != 0:
+        raise RuntimeError("bounded reader retained host staging after realization")
+    return loaded, fusion_source_peak_live_bytes
+
+
+def execute_dense_layer_sequence(layers, hidden: torch.Tensor) -> torch.Tensor:
+    """Shared ordered decoder execution used by staged and single roles."""
+    for layer in layers:
+        hidden = layer.forward(hidden)
+    return hidden
+
+
+def semantic_boundaries_for_role(role: str):
+    """A complete single role has no inter-stage semantic boundary."""
+    return [] if role == "single" else None
+
+
 def _make_batch(*, start: int, token_count: int, phase: str, device: torch.device):
     from freetoken.core import Batch, Req, SamplingParams
 
@@ -97,7 +290,7 @@ def _make_batch(*, start: int, token_count: int, phase: str, device: torch.devic
         input_ids=torch.zeros(end, dtype=torch.int32),
         table_idx=0,
         cached_len=start,
-        output_len=65,
+        output_len=64,
         uid=1,
         sampling_params=SamplingParams(),
         cache_handle=None,
@@ -124,8 +317,8 @@ class GemmaDenseStage:
     def __init__(self, *, role: str, model_path: str, adapter_data: dict) -> None:
         _alias = {"a": "first", "b": "last"}
         role = _alias.get(role, role)
-        if role not in ("first", "middle", "last"):
-            raise ValueError("role must be first, middle, or last")
+        if role not in ("first", "middle", "last", "single"):
+            raise ValueError("role must be first, middle, last, or single")
         self.role = role
         self.model_path = model_path
         self._logit_capture: LogitCapture | None = None
@@ -136,15 +329,24 @@ class GemmaDenseStage:
         self.max_seq_len = int(adapter_data["runtime_capacity_tokens"])
         self.process_before = _status()
         self.vmstat_before = _vmstat()
+        self.rusage_before = _rusage_counters()
         started = time.perf_counter()
         torch.cuda.set_device(self.device)
         torch.cuda.reset_peak_memory_stats(self.device)
+        self.cuda_allocated_before_load = torch.cuda.memory_allocated(self.device)
+        free_before, total_memory = torch.cuda.mem_get_info(self.device)
+        self.cuda_total_memory_bytes = total_memory
+        self.cuda_free_before_load_bytes = free_before
 
         self.spec = DenseBlockSpec(**adapter_data["spec"])
         self.allowed_keys = frozenset(adapter_data["allowed_tensor_keys"])
         self.shared_keys = frozenset(
             (adapter_data.get("declared_shared_state") or {}).get("tensor_keys", [])
         )
+        if self.role == "single" and not (
+            self.spec.owns_embeddings and self.spec.owns_final_norm_head
+        ):
+            raise ValueError("single role must own embeddings and final norm/head")
 
         from freetoken.models.gemma4.config import parse_config
         from freetoken.utils import cached_load_hf_config
@@ -165,14 +367,27 @@ class GemmaDenseStage:
             )
 
         # Selective load: stream only planned keys into the staged modules.
-        module, fetched_keys, fetched_bytes = self._selective_load(whole_iter)
+        module, reader = self._selective_load(whole_iter)
+        torch.cuda.synchronize(self.device)
+        self.cuda_allocated_after_weights = torch.cuda.memory_allocated(self.device)
+        self.process_after_source_load = _status()
         gemma_weight.iter_weights = whole_sentinel
         try:
             # Sentinel now active: prove no further checkpoint access occurs
             # during context/graph setup.
             self.block = module
-            self.fetched_keys = fetched_keys
-            self.fetched_bytes = fetched_bytes
+            self.fetched_keys = list(reader.fetched_keys)
+            self.fetched_bytes = reader.fetched_bytes
+            self.checkpoint_bytes_selected = reader.selected_bytes
+            self.largest_raw_tensor_bytes = reader.largest_raw_tensor_bytes
+            self.host_staging_total_bytes_processed = reader.fetched_bytes
+            self.host_staging_peak_live_tensor_bytes = (
+                reader.host_staging_peak_live_tensor_bytes
+            )
+            self.host_staging_current_bytes = reader.host_staging_current_bytes
+            self.page_cache_advisory_calls = reader.page_cache_advisory_calls
+            self.safetensors_mapping_open_count = reader.mapping_open_count
+            self.safetensors_mapping_close_count = reader.mapping_close_count
             self.memory_snapshots["P1_source_load_complete"] = snapshot_host_memory()
             self.resident_device_bytes = sum(
                 _tensor_bytes(t) for t in self.block.state_dict().values()
@@ -184,6 +399,12 @@ class GemmaDenseStage:
             self.cuda_allocated_after_realization = torch.cuda.memory_allocated(
                 self.device
             )
+            self.cuda_allocated_after_runtime_initialization = (
+                self.cuda_allocated_after_realization
+            )
+            self.cuda_free_after_runtime_initialization = torch.cuda.mem_get_info(
+                self.device
+            )[0]
         finally:
             gemma_weight.iter_weights = whole_iter
 
@@ -191,9 +412,9 @@ class GemmaDenseStage:
         self.process_after_realization = _status()
         self.detached = True  # dense: host staging released at end of load
         self.detach_report = {
-            "released_bytes": self._host_peak_staging_bytes,
+            "released_bytes": self.host_staging_total_bytes_processed,
             "dead_staging_tensors": 0,
-            "policy": "dense-stream-no-persistent-host-mirror",
+            "policy": "bounded-per-tensor-source-no-persistent-host-mirror",
         }
 
     # -- construction helpers ------------------------------------------
@@ -212,14 +433,15 @@ class GemmaDenseStage:
             layer_ids = tuple(local_of[i] for i in group.layer_ids if i in local_of)
             if layer_ids:
                 groups.append(_replace(group, layer_ids=layer_ids))
-        return _replace(full_config, attention_groups=tuple(groups), num_layers=len(owned))
+        return _replace(
+            full_config, attention_groups=tuple(groups), num_layers=len(owned)
+        )
 
     def _build_module(self):
         raise NotImplementedError("staged modules are built inside _selective_load")
 
     def _selective_load(self, whole_iter):
         from freetoken.models.gemma4.model import Gemma4DecoderLayer
-
         from freetoken.research.r6_dense_census import DenseSelectiveTensorReader
 
         spec = self.spec
@@ -262,7 +484,9 @@ class GemmaDenseStage:
                         state, prefix=f"model.layers.{layer_id}", _internal=True
                     )
                 if self.norm is not None:
-                    self.norm.load_state_dict(state, prefix="model.norm", _internal=True)
+                    self.norm.load_state_dict(
+                        state, prefix="model.norm", _internal=True
+                    )
                 if state:
                     raise RuntimeError(
                         f"unexpected selective block keys: {list(state)[:8]}"
@@ -283,7 +507,8 @@ class GemmaDenseStage:
                 from freetoken.layers import VocabParallelEmbedding
 
                 modules.embed_tokens = VocabParallelEmbedding(
-                    self.full_config.vocab_size, self.full_config.hidden_size,
+                    self.full_config.vocab_size,
+                    self.full_config.hidden_size,
                     embed_scale=self.full_config.embedding_scale,
                 )
             modules.layers = [
@@ -298,8 +523,6 @@ class GemmaDenseStage:
                 )
 
         state = modules.state_dict()
-        loaded = {}
-        staging_peak = 0
         # Checkpoint stores separate q/k/v (+ no v on k_eq_v full-attn layers)
         # and mlp.{gate,up}_proj; modules expect merged qkv_proj /
         # gate_up_proj and feed_forward.* renames.  Reuse the accepted
@@ -323,57 +546,33 @@ class GemmaDenseStage:
         k_eq_v_layers = {
             gid
             for gid in modules.global_layer_ids
-            if getattr(
-                self.full_config.attention_group_for_layer(gid), "k_eq_v", False
-            )
+            if getattr(self.full_config.attention_group_for_layer(gid), "k_eq_v", False)
         }
-        merge_buf: dict[str, dict[str, torch.Tensor]] = {}
-        for key, tensor in reader.tensors(device="cpu"):
-            # raw checkpoint key -> renamed module key (renames only)
-            renamed = _rename_language_key(
+
+        def _rename(key: str) -> str | None:
+            return _rename_language_key(
                 "language_model." + key.removeprefix("model.language_model.")
             )
-            if renamed is None or not renamed.startswith("model."):
-                raise RuntimeError(f"planned key {key} failed rename -> {renamed!r}")
-            rule_ref = _merge_rule_for(renamed)
-            if rule_ref is None:
-                expected_meta = state.get(renamed)
-                if expected_meta is None:
-                    raise RuntimeError(
-                        f"planned key {key} (-> {renamed}) has no module destination"
-                    )
-                staging_peak += tensor.numel() * tensor.element_size()
-                loaded[renamed] = tensor.to(device=self.device, dtype=torch.bfloat16)
-                continue
-            merged_key, rule = rule_ref
-            slots = merge_buf.setdefault(merged_key, {})
-            slots[rule.slot] = tensor
-            if rule.slot == "k":
-                layer_match = _layer_re.search(key)
-                if layer_match is not None and int(layer_match.group(1)) in k_eq_v_layers:
-                    slots["v"] = tensor
-            if not all(slot in slots for slot in rule.slots):
-                staging_peak += tensor.numel() * tensor.element_size()
-                continue
-            parts = [slots[slot] for slot in rule.slots]
-            del merge_buf[merged_key]
-            merged = parts[0]
-            for part in parts[1:]:
-                merged = torch.cat([merged, part.to(merged.dtype)], dim=0)
-            staging_peak += tensor.numel() * tensor.element_size()
-            expected_meta = state.get(merged_key)
-            if expected_meta is None:
-                raise RuntimeError(f"merged key {merged_key} has no module destination")
-            loaded[merged_key] = merged.to(device=self.device, dtype=torch.bfloat16)
-            del parts, merged
-        if merge_buf:
-            raise RuntimeError(f"incomplete merge groups: {list(merge_buf)[:5]}")
-        self._host_peak_staging_bytes = staging_peak
-        missing = sorted(set(state) - set(loaded))
-        if missing:
-            raise RuntimeError(f"module state never loaded: {missing[:5]}")
+
+        k_eq_v_k_keys = frozenset(
+            key
+            for key in planned
+            if key.endswith(".self_attn.k_proj.weight")
+            and (match := _layer_re.search(key)) is not None
+            and int(match.group(1)) in k_eq_v_layers
+        )
+        loaded, self.fusion_source_peak_live_bytes = materialize_dense_state(
+            expected_state=state,
+            reader=reader,
+            device=self.device,
+            rename_key=_rename,
+            merge_rule_for=_merge_rule_for,
+            k_eq_v_k_keys=k_eq_v_k_keys,
+        )
         modules.load_state_dict(loaded)
-        return modules, list(reader.fetched_keys), reader.fetched_bytes
+        if loaded:
+            raise RuntimeError(f"unconsumed materialized state: {list(loaded)[:5]}")
+        return modules, reader
 
     def _setup_context(self):
         from freetoken.attention import create_attention_backend
@@ -414,8 +613,7 @@ class GemmaDenseStage:
                 "kv_cache_allocated_bytes": kv_bytes,
                 "kv_local_layer_ids": kv_local_layer_ids,
                 "kv_global_layer_ids": [
-                    self.block.global_layer_ids[i]
-                    for i in kv_local_layer_ids
+                    self.block.global_layer_ids[i] for i in kv_local_layer_ids
                 ],
                 "total_block_local_state_bytes": kv_bytes,
             },
@@ -427,9 +625,7 @@ class GemmaDenseStage:
         return self.block.embed_tokens.forward(input_ids)
 
     def forward_layers(self, hidden, residual=None):
-        for layer in self.block.layers:
-            hidden = layer.forward(hidden)
-        return hidden, None
+        return execute_dense_layer_sequence(self.block.layers, hidden), None
 
     def finalize(self, hidden, residual=None):
         final = self.block.norm.forward(hidden)
@@ -458,9 +654,8 @@ class GemmaDenseStage:
 
     @torch.inference_mode()
     def prefill(self, token_ids, hidden_or_ids, start: int):
-        """first: token ids in; hidden out. middle: hidden in; hidden out.
-        last: hidden in; (next token, logits) out."""
-        if self.role == "first":
+        """Execute one matched prefill over this role's complete ownership."""
+        if self.role in ("first", "single"):
             batch = self._prepare(
                 start=start, token_count=len(token_ids), phase="prefill"
             )
@@ -470,6 +665,14 @@ class GemmaDenseStage:
             with self.ctx.forward_batch(batch):
                 hidden = self.embed(batch.input_ids)
                 hidden, _ = self.forward_layers(hidden)
+                if self.role == "single":
+                    final = self.finalize(hidden, None)
+                    logits = self.lm_head_logits(final)
+            if self.role == "single":
+                token = int(torch.argmax(logits[-1], dim=-1).item())
+                if self._logit_capture is not None:
+                    self._logit_capture.capture(logits[-1])
+                return token, logits.detach()
             return hidden, None
         hidden = hidden_or_ids
         batch = self._prepare(start=start, token_count=hidden.shape[0], phase="prefill")
@@ -486,16 +689,22 @@ class GemmaDenseStage:
 
     @torch.inference_mode()
     def decode(self, token_or_hidden, position: int):
-        """One decode step. first: token id in; middle/last: hidden in."""
-        if self.role == "first":
+        """Execute one matched decode step over this role's ownership."""
+        if self.role in ("first", "single"):
             token_id = token_or_hidden
-            batch = self._prepare(
-                start=position, token_count=1, phase="decode"
-            )
+            batch = self._prepare(start=position, token_count=1, phase="decode")
             batch.input_ids.fill_(int(token_id))
             with self.ctx.forward_batch(batch):
                 hidden = self.embed(batch.input_ids)
                 hidden, _ = self.forward_layers(hidden)
+                if self.role == "single":
+                    final = self.finalize(hidden, None)
+                    logits = self.lm_head_logits(final)
+            if self.role == "single":
+                token = int(torch.argmax(logits[-1], dim=-1).item())
+                if self._logit_capture is not None:
+                    self._logit_capture.capture(logits[-1])
+                return token, logits
             return hidden, None
         hidden = token_or_hidden
         batch = self._prepare(start=position, token_count=1, phase="decode")
@@ -527,32 +736,72 @@ class GemmaDenseStage:
         torch.cuda.synchronize(self.device)
         self.memory_snapshots[checkpoint] = snapshot_host_memory()
         vm_after = _vmstat()
+        rusage_after = _rusage_counters()
         return {
             "pid": os.getpid(),
             "role": self.role,
             "global_layer_ids": list(self.block.global_layer_ids),
             "fetched_keys": len(set(self.fetched_keys)),
             "fetched_bytes": self.fetched_bytes,
+            "checkpoint_bytes_selected": self.checkpoint_bytes_selected,
+            "checkpoint_bytes_processed": self.fetched_bytes,
+            "largest_individual_raw_tensor_bytes": self.largest_raw_tensor_bytes,
             "unexpected_checkpoint_keys": sorted(
                 set(self.fetched_keys) - self.allowed_keys - self.shared_keys
             ),
             "whole_shard_sentinel_calls": self.whole_shard_sentinel_calls,
             "state_ownership": self.state_ownership,
             "resident_device_bytes": self.resident_device_bytes,
-            "host_peak_staging_bytes": self._host_peak_staging_bytes,
-            "host_staging_current_bytes": 0,
+            # Historical reports retain host_peak_staging_bytes unchanged.
+            # New reports define it truthfully as simultaneous live source bytes.
+            "host_peak_staging_bytes": self.host_staging_peak_live_tensor_bytes,
+            "host_staging_total_bytes_processed": (
+                self.host_staging_total_bytes_processed
+            ),
+            "host_staging_peak_live_tensor_bytes": (
+                self.host_staging_peak_live_tensor_bytes
+            ),
+            "fusion_source_peak_live_bytes": self.fusion_source_peak_live_bytes,
+            "host_staging_current_bytes": self.host_staging_current_bytes,
             "host_lifecycle_snapshots": self.memory_snapshots,
+            "persistent_host_model_bytes": 0,
             "unexplained_persistent_host_mirror_bytes": 0,
             "resident_only": True,
+            "cpu_weight_offload": False,
+            "cpu_owned_decoder_layers": 0,
+            "semantic_boundaries": semantic_boundaries_for_role(self.role),
+            "tied_embedding_materializations": (
+                1 if self.block.embed_tokens is not None else 0
+            ),
+            "single_tied_embedding_storage": (
+                self.role == "single" and self.block.embed_tokens is not None
+            ),
             "kv_state_bytes": self.state_ownership["kv_cache_allocated_bytes"],
             "cuda_allocated_bytes": torch.cuda.memory_allocated(self.device),
+            "cuda_allocated_before_load_bytes": self.cuda_allocated_before_load,
+            "cuda_allocated_after_weights_bytes": self.cuda_allocated_after_weights,
+            "cuda_allocated_after_runtime_initialization_bytes": (
+                self.cuda_allocated_after_runtime_initialization
+            ),
             "cuda_peak_bytes": torch.cuda.max_memory_allocated(self.device),
+            "cuda_total_memory_bytes": self.cuda_total_memory_bytes,
+            "cuda_free_before_load_bytes": self.cuda_free_before_load_bytes,
+            "cuda_free_after_runtime_initialization_bytes": (
+                self.cuda_free_after_runtime_initialization
+            ),
+            "safetensors_mapping_open_count": self.safetensors_mapping_open_count,
+            "safetensors_mapping_close_count": self.safetensors_mapping_close_count,
+            "page_cache_advisory_calls": self.page_cache_advisory_calls,
             "process_before": self.process_before,
+            "process_after_source_load": self.process_after_source_load,
             "process_after_realization": self.process_after_realization,
             "process_current": _status(),
             "ru_maxrss_kib": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
             "vmstat_delta": {
                 key: vm_after[key] - self.vmstat_before[key] for key in vm_after
+            },
+            "process_fault_swap_delta": {
+                key: rusage_after[key] - self.rusage_before[key] for key in rusage_after
             },
             "load_elapsed_seconds": self.load_elapsed_seconds,
             "attention_backend": ATTN_BACKEND,
@@ -565,7 +814,7 @@ def _key_adapter_src(module_key: str) -> str:
 
 def _iter_pool_tensors(pool):
     seen = set()
-    for name, value in vars(pool).items():
+    for value in vars(pool).values():
         if isinstance(value, torch.Tensor) and id(value) not in seen:
             seen.add(id(value))
             yield value
@@ -577,7 +826,7 @@ def _iter_pool_tensors(pool):
 
 
 def _iter_kv_pools(pool):
-    for name, value in vars(pool).items():
+    for value in vars(pool).values():
         if isinstance(value, torch.Tensor):
             yield value
         elif isinstance(value, (list, tuple)):
@@ -592,4 +841,11 @@ def _tensor_sha256(tensor: torch.Tensor) -> str:
     ).hexdigest()
 
 
-__all__ = ["GemmaDenseStage", "HIDDEN_SIZE", "BOUNDARY_PLANES"]
+__all__ = [
+    "BOUNDARY_PLANES",
+    "HIDDEN_SIZE",
+    "GemmaDenseStage",
+    "execute_dense_layer_sequence",
+    "materialize_dense_state",
+    "semantic_boundaries_for_role",
+]

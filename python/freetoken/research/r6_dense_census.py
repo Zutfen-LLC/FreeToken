@@ -27,10 +27,10 @@ import os
 import re
 import struct
 from collections import defaultdict
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 CENSUS_SCHEMA = "inferswarm.r6.checkpoint-census/1"
 PLAN_SCHEMA = "inferswarm.r6.model-block-plan/1"
@@ -194,9 +194,7 @@ def checkpoint_census(
     for record in records:
         category_bytes[record.owner_category] += record.byte_count
 
-    text_required = [
-        r for r in records if r.owner_category in _TEXT_CATEGORIES
-    ]
+    text_required = [r for r in records if r.owner_category in _TEXT_CATEGORIES]
     return {
         "schema": CENSUS_SCHEMA,
         "measurement_status": "MEASURED / checkpoint-header-derived",
@@ -319,60 +317,22 @@ def freeze_dense_block_plan(
 
 
 class DenseSelectiveTensorReader:
-    """Read only planned keys, one tensor at a time, from indexed shards."""
+    """R6-compatible facade over the generic bounded checkpoint reader."""
 
-    def __init__(self, model_path: str | os.PathLike[str], allowed_keys):
-        self.root = Path(model_path)
-        self.allowed_keys = frozenset(allowed_keys)
-        index_path = self.root / "model.safetensors.index.json"
-        single = self.root / "model.safetensors"
-        if index_path.exists():
-            index = json.loads(index_path.read_text())
-            self._weight_map = index["weight_map"]
-        elif single.exists():
-            self._weight_map = None
-            # Fail closed at construction even without an index: read the
-            # single shard's header (metadata only) and reject any planned
-            # key the checkpoint does not carry.
-            with single.open("rb") as stream:
-                header_len = struct.unpack("<Q", stream.read(8))[0]
-                header = json.loads(stream.read(header_len))
-            header.pop("__metadata__", None)
-            unknown = self.allowed_keys - set(header)
-            if unknown:
-                raise ValueError(
-                    f"allowed keys absent from checkpoint: {sorted(unknown)[:3]}"
-                )
-        else:
-            raise ValueError(f"no safetensors index or single shard under {self.root}")
-        if self._weight_map is not None:
-            unknown = self.allowed_keys - set(self._weight_map)
-            if unknown:
-                raise ValueError(
-                    f"allowed keys absent from checkpoint: {sorted(unknown)[:3]}"
-                )
-        self.fetched_keys: list[str] = []
-        self.fetched_bytes = 0
+    def __init__(self, model_path: str | os.PathLike[str], allowed_keys, **kwargs):
+        from freetoken.models.loader import BoundedSafetensorsReader
+
+        self._bounded = BoundedSafetensorsReader(model_path, allowed_keys, **kwargs)
+
+    def __getattr__(self, name: str):
+        return getattr(self._bounded, name)
 
     def tensors(self, device="cpu") -> Iterator[tuple[str, Any]]:
-        import safetensors
-
-        if self._weight_map is None:
-            by_shard = {None: sorted(self.allowed_keys)}
-            shards = [None]
-        else:
-            by_shard = defaultdict(list)
-            for key in sorted(self.allowed_keys):
-                by_shard[self._weight_map[key]].append(key)
-            shards = sorted(by_shard)
-        for shard in shards:
-            path = str(self.root / shard) if shard else str(self.root / "model.safetensors")
-            with safetensors.safe_open(path, framework="pt", device=str(device)) as handle:
-                for key in by_shard[shard]:
-                    tensor = handle.get_tensor(key)
-                    self.fetched_keys.append(key)
-                    self.fetched_bytes += tensor.numel() * tensor.element_size()
-                    yield key, tensor
+        if str(device) != "cpu":
+            raise ValueError("bounded dense sources must stage through CPU")
+        for key in sorted(self.allowed_keys):
+            with self.open_tensor(key) as tensor:
+                yield key, tensor
 
 
 def load_selective_dense_block(
@@ -412,14 +372,20 @@ def load_selective_dense_block(
 
     loaded: dict[str, Any] = {}
     planned = allowed | shared_keys
-    for key, tensor in target.tensors(device="cpu"):
-        module_key = key_adapter(key) if key_adapter else key
-        if key not in planned:
-            raise RuntimeError(f"selective loader fetched unplanned key {key}")
-        expected = state.get(module_key)
-        if expected is None:
-            raise RuntimeError(f"checkpoint key {key} has no module destination")
-        loaded[module_key] = tensor.to(device=device, dtype=expected.dtype)
+    for key in sorted(planned):
+        with target.open_tensor(key) as tensor:
+            module_key = key_adapter(key) if key_adapter else key
+            if key not in planned:
+                raise RuntimeError(f"selective loader fetched unplanned key {key}")
+            expected = state.get(module_key)
+            if expected is None:
+                raise RuntimeError(f"checkpoint key {key} has no module destination")
+            destination = torch.empty(
+                tuple(expected.shape), device=device, dtype=expected.dtype
+            )
+            destination.copy_(tensor, non_blocking=False)
+            loaded[module_key] = destination
+    target.assert_all_fetched()
     module.load_state_dict(loaded)
     leftovers = sorted((set(state) & planned) - set(loaded))
     if leftovers:
@@ -447,8 +413,8 @@ __all__ = [
     "CENSUS_SCHEMA",
     "PLAN_SCHEMA",
     "DenseBlockSpec",
-    "DenseTensorRecord",
     "DenseSelectiveTensorReader",
+    "DenseTensorRecord",
     "checkpoint_census",
     "freeze_dense_block_plan",
     "load_selective_dense_block",

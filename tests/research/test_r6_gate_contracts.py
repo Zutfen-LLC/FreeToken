@@ -24,7 +24,6 @@ import struct
 from pathlib import Path
 
 import pytest
-
 from freetoken.research.r6_dense_census import (
     CENSUS_SCHEMA,
     PLAN_SCHEMA,
@@ -41,6 +40,7 @@ REPO = Path(__file__).resolve().parents[2]
 # synthetic checkpoint helpers
 # --------------------------------------------------------------------------
 
+
 def _f32_header(entries: dict[str, dict]) -> bytes:
     header = json.dumps(entries).encode()
     return struct.pack("<Q", len(header)) + header
@@ -56,7 +56,9 @@ def make_synthetic_checkpoint(
 ) -> Path:
     entries: dict[str, dict] = {}
     entries[f"{text_prefix}.embed_tokens.weight"] = {
-        "dtype": "F32", "shape": [32, hidden], "data_offsets": [0, 32 * hidden * 4],
+        "dtype": "F32",
+        "shape": [32, hidden],
+        "data_offsets": [0, 32 * hidden * 4],
     }
     offset = 32 * hidden * 4
     for layer in range(num_layers):
@@ -67,16 +69,21 @@ def make_synthetic_checkpoint(
         ):
             count = shape[0] * shape[1] if len(shape) == 2 else shape[0]
             entries[f"{text_prefix}.layers.{layer}.{suffix}"] = {
-                "dtype": "F32", "shape": shape,
+                "dtype": "F32",
+                "shape": shape,
                 "data_offsets": [offset, offset + count * 4],
             }
             offset += count * 4
     entries[f"{text_prefix}.norm.weight"] = {
-        "dtype": "F32", "shape": [hidden], "data_offsets": [offset, offset + hidden * 4],
+        "dtype": "F32",
+        "shape": [hidden],
+        "data_offsets": [offset, offset + hidden * 4],
     }
     offset += hidden * 4
     entries["model.vision_tower.patch.weight"] = {
-        "dtype": "F32", "shape": [4, 4], "data_offsets": [offset, offset + 64],
+        "dtype": "F32",
+        "shape": [4, 4],
+        "data_offsets": [offset, offset + 64],
     }
     offset += 64
     entries.update(extra_keys or {})
@@ -95,13 +102,14 @@ def synthetic_ckpt(tmp_path):
 # census
 # --------------------------------------------------------------------------
 
+
 def test_census_derives_structure_from_synthetic_metadata(synthetic_ckpt):
     census = checkpoint_census(synthetic_ckpt, text_prefix="model.language_model")
     assert census["schema"] == CENSUS_SCHEMA
     assert census["tensor_count"] == 3 * 4 + 3
     assert len(census["per_layer"]) == 4
     embed_bytes = 32 * 8 * 4
-    layer_bytes = (8 * 4 + 8 * 8 * 4 + 8 * 16 * 4)
+    layer_bytes = 8 * 4 + 8 * 8 * 4 + 8 * 16 * 4
     assert census["bytes_by_owner_category"]["embedding/input"] == embed_bytes
     assert census["bytes_by_owner_category"]["decoder-layer"] == 4 * layer_bytes
     # vision tower excluded from required text state
@@ -130,6 +138,7 @@ def test_census_requires_contiguous_layers(tmp_path):
 # plan coverage / shared state
 # --------------------------------------------------------------------------
 
+
 def specs_3stage():
     return [
         DenseBlockSpec(0, 2, True, False),
@@ -150,7 +159,9 @@ def shared(embed_key="model.language_model.embed_tokens.weight"):
 
 def test_plan_complete_disjoint_coverage_and_tied_embedding(synthetic_ckpt):
     census = checkpoint_census(synthetic_ckpt, text_prefix="model.language_model")
-    plan = freeze_dense_block_plan(census, specs_3stage(), declared_shared_state=shared())
+    plan = freeze_dense_block_plan(
+        census, specs_3stage(), declared_shared_state=shared()
+    )
     assert plan["schema"] == PLAN_SCHEMA
     assert plan["coverage_proof"]["unowned_required_keys"] == []
     assert plan["coverage_proof"]["required_key_union_is_all"] is True
@@ -163,9 +174,7 @@ def test_plan_complete_disjoint_coverage_and_tied_embedding(synthetic_ckpt):
         for key in block["allowed_tensor_keys"]:
             owners[key] = owners.get(key, 0) + 1
     required = {
-        r["key"]
-        for r in census["tensors"]
-        if r["owner_category"] != "non-text"
+        r["key"] for r in census["tensors"] if r["owner_category"] != "non-text"
     }
     embedding = "model.language_model.embed_tokens.weight"
     assert set(owners) == required
@@ -176,6 +185,29 @@ def test_plan_complete_disjoint_coverage_and_tied_embedding(synthetic_ckpt):
     assert plan["declared_shared_state"]["materialization_policy"] == (
         "duplicated-on-first-and-last-stage"
     )
+
+
+def test_full_range_single_block_is_a_legal_complete_plan(tmp_path):
+    ckpt = make_synthetic_checkpoint(tmp_path / "single", num_layers=48, hidden=1)
+    census = checkpoint_census(ckpt, text_prefix="model.language_model")
+    plan = freeze_dense_block_plan(
+        census,
+        [DenseBlockSpec(0, 48, True, True)],
+        declared_shared_state={
+            **shared(),
+            "bytes": 32 * 4,
+            "materialization_policy": "single-cuda-tensor-used-for-input-and-output",
+        },
+    )
+
+    assert len(plan["blocks"]) == 1
+    assert plan["blocks"][0]["spec"] == {
+        "start_layer": 0,
+        "end_layer": 48,
+        "owns_embeddings": True,
+        "owns_final_norm_head": True,
+    }
+    assert plan["coverage_proof"]["unowned_required_keys"] == []
 
 
 def test_plan_rejects_coverage_gap(tmp_path):
@@ -222,7 +254,8 @@ def test_tied_embedding_duplication_requires_declaration(tmp_path):
     # must not silently legalize anything: declaring a nonexistent key
     # is inert, and the plan still freezes exactly the owned keys.
     plan = freeze_dense_block_plan(
-        census, specs_3stage(),
+        census,
+        specs_3stage(),
         declared_shared_state={**shared(), "tensor_keys": ["not.a.tensor"]},
     )
     keys = [k for b in plan["blocks"] for k in b["allowed_tensor_keys"]]
@@ -232,6 +265,7 @@ def test_tied_embedding_duplication_requires_declaration(tmp_path):
 # --------------------------------------------------------------------------
 # selective reader
 # --------------------------------------------------------------------------
+
 
 def test_selective_reader_never_fetches_unplanned_keys(tmp_path):
     pytest.importorskip("safetensors")  # tensor reads; runs on compute hosts
@@ -258,6 +292,7 @@ def test_selective_reader_never_fetches_unplanned_keys(tmp_path):
 # strategy contracts (frozen constants; no checkpoint access needed)
 # --------------------------------------------------------------------------
 
+
 def test_r6_strategy_constants_single_plane_amended_geometry():
     from benchmarks.inferswarm_r6 import strategy
 
@@ -278,18 +313,12 @@ def test_stage_runtime_reports_single_plane():
 
 
 def test_chain_and_two_stage_boundary_geometry_single_plane():
-    chain_src = (
-        REPO / "benchmarks/inferswarm_r6/stage_chain.py"
-    ).read_text()
+    chain_src = (REPO / "benchmarks/inferswarm_r6/stage_chain.py").read_text()
     assert '"planes": 2' not in chain_src
     assert '"planes": BOUNDARY_PLANES' in chain_src
-    two_src = (
-        REPO / "benchmarks/inferswarm_r6/two_stage.py"
-    ).read_text()
+    two_src = (REPO / "benchmarks/inferswarm_r6/two_stage.py").read_text()
     assert '"planes": 2' not in two_src
-    strategy_src = (
-        REPO / "benchmarks/inferswarm_r6/strategy.py"
-    ).read_text()
+    strategy_src = (REPO / "benchmarks/inferswarm_r6/strategy.py").read_text()
     assert "BOUNDARY_PLANES = 1" in strategy_src
     # chain report() must source planes from the shared constant
     assert chain_src.count('"planes": BOUNDARY_PLANES') >= 1
@@ -299,9 +328,14 @@ def test_generic_planner_input_has_no_model_branching():
     """xc planning problem + generic planner source carry no Gemma/expert/
     router model branching in the generic layer."""
     xc = (REPO / "benchmarks/inferswarm_r6/xc_strategy.py").read_text()
-    assert "gemma" not in xc.lower().replace("gemma4-dense-serving", "").replace(
-        "google/gemma-4-12b-it", ""
-    ).replace("r6-dense", "") or True  # adapter is strategy-owned by design
+    assert (
+        "gemma"
+        not in xc.lower()
+        .replace("gemma4-dense-serving", "")
+        .replace("google/gemma-4-12b-it", "")
+        .replace("r6-dense", "")
+        or True
+    )  # adapter is strategy-owned by design
     planner_src = (REPO / "python/freetoken/research/r3_planner.py").read_text()
     lowered = planner_src.lower()
     for term in ("gemma", "qwen", "expert", "router", "moe"):
@@ -318,7 +352,9 @@ def test_xc_planning_problem_compiles_three_slots_two_boundaries():
     assert shape["id"] == "resident-two-node-three-slot"
     assert len(shape["slots"]) == 3
     assert {s["id"] for s in shape["slots"]} == {
-        "slot-stage-1", "slot-stage-2", "slot-stage-3"
+        "slot-stage-1",
+        "slot-stage-2",
+        "slot-stage-3",
     }
     # opaque: slots carry only capabilities/bytes, no layer numbers/names
     for slot in shape["slots"]:
@@ -369,9 +405,7 @@ REQUIRED_STAGE_FIELDS = (
 def test_last_stage_service_report_schema_constant():
     """last_stage_service emits a runtime report whose required composer
     fields are all present in the report() implementation."""
-    source = (
-        REPO / "benchmarks/inferswarm_r6/stage_runtime.py"
-    ).read_text()
+    source = (REPO / "benchmarks/inferswarm_r6/stage_runtime.py").read_text()
     for field in REQUIRED_STAGE_FIELDS:
         assert f'"{field}"' in source, f"stage report missing {field}"
 
@@ -395,9 +429,7 @@ def test_kv_layer_identity_is_truthful():
     """state_ownership must report stage-local pool indices as local and
     keep global identity separate (regression for the 0..15-on-[16,32)
     misreport)."""
-    source = (
-        REPO / "benchmarks/inferswarm_r6/stage_runtime.py"
-    ).read_text()
+    source = (REPO / "benchmarks/inferswarm_r6/stage_runtime.py").read_text()
     assert '"kv_local_layer_ids"' in source
     # global list must be derived through global_layer_ids, not raw pool ids
     assert "self.block.global_layer_ids[i]" in source
