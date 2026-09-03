@@ -34,6 +34,13 @@ decomposition changes.
   versus distributed FreeToken is materially closer/equivalent. This supports
   a FreeToken-versus-Transformers numerical difference. Historical R6 remains
   FAIL; a matched-FreeToken reference may be proposed only prospectively.
+  No prospective quantitative criterion is frozen for "materially
+  closer/equivalent" (freezing one retroactively, after seeing the single-GPU
+  result, would itself be threshold tuning). The runner therefore never
+  machine-declares Outcome A: when Transformers-versus-single `>= 0.25` it
+  reports `OUTCOME_A_CANDIDATE_REQUIRES_MAINTAINER_ADJUDICATION` together
+  with the full raw `single_freetoken_vs_distributed_freetoken` comparison,
+  and a maintainer adjudicates the second condition explicitly.
 - Outcome B: Transformers versus single FreeToken is `< 0.25`, while the
   distributed path remains outside the threshold. This identifies
   distribution/stage drift. R6 does not pass; the next experiment bisects
@@ -43,6 +50,16 @@ decomposition changes.
   frozen minimal runtime do not fit. Report
   `SINGLE_GPU_REFERENCE_CAPACITY_BLOCKED` with allocation evidence; CPU
   offload is forbidden.
+
+Outcome interpretation is gated on validity: it only runs when the replay
+reproduced the frozen 8/8 exact greedy token equality and the captured
+logits carry zero NaN/Inf. A validity violation is reported as
+`SINGLE_GPU_CONTROL_INVALID_NUMERICS` and never silently folded into
+Outcome A or B — a token mismatch or contaminated capture must not be
+allowed to look like distribution drift. Any other runtime failure after
+model realization is retained as `SINGLE_GPU_CONTROL_FAILED` with an error
+type/message and best-effort partial loader evidence, so a failed physical
+run is never left looking like an incomplete `RUNNING` report.
 
 ## Frozen model and topology
 
@@ -60,7 +77,15 @@ decomposition changes.
 - Canonical physical host: `inferswarm04`, one RTX 3090 24 GiB. Hostname,
   UUID, PCI BDF, actual VRAM, and idle state must be captured and committed in
   a preflight amendment before model realization; no run is authorized from
-  an assumed device identity.
+  an assumed device identity. This is mechanically enforced: the runner
+  additionally requires `docs/inferswarm_r6/PREFLIGHT-INFERSWARM04.json`
+  (the frozen amendment: `gpu_name`, `gpu_uuid`, `pci_bus_id`,
+  `memory_total_mib`) to exist and match the queried GPU identity before any
+  model weight is touched; absent that file the run fails closed at
+  preflight (`SINGLE_GPU_CONTROL_PREFLIGHT_BLOCKED`), it does not proceed
+  from an assumed identity. The runner also machine-checks physical
+  `MemTotal < 23,814,700,640` (`/proc/meminfo`) so the claimed
+  model-larger-than-host-RAM proof is explicit rather than assumed.
 
 ## Frozen runtime and comparator
 

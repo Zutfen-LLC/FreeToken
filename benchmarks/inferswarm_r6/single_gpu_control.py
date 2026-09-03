@@ -27,6 +27,18 @@ MODEL_REVISION = "707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7"
 RUNTIME_CAPACITY_TOKENS = 64
 CAPTURE_STEPS = (0, 1, 7)
 FROZEN_THRESHOLD = 0.25
+# Exact hardware identity (UUID/PCI BDF/VRAM), committed once inferswarm04 is
+# provisioned. Absent this file, the identity preflight fails closed: no run
+# is authorized from an assumed device identity (SINGLE_GPU_CONTROL_METHODOLOGY.md).
+FROZEN_HARDWARE_IDENTITY_PATH = Path("docs/inferswarm_r6/PREFLIGHT-INFERSWARM04.json")
+
+
+class InvalidNumericalEvidenceError(RuntimeError):
+    """Captured evidence fails a mandatory validity gate.
+
+    Raised instead of letting outcome interpretation proceed from an
+    exact-token mismatch or NaN/Inf-contaminated capture.
+    """
 
 
 def _command(args: list[str]) -> dict[str, Any]:
@@ -45,6 +57,53 @@ def _sha256(path: Path) -> str:
         while chunk := stream.read(8 << 20):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _meminfo_total_bytes(proc_meminfo: str) -> int | None:
+    for line in proc_meminfo.splitlines():
+        if line.startswith("MemTotal:"):
+            return int(line.split()[1]) * 1024
+    return None
+
+
+def _gpu_identity_fields(gpu_query: dict) -> list[str] | None:
+    stdout = gpu_query.get("stdout", "")
+    if not stdout:
+        return None
+    return [field.strip() for field in stdout.splitlines()[0].split(",")]
+
+
+def _frozen_hardware_identity_matches(machine: dict, frozen_path: Path) -> bool:
+    """Fail closed until the exact frozen preflight amendment is committed.
+
+    Per SINGLE_GPU_CONTROL_METHODOLOGY.md: hostname, UUID, PCI BDF, actual
+    VRAM, and idle state must be captured and committed in a preflight
+    amendment before model realization; no run is authorized from an
+    assumed device identity.
+    """
+    if not frozen_path.exists():
+        return False
+    frozen = json.loads(frozen_path.read_text())
+    fields = _gpu_identity_fields(machine["gpu"])
+    if fields is None or len(fields) < 4:
+        return False
+    name, uuid, bus_id, memory_total = fields[0], fields[1], fields[2], fields[3]
+    return (
+        name == frozen.get("gpu_name")
+        and uuid == frozen.get("gpu_uuid")
+        and bus_id == frozen.get("pci_bus_id")
+        and memory_total == frozen.get("memory_total_mib")
+    )
+
+
+def _best_effort_partial_report(runtime) -> dict | None:
+    """Never let diagnostic capture mask the real failure being reported."""
+    if runtime is None:
+        return None
+    try:
+        return runtime.report("P_failure_partial_evidence")
+    except Exception:
+        return None
 
 
 def _git_identity(repo: Path) -> dict[str, Any]:
@@ -158,6 +217,7 @@ def run_control(args) -> dict[str, Any]:
     }
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
+    host_memory_total_bytes = _meminfo_total_bytes(machine["proc_meminfo"])
     preflight = {
         "canonical_hostname": machine["hostname"] == "inferswarm04",
         "gpu_query_succeeded": machine["gpu"]["returncode"] == 0,
@@ -166,7 +226,15 @@ def run_control(args) -> dict[str, Any]:
             and not machine["compute_apps_before_process"]["stdout"]
         ),
         "clean_exact_source": not producer["dirty"],
+        "host_memory_below_model_size": (
+            host_memory_total_bytes is not None
+            and host_memory_total_bytes < EXPECTED_TEXT_BYTES
+        ),
+        "frozen_hardware_identity_committed_and_matches": (
+            _frozen_hardware_identity_matches(machine, FROZEN_HARDWARE_IDENTITY_PATH)
+        ),
     }
+    report["host_memory_total_bytes"] = host_memory_total_bytes
     report["preflight"] = preflight
     if not all(preflight.values()):
         report["status"] = "SINGLE_GPU_CONTROL_PREFLIGHT_BLOCKED"
@@ -234,6 +302,8 @@ def run_control(args) -> dict[str, Any]:
         "declared_shared_state": shared,
     }
 
+    runtime = None
+    loader = None
     try:
         runtime = GemmaDenseStage(
             role="single",
@@ -305,9 +375,32 @@ def run_control(args) -> dict[str, Any]:
         }
         if not all(invariants.values()):
             raise RuntimeError(f"single-GPU invariant failure: {invariants}")
+
+        # Mandatory validity gate: outcome interpretation must never proceed
+        # from evidence that isn't itself a valid canonical replay. A token
+        # mismatch or any NaN/Inf could otherwise make aggregate_ref look
+        # small (e.g. NaN comparisons are never >= threshold) and silently
+        # mis-select Outcome B.
+        exact_match = generated == reference["generated_token_ids"]
+        if not exact_match or nan_inf_count != 0:
+            raise InvalidNumericalEvidenceError(
+                "outcome interpretation requires exact 8/8 committed-token "
+                "equality and zero NaN/Inf; got exact_generated_token_match="
+                f"{exact_match}, nan_inf_count={nan_inf_count}"
+            )
+
         aggregate_ref = max(ref_diffs.values())
         if aggregate_ref >= FROZEN_THRESHOLD:
-            interpretation = "OUTCOME_A_FREE_TOKEN_NUMERICAL_DIFFERENCE"
+            # SINGLE_GPU_CONTROL_METHODOLOGY.md Outcome A requires BOTH
+            # Transformers-vs-single >= 0.25 AND single-vs-distributed being
+            # materially closer/equivalent. No prospective quantitative
+            # criterion was frozen for that second condition (freezing one
+            # now, after seeing results, would be exactly the threshold
+            # tuning the doctrine forbids), so this runner reports a
+            # candidate plus the raw single-vs-distributed comparison and
+            # leaves the second condition to explicit maintainer adjudication
+            # rather than machine-declaring Outcome A from drift alone.
+            interpretation = "OUTCOME_A_CANDIDATE_REQUIRES_MAINTAINER_ADJUDICATION"
         else:
             interpretation = "OUTCOME_B_DISTRIBUTION_DRIFT"
         report.update(
@@ -317,9 +410,7 @@ def run_control(args) -> dict[str, Any]:
                 "invariants": invariants,
                 "generated_token_ids": generated,
                 "reference_generated_token_ids": reference["generated_token_ids"],
-                "exact_generated_token_match": (
-                    generated == reference["generated_token_ids"]
-                ),
+                "exact_generated_token_match": exact_match,
                 "nan_inf_count": nan_inf_count,
                 "comparisons": {
                     "transformers_vs_single_freetoken": {
@@ -356,6 +447,28 @@ def run_control(args) -> dict[str, Any]:
                 "cuda_allocated_bytes": torch.cuda.memory_allocated("cuda:0"),
                 "cuda_peak_bytes": torch.cuda.max_memory_allocated("cuda:0"),
                 "cuda_mem_get_info": list(torch.cuda.mem_get_info("cuda:0")),
+            }
+        )
+    except InvalidNumericalEvidenceError as exc:
+        report.update(
+            {
+                "status": "SINGLE_GPU_CONTROL_INVALID_NUMERICS",
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+                "partial_loader_evidence": loader
+                or _best_effort_partial_report(runtime),
+            }
+        )
+    except Exception as exc:  # noqa: BLE001 - fail-closed terminal status required
+        # A failed physical run must never look incomplete/ambiguous: retain a
+        # terminal status/type/message and whatever loader evidence exists.
+        report.update(
+            {
+                "status": "SINGLE_GPU_CONTROL_FAILED",
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+                "partial_loader_evidence": loader
+                or _best_effort_partial_report(runtime),
             }
         )
     finally:

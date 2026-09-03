@@ -311,6 +311,80 @@ def _key_adapter(key: str) -> str:
     return "model." + name
 
 
+def _host_resident_bytes(state_dict: dict[str, torch.Tensor]) -> tuple[int, list[str]]:
+    """Mechanically prove complete CUDA residency from realized module state.
+
+    Any tensor whose device is not CUDA counts as a persistent host mirror;
+    this is derived from the actual materialized tensors, never asserted.
+    """
+    host_bytes = 0
+    host_keys: list[str] = []
+    for key, tensor in state_dict.items():
+        if tensor.device.type != "cuda":
+            host_bytes += _tensor_bytes(tensor)
+            host_keys.append(key)
+    return host_bytes, host_keys
+
+
+def _cpu_owned_decoder_layers(global_layer_ids, layers) -> int:
+    """Count decoder layers with any parameter not resident on CUDA."""
+    count = 0
+    for layer_id, layer in zip(global_layer_ids, layers):
+        layer_state = layer.state_dict(prefix=f"model.layers.{layer_id}")
+        host_bytes, _ = _host_resident_bytes(layer_state)
+        if host_bytes > 0:
+            count += 1
+    return count
+
+
+class _StageModules:
+    """Owned modules for one selective block: embedding/layers/norm only.
+
+    Module-level (not nested in ``_selective_load``) so the exact production
+    ``load_state_dict`` consumption contract is directly unit-testable
+    without constructing a full ``GemmaDenseStage``.
+    """
+
+    def __init__(self, config, spec, full_config):
+        self.config = config
+        self.global_layer_ids = tuple(range(spec.start_layer, spec.end_layer))
+        self.embed_tokens = None
+        self.layers = []
+        self.norm = None
+        self.lm_head_tied = None
+        self._full_config = full_config
+
+    def state_dict(self):
+        result = {}
+        if self.embed_tokens is not None:
+            self.embed_tokens.state_dict(prefix="model.embed_tokens", result=result)
+        for layer_id, layer in zip(self.global_layer_ids, self.layers):
+            layer.state_dict(prefix=f"model.layers.{layer_id}", result=result)
+        if self.norm is not None:
+            self.norm.state_dict(prefix="model.norm", result=result)
+        return result
+
+    def load_state_dict(self, state):
+        # NOTE: this must mutate the CALLER's dict in place (BaseOP.load_state_dict
+        # consumes keys via state.pop(...)), so the caller can verify complete
+        # consumption by checking its own dict is empty afterward.  A defensive
+        # `state = dict(state)` copy here would silently break that contract:
+        # every sub-load would drain the copy while the caller's dict stayed
+        # full, making any "unconsumed state" check fire unconditionally.
+        if self.embed_tokens is not None:
+            self.embed_tokens.load_state_dict(
+                state, prefix="model.embed_tokens", _internal=True
+            )
+        for layer_id, layer in zip(self.global_layer_ids, self.layers):
+            layer.load_state_dict(
+                state, prefix=f"model.layers.{layer_id}", _internal=True
+            )
+        if self.norm is not None:
+            self.norm.load_state_dict(state, prefix="model.norm", _internal=True)
+        if state:
+            raise RuntimeError(f"unexpected selective block keys: {list(state)[:8]}")
+
+
 class GemmaDenseStage:
     """One dense contiguous stage: selective load, resident execution."""
 
@@ -389,8 +463,16 @@ class GemmaDenseStage:
             self.safetensors_mapping_open_count = reader.mapping_open_count
             self.safetensors_mapping_close_count = reader.mapping_close_count
             self.memory_snapshots["P1_source_load_complete"] = snapshot_host_memory()
+            block_state = self.block.state_dict()
             self.resident_device_bytes = sum(
-                _tensor_bytes(t) for t in self.block.state_dict().values()
+                _tensor_bytes(t) for t in block_state.values()
+            )
+            (
+                self.persistent_host_model_bytes,
+                self._host_resident_tensor_keys,
+            ) = _host_resident_bytes(block_state)
+            self.cpu_owned_decoder_layers = _cpu_owned_decoder_layers(
+                self.block.global_layer_ids, self.block.layers
             )
             self.ctx, self.state_ownership = self._setup_context()
             self.decode_graph = None  # dense eager decode; graphs are optional
@@ -450,47 +532,6 @@ class GemmaDenseStage:
 
         # Build only owned modules under meta, then stream planned keys.
         from freetoken.utils import torch_dtype
-
-        class _StageModules:
-            def __init__(self, config, spec, full_config):
-                self.config = config
-                self.global_layer_ids = tuple(range(spec.start_layer, spec.end_layer))
-                self.embed_tokens = None
-                self.layers = []
-                self.norm = None
-                self.lm_head_tied = None
-                self._full_config = full_config
-
-            def state_dict(self):
-                result = {}
-                if self.embed_tokens is not None:
-                    self.embed_tokens.state_dict(
-                        prefix="model.embed_tokens", result=result
-                    )
-                for layer_id, layer in zip(self.global_layer_ids, self.layers):
-                    layer.state_dict(prefix=f"model.layers.{layer_id}", result=result)
-                if self.norm is not None:
-                    self.norm.state_dict(prefix="model.norm", result=result)
-                return result
-
-            def load_state_dict(self, state):
-                state = dict(state)
-                if self.embed_tokens is not None:
-                    self.embed_tokens.load_state_dict(
-                        state, prefix="model.embed_tokens", _internal=True
-                    )
-                for layer_id, layer in zip(self.global_layer_ids, self.layers):
-                    layer.load_state_dict(
-                        state, prefix=f"model.layers.{layer_id}", _internal=True
-                    )
-                if self.norm is not None:
-                    self.norm.load_state_dict(
-                        state, prefix="model.norm", _internal=True
-                    )
-                if state:
-                    raise RuntimeError(
-                        f"unexpected selective block keys: {list(state)[:8]}"
-                    )
 
         # Build ONLY owned modules on meta, then stream planned keys
         # device-ward one tensor at a time (accepted N0 selective pattern:
@@ -764,11 +805,19 @@ class GemmaDenseStage:
             "fusion_source_peak_live_bytes": self.fusion_source_peak_live_bytes,
             "host_staging_current_bytes": self.host_staging_current_bytes,
             "host_lifecycle_snapshots": self.memory_snapshots,
-            "persistent_host_model_bytes": 0,
-            "unexplained_persistent_host_mirror_bytes": 0,
-            "resident_only": True,
-            "cpu_weight_offload": False,
-            "cpu_owned_decoder_layers": 0,
+            # Mechanically derived from the realized module state_dict's tensor
+            # devices (see _host_resident_bytes), not asserted.
+            "persistent_host_model_bytes": self.persistent_host_model_bytes,
+            "host_resident_tensor_keys": self._host_resident_tensor_keys,
+            "unexplained_persistent_host_mirror_bytes": (
+                self.persistent_host_model_bytes + self.host_staging_current_bytes
+            ),
+            "resident_only": (
+                self.persistent_host_model_bytes == 0
+                and self.host_staging_current_bytes == 0
+            ),
+            "cpu_weight_offload": self.persistent_host_model_bytes > 0,
+            "cpu_owned_decoder_layers": self.cpu_owned_decoder_layers,
             "semantic_boundaries": semantic_boundaries_for_role(self.role),
             "tied_embedding_materializations": (
                 1 if self.block.embed_tokens is not None else 0

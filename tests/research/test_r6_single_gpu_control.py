@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 import torch
+from freetoken.layers.base import BaseOP
 from freetoken.models.loader import BoundedSafetensorsReader, MergeRule
 from freetoken.research.r6_dense_census import DenseBlockSpec
 from safetensors.torch import save_file
@@ -150,6 +151,107 @@ def test_full_range_single_role_contract_and_tied_embedding():
     logits = stage.lm_head_logits(final)
     torch.testing.assert_close(logits, final @ tied_weight.t())
     assert stage.block.embed_tokens.weight.data_ptr() == tied_weight.data_ptr()
+
+
+class _TinyOwned(BaseOP):
+    """Minimal BaseOP-backed stand-in for a Gemma sub-module: shares the
+    exact load_state_dict(state, prefix, _internal) pop-based contract real
+    modules (VocabParallelEmbedding/Gemma4DecoderLayer/GemmaRMSNorm) use,
+    without needing a full model config."""
+
+    def __init__(self, **tensors):
+        for name, tensor in tensors.items():
+            setattr(self, name, tensor)
+
+
+class _FakeCudaTensor:
+    """Duck-typed CUDA-resident tensor: only .device/.numel()/.element_size()
+    are exercised by the residency helpers, so no real GPU is needed to
+    prove the "fully resident" branch."""
+
+    def __init__(self, n: int, element_size: int = 4):
+        self.device = SimpleNamespace(type="cuda")
+        self._n = n
+        self._element_size = element_size
+
+    def numel(self):
+        return self._n
+
+    def element_size(self):
+        return self._element_size
+
+
+def test_stage_modules_load_state_dict_fully_consumes_caller_dict():
+    """Regression for the fatal real-runtime bug: _StageModules.load_state_dict
+    used to defensively copy its input (`state = dict(state)`), but
+    BaseOP.load_state_dict pops keys from whatever dict it is given -- so
+    the copy drained instead of the caller's dict, and _selective_load's
+    `if loaded: raise` fired unconditionally on every real (non-empty)
+    load. This exercises the actual module-container consumption path
+    (_StageModules, module-level and directly importable), not
+    materialize_dense_state() in isolation."""
+    _StageModules = _STAGE._StageModules
+    spec = SimpleNamespace(start_layer=5, end_layer=7)
+    modules = _StageModules(config=None, spec=spec, full_config=None)
+    modules.embed_tokens = _TinyOwned(weight=torch.zeros(3, 3))
+    modules.layers = [_TinyOwned(weight=torch.zeros(2, 2)) for _ in range(2)]
+    modules.norm = _TinyOwned(weight=torch.zeros(2))
+
+    state = {
+        "model.embed_tokens.weight": torch.ones(3, 3),
+        "model.layers.5.weight": torch.full((2, 2), 5.0),
+        "model.layers.6.weight": torch.full((2, 2), 6.0),
+        "model.norm.weight": torch.tensor([9.0, 9.0]),
+    }
+    modules.load_state_dict(state)
+
+    # the caller's own dict object must be fully drained on success -- this
+    # is exactly what _selective_load's post-load `if loaded: raise` checks.
+    assert state == {}
+    torch.testing.assert_close(modules.embed_tokens.weight, torch.ones(3, 3))
+    torch.testing.assert_close(modules.layers[0].weight, torch.full((2, 2), 5.0))
+    torch.testing.assert_close(modules.layers[1].weight, torch.full((2, 2), 6.0))
+    torch.testing.assert_close(modules.norm.weight, torch.tensor([9.0, 9.0]))
+
+
+def test_stage_modules_load_state_dict_raises_on_leftover_keys():
+    _StageModules = _STAGE._StageModules
+    spec = SimpleNamespace(start_layer=0, end_layer=1)
+    modules = _StageModules(config=None, spec=spec, full_config=None)
+    modules.layers = [_TinyOwned(weight=torch.zeros(2, 2))]
+
+    state = {
+        "model.layers.0.weight": torch.ones(2, 2),
+        "model.layers.99.weight": torch.zeros(2, 2),
+    }
+    with pytest.raises(RuntimeError, match="unexpected selective block keys"):
+        modules.load_state_dict(state)
+
+
+def test_host_resident_bytes_flags_non_cuda_tensors():
+    host_bytes, host_keys = _STAGE._host_resident_bytes(
+        {
+            "a": torch.zeros(4, dtype=torch.float32),
+            "b": torch.zeros(2, dtype=torch.float32),
+        }
+    )
+    assert host_bytes == (4 + 2) * 4
+    assert set(host_keys) == {"a", "b"}
+
+
+def test_host_resident_bytes_zero_when_fully_cuda_resident():
+    host_bytes, host_keys = _STAGE._host_resident_bytes(
+        {"a": _FakeCudaTensor(8), "b": _FakeCudaTensor(4)}
+    )
+    assert host_bytes == 0
+    assert host_keys == []
+
+
+def test_cpu_owned_decoder_layers_counts_layers_with_any_host_tensor():
+    resident_layer = _TinyOwned(weight=_FakeCudaTensor(4))
+    host_layer = _TinyOwned(weight=torch.zeros(4))
+    count = _STAGE._cpu_owned_decoder_layers([10, 11], [resident_layer, host_layer])
+    assert count == 1
 
 
 def test_synthetic_full_range_execution_matches_equivalent_stages():
