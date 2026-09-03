@@ -1,0 +1,74 @@
+[
+ {
+  "step": 0,
+  "checkpoint": "after_layer_1",
+  "exact_equal": false,
+  "max_absdiff": 0.125,
+  "nonzero_frac": 0.5506711006164551,
+  "nonzero_count": 54979
+ },
+ {
+  "step": 0,
+  "checkpoint": "after_layer_2",
+  "exact_equal": false,
+  "max_absdiff": 0.5,
+  "nonzero_frac": 0.6926682591438293,
+  "nonzero_count": 69156
+ },
+ {
+  "step": 0,
+  "checkpoint": "embedding_output",
+  "exact_equal": true,
+  "max_absdiff": 0.0,
+  "nonzero_frac": 0.0,
+  "nonzero_count": 0
+ },
+ {
+  "step": 1,
+  "checkpoint": "after_layer_1",
+  "exact_equal": false,
+  "max_absdiff": 0.25,
+  "nonzero_frac": 0.5590952634811401,
+  "nonzero_count": 57967
+ },
+ {
+  "step": 1,
+  "checkpoint": "after_layer_2",
+  "exact_equal": false,
+  "max_absdiff": 0.5,
+  "nonzero_frac": 0.7083911895751953,
+  "nonzero_count": 73446
+ },
+ {
+  "step": 1,
+  "checkpoint": "embedding_output",
+  "exact_equal": true,
+  "max_absdiff": 0.0,
+  "nonzero_frac": 0.0,
+  "nonzero_count": 0
+ },
+ {
+  "step": 7,
+  "checkpoint": "after_layer_1",
+  "exact_equal": false,
+  "max_absdiff": 0.125,
+  "nonzero_frac": 0.5519018173217773,
+  "nonzero_count": 69937
+ },
+ {
+  "step": 7,
+  "checkpoint": "after_layer_2",
+  "exact_equal": false,
+  "max_absdiff": 0.5,
+  "nonzero_frac": 0.7011284828186035,
+  "nonzero_count": 88847
+ },
+ {
+  "step": 7,
+  "checkpoint": "embedding_output",
+  "exact_equal": true,
+  "max_absdiff": 0.0,
+  "nonzero_frac": 0.0,
+  "nonzero_count": 0
+ }
+]

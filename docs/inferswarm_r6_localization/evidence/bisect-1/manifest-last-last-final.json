@@ -1,0 +1,609 @@
+{
+  "bundle": "captures-last-last-final.pt",
+  "bundle_bytes": 52210905,
+  "bundle_sha256": "fa7fce28960b38a0c681ea753ab744fa147ecaed15de60251a45121655da28ea",
+  "host": "inferswarm03",
+  "platform": "Linux-6.12.107+deb13-amd64-x86_64-with-glibc2.41",
+  "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+  "record_count": 24,
+  "records": [
+    {
+      "byte_count": 199680,
+      "captured_at_unix_ns": 1788472139551829888,
+      "checkpoint": "boundary_recv_hidden",
+      "dtype": "bfloat16",
+      "global_layer": null,
+      "gpu_uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176",
+      "host": "inferswarm03",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        26
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "last",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "b9fc0b671fc40a486029d237ad648dc1753d1cb95cc87c59e78e58ed45643542",
+      "shape": [
+        26,
+        3840
+      ],
+      "source_device": "cuda:0",
+      "step": 0
+    },
+    {
+      "byte_count": 199680,
+      "captured_at_unix_ns": 1788472141599346269,
+      "checkpoint": "after_layer_35",
+      "dtype": "bfloat16",
+      "global_layer": 35,
+      "gpu_uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176",
+      "host": "inferswarm03",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        26
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "last",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "05091ecf5c68ae9f971801f7462ef06dc2f93ac455f7942da3a626594cb6b810",
+      "shape": [
+        26,
+        3840
+      ],
+      "source_device": "cuda:0",
+      "step": 0
+    },
+    {
+      "byte_count": 199680,
+      "captured_at_unix_ns": 1788472141606997470,
+      "checkpoint": "after_layer_39",
+      "dtype": "bfloat16",
+      "global_layer": 39,
+      "gpu_uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176",
+      "host": "inferswarm03",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        26
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "last",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "c88b3e93027976f03e672c88a10f7417dda861080b3ba14bd29bb05c4c6ec10e",
+      "shape": [
+        26,
+        3840
+      ],
+      "source_device": "cuda:0",
+      "step": 0
+    },
+    {
+      "byte_count": 199680,
+      "captured_at_unix_ns": 1788472141614568871,
+      "checkpoint": "after_layer_43",
+      "dtype": "bfloat16",
+      "global_layer": 43,
+      "gpu_uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176",
+      "host": "inferswarm03",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        26
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "last",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "a5a899954aaacce74ffd600893efcc942e012f059a83577d60e2447d2b33430c",
+      "shape": [
+        26,
+        3840
+      ],
+      "source_device": "cuda:0",
+      "step": 0
+    },
+    {
+      "byte_count": 199680,
+      "captured_at_unix_ns": 1788472141622125691,
+      "checkpoint": "after_layer_47",
+      "dtype": "bfloat16",
+      "global_layer": 47,
+      "gpu_uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176",
+      "host": "inferswarm03",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        26
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "last",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "da9dc38355bb67b576811585646701c4d82995ccc91fc7db5e3f482a1d6001fe",
+      "shape": [
+        26,
+        3840
+      ],
+      "source_device": "cuda:0",
+      "step": 0
+    },
+    {
+      "byte_count": 199680,
+      "captured_at_unix_ns": 1788472141622751341,
+      "checkpoint": "final_norm",
+      "dtype": "bfloat16",
+      "global_layer": null,
+      "gpu_uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176",
+      "host": "inferswarm03",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        26
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "last",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "624a3bf569bff4058c1d3e14f432bc184f47a001add8957beffecf218e9743e3",
+      "shape": [
+        26,
+        3840
+      ],
+      "source_device": "cuda:0",
+      "step": 0
+    },
+    {
+      "byte_count": 13631488,
+      "captured_at_unix_ns": 1788472141632908621,
+      "checkpoint": "bf16_logits",
+      "dtype": "bfloat16",
+      "global_layer": null,
+      "gpu_uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176",
+      "host": "inferswarm03",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        26
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "last",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "2f53517af7428196fc6742dc32d32c0a6697b83177270904129aeeed4395a2a6",
+      "shape": [
+        26,
+        262144
+      ],
+      "source_device": "cuda:0",
+      "step": 0
+    },
+    {
+      "byte_count": 1048576,
+      "captured_at_unix_ns": 1788472141679680620,
+      "checkpoint": "final_row_fp32",
+      "dtype": "float32",
+      "global_layer": null,
+      "gpu_uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176",
+      "host": "inferswarm03",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        262144
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "last",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "8b8a201d8793dfd46e046b1def4e7e9f1bf4feae65803b7168d0636fe564774c",
+      "shape": [
+        262144
+      ],
+      "source_device": "cuda:0",
+      "step": 0
+    },
+    {
+      "byte_count": 207360,
+      "captured_at_unix_ns": 1788472141804214446,
+      "checkpoint": "boundary_recv_hidden",
+      "dtype": "bfloat16",
+      "global_layer": null,
+      "gpu_uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176",
+      "host": "inferswarm03",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        27
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "last",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "dad1a3efe1d17635b24a6364d3dc4d2df73d9a82f4d4b61d21b1e2fd2f42e812",
+      "shape": [
+        27,
+        3840
+      ],
+      "source_device": "cuda:0",
+      "step": 1
+    },
+    {
+      "byte_count": 207360,
+      "captured_at_unix_ns": 1788472141812585409,
+      "checkpoint": "after_layer_35",
+      "dtype": "bfloat16",
+      "global_layer": 35,
+      "gpu_uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176",
+      "host": "inferswarm03",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        27
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "last",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "d7db5c5b70963df04ab2010a5c6a2a6d29aa130dda104c5fd8da9be5b792f84d",
+      "shape": [
+        27,
+        3840
+      ],
+      "source_device": "cuda:0",
+      "step": 1
+    },
+    {
+      "byte_count": 207360,
+      "captured_at_unix_ns": 1788472141820009205,
+      "checkpoint": "after_layer_39",
+      "dtype": "bfloat16",
+      "global_layer": 39,
+      "gpu_uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176",
+      "host": "inferswarm03",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        27
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "last",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "7bbab6c3e2f3040b273eaf8ebb6e534385e31314caecc1305a1127d9982d6dc0",
+      "shape": [
+        27,
+        3840
+      ],
+      "source_device": "cuda:0",
+      "step": 1
+    },
+    {
+      "byte_count": 207360,
+      "captured_at_unix_ns": 1788472141827567761,
+      "checkpoint": "after_layer_43",
+      "dtype": "bfloat16",
+      "global_layer": 43,
+      "gpu_uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176",
+      "host": "inferswarm03",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        27
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "last",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "b053b7ef5ca49bd9814d2c4f23c4b1116607bb7bf7c717e387fc58c88dec3f5c",
+      "shape": [
+        27,
+        3840
+      ],
+      "source_device": "cuda:0",
+      "step": 1
+    },
+    {
+      "byte_count": 207360,
+      "captured_at_unix_ns": 1788472141835060404,
+      "checkpoint": "after_layer_47",
+      "dtype": "bfloat16",
+      "global_layer": 47,
+      "gpu_uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176",
+      "host": "inferswarm03",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        27
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "last",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "66e80db032c549723bc4edf80aa9accf8eda7f82f51cf698b2d2247a3dd6b272",
+      "shape": [
+        27,
+        3840
+      ],
+      "source_device": "cuda:0",
+      "step": 1
+    },
+    {
+      "byte_count": 207360,
+      "captured_at_unix_ns": 1788472141835746842,
+      "checkpoint": "final_norm",
+      "dtype": "bfloat16",
+      "global_layer": null,
+      "gpu_uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176",
+      "host": "inferswarm03",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        27
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "last",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "38f976aae3c5b528dc35ac7836b04c51d575e42a76c490e1361f845a6466f7eb",
+      "shape": [
+        27,
+        3840
+      ],
+      "source_device": "cuda:0",
+      "step": 1
+    },
+    {
+      "byte_count": 14155776,
+      "captured_at_unix_ns": 1788472141845191345,
+      "checkpoint": "bf16_logits",
+      "dtype": "bfloat16",
+      "global_layer": null,
+      "gpu_uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176",
+      "host": "inferswarm03",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        27
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "last",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "afa88e6ca223884ee4179a874d9402d16589485756475999134b136f91f76e57",
+      "shape": [
+        27,
+        262144
+      ],
+      "source_device": "cuda:0",
+      "step": 1
+    },
+    {
+      "byte_count": 1048576,
+      "captured_at_unix_ns": 1788472141894552251,
+      "checkpoint": "final_row_fp32",
+      "dtype": "float32",
+      "global_layer": null,
+      "gpu_uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176",
+      "host": "inferswarm03",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        262144
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "last",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "4bc92a35d108779429b35d14d8e32c6ec477456e9789311e2414c1c2e89c11b1",
+      "shape": [
+        262144
+      ],
+      "source_device": "cuda:0",
+      "step": 1
+    },
+    {
+      "byte_count": 253440,
+      "captured_at_unix_ns": 1788472142710260660,
+      "checkpoint": "boundary_recv_hidden",
+      "dtype": "bfloat16",
+      "global_layer": null,
+      "gpu_uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176",
+      "host": "inferswarm03",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        33
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "last",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "54dea311a47d77df9b6d69d5c05d282493f7161e1b13be1b3d6915683dbba7fd",
+      "shape": [
+        33,
+        3840
+      ],
+      "source_device": "cuda:0",
+      "step": 7
+    },
+    {
+      "byte_count": 253440,
+      "captured_at_unix_ns": 1788472142719919045,
+      "checkpoint": "after_layer_35",
+      "dtype": "bfloat16",
+      "global_layer": 35,
+      "gpu_uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176",
+      "host": "inferswarm03",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        33
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "last",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "25689e6a53798729cb62dd2131d850f2be0c17d48def9110fce2a1496b21562c",
+      "shape": [
+        33,
+        3840
+      ],
+      "source_device": "cuda:0",
+      "step": 7
+    },
+    {
+      "byte_count": 253440,
+      "captured_at_unix_ns": 1788472142728585799,
+      "checkpoint": "after_layer_39",
+      "dtype": "bfloat16",
+      "global_layer": 39,
+      "gpu_uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176",
+      "host": "inferswarm03",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        33
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "last",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "c2586d167e06ad1162bf6c9a78a9b787c6b2374ca2a4eca632e96124bd3ec5d3",
+      "shape": [
+        33,
+        3840
+      ],
+      "source_device": "cuda:0",
+      "step": 7
+    },
+    {
+      "byte_count": 253440,
+      "captured_at_unix_ns": 1788472142737447907,
+      "checkpoint": "after_layer_43",
+      "dtype": "bfloat16",
+      "global_layer": 43,
+      "gpu_uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176",
+      "host": "inferswarm03",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        33
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "last",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "76e4030be8524b6c54b82210af5aef7432773447be7ce1a237e0e121361b1d5d",
+      "shape": [
+        33,
+        3840
+      ],
+      "source_device": "cuda:0",
+      "step": 7
+    },
+    {
+      "byte_count": 253440,
+      "captured_at_unix_ns": 1788472142746301692,
+      "checkpoint": "after_layer_47",
+      "dtype": "bfloat16",
+      "global_layer": 47,
+      "gpu_uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176",
+      "host": "inferswarm03",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        33
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "last",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "21b41760b038b14920504d607eb483e90df0e51848cbade75a449839b0124861",
+      "shape": [
+        33,
+        3840
+      ],
+      "source_device": "cuda:0",
+      "step": 7
+    },
+    {
+      "byte_count": 253440,
+      "captured_at_unix_ns": 1788472142747072276,
+      "checkpoint": "final_norm",
+      "dtype": "bfloat16",
+      "global_layer": null,
+      "gpu_uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176",
+      "host": "inferswarm03",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        33
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "last",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "f7eeb93be49a0a0670580d96d8ab1f1742dee49cb31eba070f5ab9912a5cea83",
+      "shape": [
+        33,
+        3840
+      ],
+      "source_device": "cuda:0",
+      "step": 7
+    },
+    {
+      "byte_count": 17301504,
+      "captured_at_unix_ns": 1788472142757811220,
+      "checkpoint": "bf16_logits",
+      "dtype": "bfloat16",
+      "global_layer": null,
+      "gpu_uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176",
+      "host": "inferswarm03",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        33
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "last",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "d52b11e49940ad5af4ebc7f7826348a48e798a325359ef57c594c3aa1180c664",
+      "shape": [
+        33,
+        262144
+      ],
+      "source_device": "cuda:0",
+      "step": 7
+    },
+    {
+      "byte_count": 1048576,
+      "captured_at_unix_ns": 1788472142816432617,
+      "checkpoint": "final_row_fp32",
+      "dtype": "float32",
+      "global_layer": null,
+      "gpu_uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176",
+      "host": "inferswarm03",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        262144
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "last",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "62e6d93e98e7a73609b70cea7eb1df3958cccde7e997e2762c28e7641d5a0f47",
+      "shape": [
+        262144
+      ],
+      "source_device": "cuda:0",
+      "step": 7
+    }
+  ],
+  "schema": "inferswarm.r6_localization.manifest/1"
+}

@@ -1,0 +1,44 @@
+[
+ {
+  "step": 0,
+  "checkpoint": "after_layer_0",
+  "exact_equal": false,
+  "max_absdiff": 0.25,
+  "nonzero_count": 38345
+ },
+ {
+  "step": 0,
+  "checkpoint": "embedding_output",
+  "exact_equal": true,
+  "max_absdiff": 0.0,
+  "nonzero_count": 0
+ },
+ {
+  "step": 1,
+  "checkpoint": "after_layer_0",
+  "exact_equal": false,
+  "max_absdiff": 0.125,
+  "nonzero_count": 45864
+ },
+ {
+  "step": 1,
+  "checkpoint": "embedding_output",
+  "exact_equal": true,
+  "max_absdiff": 0.0,
+  "nonzero_count": 0
+ },
+ {
+  "step": 7,
+  "checkpoint": "after_layer_0",
+  "exact_equal": false,
+  "max_absdiff": 0.125,
+  "nonzero_count": 51305
+ },
+ {
+  "step": 7,
+  "checkpoint": "embedding_output",
+  "exact_equal": true,
+  "max_absdiff": 0.0,
+  "nonzero_count": 0
+ }
+]

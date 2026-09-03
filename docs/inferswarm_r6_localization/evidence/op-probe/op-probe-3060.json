@@ -1,0 +1,280 @@
+{
+  "capture_manifest": {
+    "bundle": "captures-op-probe-3060.pt",
+    "bundle_bytes": 2589237,
+    "bundle_sha256": "c30c4cbdfd4ce6d306f5f8b51c09c3766cabf71b6b9d7906aa6f361e7b5e6978",
+    "host": "inferswarm01",
+    "platform": "Linux-6.12.105+deb13-amd64-x86_64-with-glibc2.41",
+    "producer_sha": "761fd19b56a78f627a68da2a896a1400829466e8",
+    "record_count": 10,
+    "records": [
+      {
+        "byte_count": 199680,
+        "captured_at_unix_ns": 1788474043900848525,
+        "checkpoint": "probe_input",
+        "dtype": "bfloat16",
+        "global_layer": 0,
+        "gpu_uuid": "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099",
+        "host": "inferswarm01",
+        "inf_count": 0,
+        "nan_count": 0,
+        "position_range": [
+          0,
+          26
+        ],
+        "producer_sha": "761fd19b56a78f627a68da2a896a1400829466e8",
+        "role": "op-probe",
+        "schema": "inferswarm.r6_localization.capture/1",
+        "sha256": "4efd881cb2b28d3a82b0ca8d05f26e5a49725e57f69ff1ea7bfec622c5ffd9b3",
+        "shape": [
+          26,
+          3840
+        ],
+        "source_device": "cuda:0",
+        "step": 0
+      },
+      {
+        "byte_count": 199680,
+        "captured_at_unix_ns": 1788474044735791533,
+        "checkpoint": "op1_input_layernorm",
+        "dtype": "bfloat16",
+        "global_layer": 0,
+        "gpu_uuid": "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099",
+        "host": "inferswarm01",
+        "inf_count": 0,
+        "nan_count": 0,
+        "position_range": [
+          0,
+          26
+        ],
+        "producer_sha": "761fd19b56a78f627a68da2a896a1400829466e8",
+        "role": "op-probe",
+        "schema": "inferswarm.r6_localization.capture/1",
+        "sha256": "1097baec48273a0dbf21823a10ac9fbaf4b87738633fbe934385244ba8d8d6ad",
+        "shape": [
+          26,
+          3840
+        ],
+        "source_device": "cuda:0",
+        "step": 0
+      },
+      {
+        "byte_count": 425984,
+        "captured_at_unix_ns": 1788474044935988000,
+        "checkpoint": "op2_qkv_gemm",
+        "dtype": "bfloat16",
+        "global_layer": 0,
+        "gpu_uuid": "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099",
+        "host": "inferswarm01",
+        "inf_count": 0,
+        "nan_count": 0,
+        "position_range": [
+          0,
+          26
+        ],
+        "producer_sha": "761fd19b56a78f627a68da2a896a1400829466e8",
+        "role": "op-probe",
+        "schema": "inferswarm.r6_localization.capture/1",
+        "sha256": "167e99f33c077053e3ad4b7810110abe68a992fb859f94c0a4454b29ac19784b",
+        "shape": [
+          26,
+          8192
+        ],
+        "source_device": "cuda:0",
+        "step": 0
+      },
+      {
+        "byte_count": 425984,
+        "captured_at_unix_ns": 1788474045303036963,
+        "checkpoint": "op3_qkv_norms",
+        "dtype": "bfloat16",
+        "global_layer": 0,
+        "gpu_uuid": "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099",
+        "host": "inferswarm01",
+        "inf_count": 0,
+        "nan_count": 0,
+        "position_range": [
+          0,
+          26
+        ],
+        "producer_sha": "761fd19b56a78f627a68da2a896a1400829466e8",
+        "role": "op-probe",
+        "schema": "inferswarm.r6_localization.capture/1",
+        "sha256": "eb27f807d4825cf83eb68dd05b5f64e456ac93ebacca37d7adcc78667e31227e",
+        "shape": [
+          26,
+          8192
+        ],
+        "source_device": "cuda:0",
+        "step": 0
+      },
+      {
+        "byte_count": 319488,
+        "captured_at_unix_ns": 1788474045341770004,
+        "checkpoint": "op4_rope",
+        "dtype": "bfloat16",
+        "global_layer": 0,
+        "gpu_uuid": "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099",
+        "host": "inferswarm01",
+        "inf_count": 0,
+        "nan_count": 0,
+        "position_range": [
+          0,
+          26
+        ],
+        "producer_sha": "761fd19b56a78f627a68da2a896a1400829466e8",
+        "role": "op-probe",
+        "schema": "inferswarm.r6_localization.capture/1",
+        "sha256": "20fa3141d0dd2c3475d11cfb707180d55dd66a52318f8d6d70a219df70e2d4be",
+        "shape": [
+          26,
+          6144
+        ],
+        "source_device": "cuda:0",
+        "step": 0
+      },
+      {
+        "byte_count": 212992,
+        "captured_at_unix_ns": 1788474047287034223,
+        "checkpoint": "op5_attention_out",
+        "dtype": "bfloat16",
+        "global_layer": 0,
+        "gpu_uuid": "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099",
+        "host": "inferswarm01",
+        "inf_count": 0,
+        "nan_count": 0,
+        "position_range": [
+          0,
+          26
+        ],
+        "producer_sha": "761fd19b56a78f627a68da2a896a1400829466e8",
+        "role": "op-probe",
+        "schema": "inferswarm.r6_localization.capture/1",
+        "sha256": "6c2d6797587b7ad31eea665bd47d428e1791fba0ffe964a2c238bffd536646df",
+        "shape": [
+          26,
+          16,
+          256
+        ],
+        "source_device": "cuda:0",
+        "step": 0
+      },
+      {
+        "byte_count": 199680,
+        "captured_at_unix_ns": 1788474047304409265,
+        "checkpoint": "op6_o_proj",
+        "dtype": "bfloat16",
+        "global_layer": 0,
+        "gpu_uuid": "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099",
+        "host": "inferswarm01",
+        "inf_count": 0,
+        "nan_count": 0,
+        "position_range": [
+          0,
+          26
+        ],
+        "producer_sha": "761fd19b56a78f627a68da2a896a1400829466e8",
+        "role": "op-probe",
+        "schema": "inferswarm.r6_localization.capture/1",
+        "sha256": "f6bd4ce480d81fdb869be74c49bd8a56529210e143d2bcdb360db83efed9f7b8",
+        "shape": [
+          26,
+          3840
+        ],
+        "source_device": "cuda:0",
+        "step": 0
+      },
+      {
+        "byte_count": 199680,
+        "captured_at_unix_ns": 1788474047307454986,
+        "checkpoint": "op7_post_attn_norm",
+        "dtype": "bfloat16",
+        "global_layer": 0,
+        "gpu_uuid": "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099",
+        "host": "inferswarm01",
+        "inf_count": 0,
+        "nan_count": 0,
+        "position_range": [
+          0,
+          26
+        ],
+        "producer_sha": "761fd19b56a78f627a68da2a896a1400829466e8",
+        "role": "op-probe",
+        "schema": "inferswarm.r6_localization.capture/1",
+        "sha256": "5fef3cb5ff626f226c3f17573680dd8451080572cb311d726705c18e075cfe91",
+        "shape": [
+          26,
+          3840
+        ],
+        "source_device": "cuda:0",
+        "step": 0
+      },
+      {
+        "byte_count": 199680,
+        "captured_at_unix_ns": 1788474047929227164,
+        "checkpoint": "op8_pre_ff_norm_residual",
+        "dtype": "bfloat16",
+        "global_layer": 0,
+        "gpu_uuid": "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099",
+        "host": "inferswarm01",
+        "inf_count": 0,
+        "nan_count": 0,
+        "position_range": [
+          0,
+          26
+        ],
+        "producer_sha": "761fd19b56a78f627a68da2a896a1400829466e8",
+        "role": "op-probe",
+        "schema": "inferswarm.r6_localization.capture/1",
+        "sha256": "b85d2320b4ea84546a0643d32c6f6f7b2e112ff27236b78429227967ee6e1e5d",
+        "shape": [
+          26,
+          3840
+        ],
+        "source_device": "cuda:0",
+        "step": 0
+      },
+      {
+        "byte_count": 199680,
+        "captured_at_unix_ns": 1788474047959004280,
+        "checkpoint": "op9_mlp_out",
+        "dtype": "bfloat16",
+        "global_layer": 0,
+        "gpu_uuid": "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099",
+        "host": "inferswarm01",
+        "inf_count": 0,
+        "nan_count": 0,
+        "position_range": [
+          0,
+          26
+        ],
+        "producer_sha": "761fd19b56a78f627a68da2a896a1400829466e8",
+        "role": "op-probe",
+        "schema": "inferswarm.r6_localization.capture/1",
+        "sha256": "f40c9269c01cb0ecf791013377474499f9bca6a11ccdeb25debaf5a0ab537660",
+        "shape": [
+          26,
+          3840
+        ],
+        "source_device": "cuda:0",
+        "step": 0
+      }
+    ],
+    "schema": "inferswarm.r6_localization.manifest/1"
+  },
+  "gpu_uuid": "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099",
+  "layer": 0,
+  "ops": [
+    "input_layernorm",
+    "qkv_gemm",
+    "qkv_norms",
+    "rope",
+    "attention",
+    "o_proj",
+    "post_attn_norm",
+    "pre_ff_norm_residual",
+    "mlp"
+  ],
+  "schema": "inferswarm.r6_localization.op-probe/1",
+  "status": "OP_PROBE_COMPLETE"
+}
