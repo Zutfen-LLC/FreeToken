@@ -43,10 +43,35 @@ def generate_reference(
     torch.manual_seed(0)
     started = time.perf_counter()
     tokenizer = AutoTokenizer.from_pretrained(model_path)
+    if "," in device:
+        # Two-GPU spread with a small CPU tail: the 23.85 GB text tower
+        # does not fit 2x 11.63 GiB usable even without the vision/audio
+        # towers, so the last decoder layers materialize on host RAM
+        # (eager attention; correctness reference only, not throughput).
+        n_layers = 48
+        device_map = {
+            "model.language_model.embed_tokens": 0,
+            "model.vision_tower": 0,
+            "model.embed_vision": 0,
+            "model.embed_audio": 0,
+            "model.audio_tower": 0,
+            "model.language_model.norm": "cpu",
+            "lm_head": "cpu",
+        }
+        for i in range(n_layers):
+            if i < 19:
+                target = 0
+            elif i < 44:
+                target = 1
+            else:
+                target = "cpu"
+            device_map[f"model.language_model.layers.{i}"] = target
+    else:
+        device_map = device
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
         torch_dtype=torch.bfloat16,
-        device_map=device,
+        device_map=device_map,
         attn_implementation="eager",
     )
     model.eval()
@@ -54,7 +79,10 @@ def generate_reference(
 
     tokens: list[int] = []
     captured: dict[str, dict] = {}
-    input_ids = torch.tensor([prompt_token_ids], dtype=torch.long, device=device)
+    run_device = device.split(",")[0]
+    input_ids = torch.tensor(
+        [prompt_token_ids], dtype=torch.long, device=run_device
+    )
     generated = []
     step_logits = {}
     t0 = time.perf_counter()
@@ -71,7 +99,7 @@ def generate_reference(
             next_id = int(torch.argmax(logits).item())
             generated.append(next_id)
             input_ids = torch.cat(
-                [input_ids, torch.tensor([[next_id]], device=device)], dim=1
+                [input_ids, torch.tensor([[next_id]], device=run_device)], dim=1
             )
     wall = time.perf_counter() - t0
     return {
