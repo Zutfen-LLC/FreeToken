@@ -127,14 +127,6 @@ def _stage_entry(*, role, adapter_data, model_path, connection):
                     int(x) for x in message.get("after_layers", [])
                 )
                 connection.send({"op": "ACK"})
-            elif op == "SET_CAPTURE_STEPS":
-                # steps that fire captures (int list); None disables emission
-                steps = message["steps"]
-                runtime._capture_step = steps
-                runtime._capture_after_layers = frozenset(
-                    int(x) for x in message.get("after_layers", [])
-                )
-                connection.send({"op": "ACK"})
             elif op == "SAVE_CAPTURE":
                 if capture_sink is None or capture_out_dir is None:
                     raise RuntimeError("SAVE_CAPTURE without ARM_CAPTURE")
