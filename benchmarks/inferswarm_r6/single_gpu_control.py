@@ -317,14 +317,30 @@ def run_control(args) -> dict[str, Any]:
         generated: list[int] = []
         captured = {}
         nan_inf_count = 0
+        step_memory: dict[str, dict[str, int]] = {}
         for step in range(maximum):
             runtime.reset_session_state()
             replay = prompt + generated
             token, logits = runtime.prefill(replay, None, 0)
-            row = logits[-1].detach().float().cpu()
+            # prefill() returns the final-row FP32 logits directly (the
+            # optimized path); .float() on an already-fp32 tensor is an
+            # exact no-op kept for schema stability.
+            row = logits.detach().float().cpu()
             nan_inf_count += int(
                 torch.isnan(row).sum().item() + torch.isinf(row).sum().item()
             )
+            free_bytes, _total = torch.cuda.mem_get_info("cuda:0")
+            step_memory[str(step)] = {
+                "replay_rows": int(len(replay)),
+                "final_row_fp32_bytes": int(row.numel() * row.element_size()),
+                "cuda_allocated_bytes": int(
+                    torch.cuda.memory_allocated("cuda:0")
+                ),
+                "cuda_peak_bytes": int(
+                    torch.cuda.max_memory_allocated("cuda:0")
+                ),
+                "cuda_free_bytes": int(free_bytes),
+            }
             if step in CAPTURE_STEPS:
                 captured[step] = row.clone()
             generated.append(int(token))
@@ -412,6 +428,12 @@ def run_control(args) -> dict[str, Any]:
                 "reference_generated_token_ids": reference["generated_token_ids"],
                 "exact_generated_token_match": exact_match,
                 "nan_inf_count": nan_inf_count,
+                "step_cuda_memory": step_memory,
+                "min_free_cuda_bytes_across_steps": (
+                    min(m["cuda_free_bytes"] for m in step_memory.values())
+                    if step_memory
+                    else None
+                ),
                 "comparisons": {
                     "transformers_vs_single_freetoken": {
                         "domain": "retained Transformers reference top-32",

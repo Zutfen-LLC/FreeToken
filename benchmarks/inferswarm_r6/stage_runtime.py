@@ -672,14 +672,35 @@ class GemmaDenseStage:
         final = self.block.norm.forward(hidden)
         return final
 
-    def lm_head_logits(self, final: torch.Tensor) -> torch.Tensor:
-        # Tied lm_head: logits via the shared embedding table, softcapped.
+    def full_bf16_logits(self, final: torch.Tensor) -> torch.Tensor:
+        # Tied lm_head: full [sequence, vocab] BF16 logits via the shared
+        # embedding table, softcapped.  The GEMM shape, dtype, and softcap
+        # placement are frozen R6 semantics and must not change: every
+        # consumer that needs logits computes the SAME full BF16 tensor.
         weight = self.block.embed_tokens.weight  # [vocab, hidden]
         logits = final @ weight.t()
         cap = self.full_config.final_logit_softcapping
         if cap is not None:
             logits = torch.tanh(logits / cap) * cap
-        return logits.float()
+        return logits
+
+    def final_row_logits(self, final: torch.Tensor) -> torch.Tensor:
+        # Consumer-facing final-token logits: identical BF16 GEMM + softcap
+        # as lm_head_logits(), but only the final row is promoted to FP32.
+        # BF16->FP32 conversion is elementwise and exact, so the returned
+        # row is bit-identical to lm_head_logits(final)[-1] while the
+        # unused earlier rows are never materialized as a [seq, vocab]
+        # FP32 tensor (a full 32-row promotion costs 32 MiB at vocab
+        # 262,144 and is a pure allocation-lifetime waste: the R6 control
+        # consumes only the last row).
+        return self.full_bf16_logits(final)[-1].float()
+
+    def lm_head_logits(self, final: torch.Tensor) -> torch.Tensor:
+        # Legacy whole-tensor promotion [sequence, vocab] FP32.  Retained
+        # unchanged for direct callers and equivalence proof against
+        # final_row_logits(); the prefill/decode execution paths no longer
+        # route through it.
+        return self.full_bf16_logits(final).float()
 
     def reset_session_state(self) -> None:
         for tensor in _iter_pool_tensors(self.ctx.kv_cache):
@@ -708,11 +729,11 @@ class GemmaDenseStage:
                 hidden, _ = self.forward_layers(hidden)
                 if self.role == "single":
                     final = self.finalize(hidden, None)
-                    logits = self.lm_head_logits(final)
+                    logits = self.final_row_logits(final)
             if self.role == "single":
-                token = int(torch.argmax(logits[-1], dim=-1).item())
+                token = int(torch.argmax(logits, dim=-1).item())
                 if self._logit_capture is not None:
-                    self._logit_capture.capture(logits[-1])
+                    self._logit_capture.capture(logits)
                 return token, logits.detach()
             return hidden, None
         hidden = hidden_or_ids
@@ -722,10 +743,10 @@ class GemmaDenseStage:
             if self.role != "last":
                 return hidden, None
             final = self.finalize(hidden, None)
-            logits = self.lm_head_logits(final)
-        token = int(torch.argmax(logits[-1], dim=-1).item())
+            logits = self.final_row_logits(final)
+        token = int(torch.argmax(logits, dim=-1).item())
         if self._logit_capture is not None:
-            self._logit_capture.capture(logits[-1])
+            self._logit_capture.capture(logits)
         return token, logits.detach()
 
     @torch.inference_mode()
@@ -740,11 +761,11 @@ class GemmaDenseStage:
                 hidden, _ = self.forward_layers(hidden)
                 if self.role == "single":
                     final = self.finalize(hidden, None)
-                    logits = self.lm_head_logits(final)
+                    logits = self.final_row_logits(final)
             if self.role == "single":
-                token = int(torch.argmax(logits[-1], dim=-1).item())
+                token = int(torch.argmax(logits, dim=-1).item())
                 if self._logit_capture is not None:
-                    self._logit_capture.capture(logits[-1])
+                    self._logit_capture.capture(logits)
                 return token, logits
             return hidden, None
         hidden = token_or_hidden
@@ -754,10 +775,10 @@ class GemmaDenseStage:
             if self.role != "last":
                 return hidden, None
             final = self.finalize(hidden, None)
-            logits = self.lm_head_logits(final)
-        token = int(torch.argmax(logits[-1], dim=-1).item())
+            logits = self.final_row_logits(final)
+        token = int(torch.argmax(logits, dim=-1).item())
         if self._logit_capture is not None:
-            self._logit_capture.capture(logits[-1])
+            self._logit_capture.capture(logits)
         return token, logits
 
     def logical_state_records(self, used_tokens: int) -> dict:
