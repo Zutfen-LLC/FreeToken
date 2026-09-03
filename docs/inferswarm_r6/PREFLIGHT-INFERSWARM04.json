@@ -1,0 +1,59 @@
+{
+  "captured_at_unix_ns": 1788451696492353887,
+  "captured_at_utc": "2026-09-03T16:08:16Z",
+  "compute_capability": "8.6",
+  "cpu_model": "Intel(R) Core(TM) i5-4460  CPU @ 3.20GHz",
+  "driver_version": "610.57.04",
+  "gemma_realization_occurred_on_this_node": false,
+  "gpu_compute_processes_at_freeze": "",
+  "gpu_idle_at_freeze": true,
+  "gpu_name": "NVIDIA GeForce RTX 3090",
+  "gpu_uuid": "GPU-ecda1aaa-0c66-857b-8218-3d511dc75c03",
+  "hostname": "inferswarm04",
+  "kernel": "6.12.107+deb13-amd64",
+  "label": "Hardware-identity freeze for the R6 bounded-host single-GPU control. PRE-RESULT: captured before any Gemma realization on this node.",
+  "lan_ip": "10.0.0.204",
+  "memory_total_mib": "24576",
+  "model": {
+    "checkpoint_sha256_live_read": "5a84cb313260ac447237b890387116dfa8682e49a6b44bc585ae8353abbff18d",
+    "path": "/srv/models/gemma-r6",
+    "repository": "google/gemma-4-12B-it",
+    "required_text_model_bytes_live_read": 23814700640,
+    "revision": "707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7"
+  },
+  "parent_code_sha": "66e1937e2c5c8fb00d0a2e97366d311884e105a2",
+  "pci_bus_id": "00000000:01:00.0",
+  "pcie": {
+    "link_gen_current": "1",
+    "link_gen_max": "2",
+    "link_width_current": "16",
+    "link_width_max": "16"
+  },
+  "physical_memtotal_bytes": 16593416192,
+  "physical_memtotal_kib": 16204508,
+  "platform": "Linux-6.12.107+deb13-amd64-x86_64-with-glibc2.41",
+  "provisioning_record_path": "/srv/inferswarm/state/inferswarm04/provisioning.json",
+  "required_text_model_bytes": 23814700640,
+  "schema": "inferswarm.r6.preflight-inferswarm04/1",
+  "software": {
+    "cuda_toolkit_nvcc": "Cuda compilation tools, release 13.1, V13.1.115",
+    "flashinfer": "0.6.17",
+    "python": "3.13.5",
+    "sglang-kernel": "0.4.5+cu130",
+    "torch": "2.11.0+cu130",
+    "torch_cuda_runtime": "13.0",
+    "transformers": "5.16.1",
+    "triton": "3.6.0"
+  },
+  "statement": "No GemmaDenseStage construction, no Gemma weight load, and no single-GPU comparator execution has occurred on this node as of this capture. The first full [0,48) realization is reserved for the canonical control after maintainer review.",
+  "swap": [
+    {
+      "device": "/dev/sda3",
+      "kind": "partition",
+      "total_bytes": 12898529280,
+      "used_bytes_at_freeze": 9961472
+    }
+  ],
+  "tailscale_ip": "100.126.229.19",
+  "vram_free_mib_at_freeze": "24123"
+}

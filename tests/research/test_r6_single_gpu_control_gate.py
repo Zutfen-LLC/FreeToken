@@ -113,11 +113,92 @@ def test_frozen_identity_rejects_mismatched_uuid(tmp_path):
     assert sgc._frozen_hardware_identity_matches(machine, frozen_path) is False
 
 
-def test_no_committed_identity_file_in_this_checkout():
-    """Regression pin: inferswarm04 is not provisioned yet, so the frozen
-    identity amendment must not exist (and must not be fabricated) until a
-    physical preflight capture commits it."""
-    assert not sgc.FROZEN_HARDWARE_IDENTITY_PATH.exists()
+def test_committed_preflight_identity_file_exists_and_schema_valid():
+    """inferswarm04 is provisioned and qualified: the frozen hardware
+    identity preflight must exist in this checkout, carry its schema, and
+    be valid JSON with the four runner-consumed fields present."""
+    path = sgc.FROZEN_HARDWARE_IDENTITY_PATH
+    assert path.exists(), (
+        "PREFLIGHT-INFERSWARM04.json must be committed once inferswarm04 "
+        "is provisioned (see SINGLE_GPU_CONTROL_METHODOLOGY.md)"
+    )
+    frozen = json.loads(path.read_text())
+    assert frozen["schema"] == "inferswarm.r6.preflight-inferswarm04/1"
+    for field in ("gpu_name", "gpu_uuid", "pci_bus_id", "memory_total_mib"):
+        assert isinstance(frozen[field], str) and frozen[field], field
+    assert frozen["hostname"] == "inferswarm04"
+    assert frozen["gemma_realization_occurred_on_this_node"] is False
+
+
+def test_committed_preflight_agrees_with_frozen_expected_record():
+    """The committed preflight must carry exactly the qualified physical
+    identity of inferswarm04 (RTX 3090, UUID, BDF, VRAM)."""
+    frozen = json.loads(sgc.FROZEN_HARDWARE_IDENTITY_PATH.read_text())
+    assert frozen["gpu_name"] == "NVIDIA GeForce RTX 3090"
+    assert frozen["gpu_uuid"] == "GPU-ecda1aaa-0c66-857b-8218-3d511dc75c03"
+    assert frozen["pci_bus_id"] == "00000000:01:00.0"
+    assert frozen["memory_total_mib"] == "24576"
+
+
+def test_frozen_identity_mismatched_live_uuid_fails_closed(tmp_path):
+    frozen_path = tmp_path / "PREFLIGHT-INFERSWARM04.json"
+    frozen_path.write_text(sgc.FROZEN_HARDWARE_IDENTITY_PATH.read_text())
+    machine = {
+        "gpu": {
+            "stdout": (
+                "NVIDIA GeForce RTX 3090, GPU-11111111-2222-3333-4444-"
+                "555555555555, 00000000:01:00.0, 24576, 0, 0, 1, P0, 4, 16"
+            )
+        }
+    }
+    assert sgc._frozen_hardware_identity_matches(machine, frozen_path) is False
+
+
+def test_frozen_identity_mismatched_live_bdf_fails_closed(tmp_path):
+    frozen_path = tmp_path / "PREFLIGHT-INFERSWARM04.json"
+    frozen_path.write_text(sgc.FROZEN_HARDWARE_IDENTITY_PATH.read_text())
+    machine = {
+        "gpu": {
+            "stdout": (
+                "NVIDIA GeForce RTX 3090, "
+                "GPU-ecda1aaa-0c66-857b-8218-3d511dc75c03, "
+                "00000000:02:00.0, 24576, 0, 0, 1, P0, 4, 16"
+            )
+        }
+    }
+    assert sgc._frozen_hardware_identity_matches(machine, frozen_path) is False
+
+
+def test_frozen_identity_mismatched_live_vram_fails_closed(tmp_path):
+    frozen_path = tmp_path / "PREFLIGHT-INFERSWARM04.json"
+    frozen_path.write_text(sgc.FROZEN_HARDWARE_IDENTITY_PATH.read_text())
+    machine = {
+        "gpu": {
+            "stdout": (
+                "NVIDIA GeForce RTX 3090, "
+                "GPU-ecda1aaa-0c66-857b-8218-3d511dc75c03, "
+                "0000:01:00.0, 24576, 0, 0, 1, P0, 4, 16"
+            ).replace(", 24576,", ", 8192,")
+        }
+    }
+    assert sgc._frozen_hardware_identity_matches(machine, frozen_path) is False
+
+
+def test_frozen_identity_live_machine_matching_committed_record_passes(tmp_path):
+    """Positive arm: a live census that reproduces the committed record's
+    exact nvidia-smi identity strings must be authorized."""
+    frozen_path = tmp_path / "PREFLIGHT-INFERSWARM04.json"
+    frozen_path.write_text(sgc.FROZEN_HARDWARE_IDENTITY_PATH.read_text())
+    machine = {
+        "gpu": {
+            "stdout": (
+                "NVIDIA GeForce RTX 3090, "
+                "GPU-ecda1aaa-0c66-857b-8218-3d511dc75c03, "
+                "00000000:01:00.0, 24576, 24123, 1, 610.57.04, P0, 1, 16"
+            )
+        }
+    }
+    assert sgc._frozen_hardware_identity_matches(machine, frozen_path) is True
 
 
 # --------------------------------------------------------------------------
