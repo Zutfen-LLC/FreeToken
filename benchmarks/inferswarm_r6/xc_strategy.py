@@ -16,15 +16,19 @@ try:
         MODEL_REPOSITORY,
         MODEL_REVISION,
         STRATEGY_ID,
-        planning_problem as gemma_planning_problem,
     )
 except ModuleNotFoundError:
     from inferswarm_r6.strategy import (  # type: ignore
         MODEL_REPOSITORY,
         MODEL_REVISION,
         STRATEGY_ID,
-        planning_problem as gemma_planning_problem,
     )
+
+# Census-derived frozen stage weights (measured on the checkpoint, producer
+# 2c8e381+; see docs/inferswarm_r6/METHODOLOGY.md).  The CPU-only
+# Coordinator must not need checkpoint bytes to plan.
+STAGE_WEIGHT_BYTES = [9256814624, 7278939168, 7278946848 + 2013731840]
+THREE_STAGE_SHAPE = "resident-two-node-three-slot"
 
 from freetoken.research.r3_planner import freeze
 
@@ -99,12 +103,77 @@ class GemmaTokenBoundaryStrategy:
 
 
 def planning_problem(implementation_commit: str) -> dict[str, Any]:
-    value = gemma_planning_problem(implementation_commit, MODEL_PATH_DEFAULT)
-    value = deepcopy(value)
-    value.pop("digest", None)
-    value["schema"] = "inferswarm.r6.gemma-strategy-problem/1"
-    value["strategy"] = {"id": STRATEGY_ID}
-    return freeze(value)
+    """Legal shapes from frozen census constants (no checkpoint access)."""
+    return freeze(
+        {
+            "schema": "inferswarm.r6.gemma-strategy-problem/1",
+            "implementation_commit": implementation_commit,
+            "strategy": {"id": STRATEGY_ID},
+            "model": {"repository": MODEL_REPOSITORY, "revision": MODEL_REVISION},
+            "evidence_context": {"model_revision": MODEL_REVISION},
+            "shapes": [
+                {
+                    "id": THREE_STAGE_SHAPE,
+                    "slots": [
+                        {
+                            "id": "slot-stage-1",
+                            "allowed_compute_unit_ids": ["gpu.node-a.0"],
+                            "required_capabilities": [
+                                "freetoken-resident-stage-first-v1"
+                            ],
+                            "memory": {
+                                "persistent_required_bytes": STAGE_WEIGHT_BYTES[0]
+                            },
+                        },
+                        {
+                            "id": "slot-stage-2",
+                            "allowed_compute_unit_ids": ["gpu.node-a.1"],
+                            "required_capabilities": [
+                                "freetoken-resident-stage-middle-v1"
+                            ],
+                            "memory": {
+                                "persistent_required_bytes": STAGE_WEIGHT_BYTES[1]
+                            },
+                        },
+                        {
+                            "id": "slot-stage-3",
+                            "allowed_compute_unit_ids": ["gpu.node-b.0"],
+                            "required_capabilities": [
+                                "freetoken-resident-stage-last-v1"
+                            ],
+                            "memory": {
+                                "persistent_required_bytes": STAGE_WEIGHT_BYTES[2]
+                            },
+                        },
+                    ],
+                    "distinct_slot_groups": [
+                        ["slot-stage-1", "slot-stage-2", "slot-stage-3"]
+                    ],
+                    "paths": [
+                        {
+                            "id": "strategy-boundary-1",
+                            "from_slot": "slot-stage-1",
+                            "to_slot": "slot-stage-2",
+                            "required_capabilities": [
+                                "freetoken-static-boundary-v1"
+                            ],
+                        },
+                        {
+                            "id": "strategy-boundary-2",
+                            "from_slot": "slot-stage-2",
+                            "to_slot": "slot-stage-3",
+                            "required_capabilities": [
+                                "freetoken-static-boundary-v1"
+                            ],
+                        },
+                    ],
+                    "strategy_payload": {
+                        "realization": "r6-dense-three-stage-chain",
+                    },
+                }
+            ],
+        }
+    )
 
 
 def operator_policy(implementation_commit: str) -> dict[str, Any]:
