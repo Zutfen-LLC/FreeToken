@@ -103,6 +103,10 @@ def _stage_entry(*, role, adapter_data, model_path, connection):
             message = connection.recv()
             op = message["op"]
             if op == "PREFILL":
+                if role != "first" and message.get("hidden") is not None:
+                    message["hidden"] = message["hidden"].to(
+                        device="cuda:0", dtype=torch.bfloat16
+                    )
                 if role == "first":
                     hidden, _ = runtime.prefill(
                         message["token_ids"], None, message["position"]
@@ -118,6 +122,10 @@ def _stage_entry(*, role, adapter_data, model_path, connection):
                             {"op": "BOUNDARY_PAYLOAD", "hidden": out[0].cpu()}
                         )
             elif op == "DECODE":
+                if role != "first" and message.get("hidden") is not None:
+                    message["hidden"] = message["hidden"].to(
+                        device="cuda:0", dtype=torch.bfloat16
+                    )
                 if role == "first":
                     hidden, _ = runtime.decode(
                         message["token_id"], message["position"]
