@@ -435,7 +435,7 @@ class GemmaDenseStage:
                 return hidden, None
             final = self.finalize(hidden, None)
             logits = self.lm_head_logits(final)
-        return int(torch.argmax(logits, dim=-1).item()), logits.detach()
+        return int(torch.argmax(logits[-1], dim=-1).item()), logits.detach()
 
     @torch.inference_mode()
     def decode(self, token_or_hidden, position: int):
@@ -458,7 +458,7 @@ class GemmaDenseStage:
                 return hidden, None
             final = self.finalize(hidden, None)
             logits = self.lm_head_logits(final)
-        return int(torch.argmax(logits, dim=-1).item()), logits
+        return int(torch.argmax(logits[-1], dim=-1).item()), logits
 
     def logical_state_records(self, used_tokens: int) -> dict:
         """Hash used KV state by global layer (ownership proof)."""
