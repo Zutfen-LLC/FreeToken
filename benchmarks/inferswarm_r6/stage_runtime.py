@@ -513,6 +513,11 @@ class _StageModules:
 class GemmaDenseStage:
     """One dense contiguous stage: selective load, resident execution."""
 
+    # Class-level defaults so the helper seam is well-defined on every
+    # instance (including minimal stubs built via object.__new__ in tests).
+    _softcap_mode = "inplace"
+    _phase_probe = None
+
     def __init__(self, *, role: str, model_path: str, adapter_data: dict) -> None:
         _alias = {"a": "first", "b": "last"}
         role = _alias.get(role, role)
@@ -521,14 +526,6 @@ class GemmaDenseStage:
         self.role = role
         self.model_path = model_path
         self._logit_capture: LogitCapture | None = None
-        # Softcap transformation seam (SINGLE_GPU_CONTROL_AMENDMENT-003):
-        # "legacy" = frozen out-of-place torch.tanh(logits / cap) * cap;
-        # "inplace" = bit-equivalent div_/tanh_/mul_ with no full-matrix
-        # temporaries (physically proven before becoming the default).
-        self._softcap_mode = "inplace"
-        # Optional per-phase CUDA diagnostic callback (OOM localization);
-        # never alters semantics, exceptions swallowed (see _notify).
-        self._phase_probe = None
         # The parent assigns one GPU per stage process before spawn: the
         # process sees exactly one device, always cuda:0 locally.
         self.device = torch.device("cuda:0")
