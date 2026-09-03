@@ -30,7 +30,7 @@ from freetoken.research.r4_wire import (
 )
 
 WIRE_PROTOCOL_ID = "inferswarm.r4.boundary-wire/1"
-MAX_TOKEN_COUNT = 32
+MAX_TOKEN_COUNT = 64  # matches strategy PREFILL_CHUNK (single-chunk replays)
 ROW_WIDTH = 3840
 BOUNDARY_CONTRACT = {
     "dtype": "bfloat16",
