@@ -1,0 +1,50 @@
+{
+  "schema": "inferswarm.r6.result/1",
+  "gate": "R6_DENSE_ARCHITECTURE_FALSIFICATION",
+  "implementation_producer_sha": "44d6c94e4fd2ee967451cc959f930883ca3f4a25",
+  "checks": {
+    "environment_producer_matches_run_producer": true,
+    "model_revision_frozen": true,
+    "checkpoint_sha_frozen": true,
+    "chain_plan_producer_frozen": true,
+    "canonical_request_retained": true,
+    "token_equality_exact": true,
+    "reference_token_equality": true,
+    "prompt_ids_match_canonical_prompt": true,
+    "all_tokens_one_epoch_lineage": true,
+    "fencing_arm_rejections": true,
+    "fencing_arm_output_unharmed": true,
+    "epoch_reclaimed_after_shutdown": true,
+    "coordinator_torch_free_evidence": true,
+    "stage_coverage_complete_contiguous": true,
+    "shared_state_declared_tied_embedding": true,
+    "no_unexplained_host_mirror": true,
+    "stage_fetch_matches_plan_placeholder": true
+  },
+  "failed_checks": [],
+  "detail": {
+    "run_producer": "44d6c94e4fd2ee967451cc959f930883ca3f4a25",
+    "repo_head_at_composition": "e2f54e96c85dfc779c3e8fea745352451cf2aaf9",
+    "distinct_committed_epochs": [
+      "research-generation-0:2cd1de3ef3e8"
+    ],
+    "epoch_states": [
+      "RECLAIMED"
+    ],
+    "planned_owned_bytes": [
+      9256814624,
+      7278939168,
+      7278946848
+    ]
+  },
+  "expected_generated_token_ids": [
+    818,
+    6073,
+    529,
+    74413,
+    46515,
+    600,
+    2557,
+    532
+  ]
+}

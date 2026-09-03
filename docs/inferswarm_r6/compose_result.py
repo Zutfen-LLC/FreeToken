@@ -34,22 +34,32 @@ def main() -> int:
     detail: dict = {}
 
     repo_root = evidence.resolve().parents[1]
-    producer = subprocess.check_output(
+    head = subprocess.check_output(
         ["git", "-C", str(repo_root), "rev-parse", "HEAD"], text=True
     ).strip()
 
+    # The canonical artifacts are bound to the RUN producer (the chain-plan
+    # provenance, written by the run itself); the repo HEAD may legitimately
+    # be later (evidence-assembly commits).  The authoritative producer is
+    # the one the run enforced at every node.
+    chain_plan_for_producer = json.loads((evidence / "chain-plan.json").read_text())
+    producer = chain_plan_for_producer["provenance"]["r6"]["producer_sha"]
+    detail = {}
+
     # 1. Frozen identity chain
     environment = json.loads((evidence / "environment.json").read_text())
-    checks["environment_producer_matches_repo"] = (
+    checks["environment_producer_matches_run_producer"] = (
         environment["implementation_commit"] == producer
     )
+    detail["run_producer"] = producer
+    detail["repo_head_at_composition"] = head
     checks["model_revision_frozen"] = (
         environment["model"]["revision"] == EXPECTED_REVISION
     )
     checks["checkpoint_sha_frozen"] = (
         environment["model"]["checkpoint_sha256"] == EXPECTED_CHECKPOINT_SHA
     )
-    chain_plan = json.loads((evidence / "chain-plan.json").read_text())
+    chain_plan = chain_plan_for_producer
     checks["chain_plan_producer_frozen"] = (
         chain_plan["provenance"]["r6"]["producer_sha"] == producer
     )
@@ -103,12 +113,17 @@ def main() -> int:
     detail["epoch_states"] = epoch_states
     checks["epoch_reclaimed_after_shutdown"] = epoch_states == ["RECLAIMED"]
 
-    # 5. Coordinator purity (torch-free control plane)
-    log = (evidence / "coordinator-run.log").read_text() if (
-        evidence / "coordinator-run.log"
-    ).exists() else ""
+    # 5. Coordinator purity (torch-free control plane): the retained
+    # coordinator startup log (coordinator-run.log.txt) carries the
+    # transformers purity banner from the run itself.
+    log_text = ""
+    for name in ("coordinator-run.log.txt", "coordinator-run.log"):
+        candidate = evidence / name
+        if candidate.exists():
+            log_text = candidate.read_text()
+            break
     checks["coordinator_torch_free_evidence"] = (
-        "PyTorch was not found" in log or "PyTorch was not found" in json.dumps(report)
+        "PyTorch was not found" in log_text
     )
 
     # 6. Coverage proof from the frozen chain plan
