@@ -96,6 +96,10 @@ def main(argv=None) -> int:
                         host=args.last_stage_host,
                         port=args.last_stage_port,
                         experiment_id=plan["digest"],
+                        # first prefill on a fresh service includes Triton JIT
+                        # compilation; a short socket timeout kills the
+                        # single-connection service. 600 s, retry-free.
+                        connect_timeout=600.0,
                     )
                 )
                 self.ready = []
