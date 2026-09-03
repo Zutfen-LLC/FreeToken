@@ -45,7 +45,6 @@ def main(argv=None) -> int:
         set_tp_info(rank=0, size=1)
     set_rope_device(torch.device("cuda:0"))
 
-    plan_spec = DenseBlockSpec(0, 1, True, False)  # layer 0 only + embeddings
     census = checkpoint_census(args.model, text_prefix="model.language_model")
     shared = {
         "id": "tied-embedding-lm-head",
@@ -54,8 +53,27 @@ def main(argv=None) -> int:
         "bytes": census["bytes_by_owner_category"]["embedding/input"],
         "materialization_policy": "single-cuda-tensor-used-for-input-and-output",
     }
-    plan = freeze_dense_block_plan(census, [plan_spec], declared_shared_state=shared)
-    block = plan["blocks"][0]
+    # probe builds a [0,1) block via the plan machinery over a synthetic
+    # single-layer census view: freeze_dense_block_plan requires the last
+    # block to end at the final layer, so probe the census of a layer-trimmed
+    # view instead — simplest correct route: reuse the full plan's block 0
+    # keys filtered to layer 0.
+    full = freeze_dense_block_plan(
+        census,
+        [DenseBlockSpec(0, 48, True, True)],
+        declared_shared_state=shared,
+    )
+    layer0_prefix = "model.language_model.layers.0."
+    block = {
+        "spec": {"start_layer": 0, "end_layer": 1, "owns_embeddings": True,
+                 "owns_final_norm_head": False},
+        "allowed_tensor_keys": [
+            k for k in full["blocks"][0]["allowed_tensor_keys"]
+            if k.startswith(layer0_prefix)
+            or k == "model.language_model.embed_tokens.weight"
+        ],
+        "owned_checkpoint_bytes": 0,
+    }
 
     runtime = GemmaDenseStage(
         role="first",
