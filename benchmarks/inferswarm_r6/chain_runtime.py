@@ -91,24 +91,22 @@ class ChainEpochRuntime:
                 self.reclamation_report = {}
 
         self._chain = _Chain()
+        ready_reports = {
+            ready.get("role"): ready.get("runtime_report", {})
+            for ready in self._chain.ready
+        }
         self.observation = {
             "schema": "inferswarm.r6.chain-realization-observation/1",
             "participant_plan_digest": plan["digest"],
             "stages": [
                 {
-                    "role": ready.get("role"),
-                    "global_layer_ids": (
-                        ready.get("runtime_report", {}).get("global_layer_ids")
-                    ),
-                    "fetched_bytes": (
-                        ready.get("runtime_report", {}).get("fetched_bytes")
-                    ),
-                    "cuda_allocated_bytes": (
-                        ready.get("runtime_report", {}).get("cuda_allocated_bytes")
-                    ),
+                    "role": role,
+                    "global_layer_ids": report.get("global_layer_ids"),
+                    "fetched_bytes": report.get("fetched_bytes"),
+                    "cuda_allocated_bytes": report.get("cuda_allocated_bytes"),
                 }
-                for ready in self._chain.ready
-                if ready.get("role") in ("first", "middle")
+                for role, report in ready_reports.items()
+                if role in ("first", "middle")
             ]
             + [{"role": "last", "remote": True}],
         }
@@ -146,13 +144,26 @@ def realize_dense_chain(
 ) -> ChainEpochRuntime:
     """Signature-compatible with realize_isolated_network_plan so the
     node-agent's build_runtime can call either unchanged."""
-    del execution_plan
-    return ChainEpochRuntime(
+    runtime = ChainEpochRuntime(
         chain_plan_path=chain_plan_path,
         model_path=model_path,
         last_stage_host=last_stage_host,
         last_stage_port=last_stage_port,
     )
+    # Coordinator-side reconciliation compares these fields verbatim; echo
+    # exactly what the frozen plan declares for the realized chain.
+    for field in (
+        "participants",
+        "compute_units",
+        "representations",
+        "backend_choices",
+        "state_placement",
+        "state_authority",
+        "semantic_boundaries",
+    ):
+        runtime.observation[field] = execution_plan[field]
+    runtime.observation["plan_digest"] = execution_plan["digest"]
+    return runtime
 
 
 __all__ = ["ChainEpochRuntime", "realize_dense_chain"]
