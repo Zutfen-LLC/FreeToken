@@ -1,0 +1,72 @@
+[
+ {
+  "op": "op1_input_layernorm",
+  "exact_equal": true,
+  "max_absdiff": 0.0,
+  "nonzero": 0,
+  "total": 99840
+ },
+ {
+  "op": "op2_qkv_gemm",
+  "exact_equal": true,
+  "max_absdiff": 0.0,
+  "nonzero": 0,
+  "total": 212992
+ },
+ {
+  "op": "op3_qkv_norms",
+  "exact_equal": true,
+  "max_absdiff": 0.0,
+  "nonzero": 0,
+  "total": 212992
+ },
+ {
+  "op": "op4_rope",
+  "exact_equal": true,
+  "max_absdiff": 0.0,
+  "nonzero": 0,
+  "total": 159744
+ },
+ {
+  "op": "op5_attention_out",
+  "exact_equal": true,
+  "max_absdiff": 0.0,
+  "nonzero": 0,
+  "total": 106496
+ },
+ {
+  "op": "op6_o_proj",
+  "exact_equal": false,
+  "max_absdiff": 0.125,
+  "nonzero": 41337,
+  "total": 99840
+ },
+ {
+  "op": "op7_post_attn_norm",
+  "exact_equal": false,
+  "max_absdiff": 1.0,
+  "nonzero": 39691,
+  "total": 99840
+ },
+ {
+  "op": "op8_pre_ff_norm_residual",
+  "exact_equal": false,
+  "max_absdiff": 2.0,
+  "nonzero": 12964,
+  "total": 99840
+ },
+ {
+  "op": "op9_mlp_out",
+  "exact_equal": false,
+  "max_absdiff": 0.25,
+  "nonzero": 38345,
+  "total": 99840
+ },
+ {
+  "op": "probe_input",
+  "exact_equal": true,
+  "max_absdiff": 0.0,
+  "nonzero": 0,
+  "total": 99840
+ }
+]

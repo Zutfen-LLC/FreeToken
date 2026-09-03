@@ -1,0 +1,74 @@
+[
+ {
+  "step": 0,
+  "checkpoint": "after_layer_11",
+  "exact_equal": false,
+  "max_absdiff": 0.1875,
+  "mean_absdiff": 0.0006527113992771588,
+  "nonzero_frac": 0.7514523267745972
+ },
+ {
+  "step": 0,
+  "checkpoint": "after_layer_3",
+  "exact_equal": false,
+  "max_absdiff": 0.5,
+  "mean_absdiff": 0.003817432714650073,
+  "nonzero_frac": 0.7403646111488342
+ },
+ {
+  "step": 0,
+  "checkpoint": "after_layer_7",
+  "exact_equal": false,
+  "max_absdiff": 0.5,
+  "mean_absdiff": 0.008046236545525085,
+  "nonzero_frac": 0.794060468673706
+ },
+ {
+  "step": 1,
+  "checkpoint": "after_layer_11",
+  "exact_equal": false,
+  "max_absdiff": 0.25,
+  "mean_absdiff": 0.0006367082773696309,
+  "nonzero_frac": 0.7438175082206726
+ },
+ {
+  "step": 1,
+  "checkpoint": "after_layer_3",
+  "exact_equal": false,
+  "max_absdiff": 0.5,
+  "mean_absdiff": 0.003918953548633942,
+  "nonzero_frac": 0.7482928037643433
+ },
+ {
+  "step": 1,
+  "checkpoint": "after_layer_7",
+  "exact_equal": false,
+  "max_absdiff": 0.5,
+  "mean_absdiff": 0.007618282725287164,
+  "nonzero_frac": 0.7853491306304932
+ },
+ {
+  "step": 7,
+  "checkpoint": "after_layer_11",
+  "exact_equal": false,
+  "max_absdiff": 0.125,
+  "mean_absdiff": 0.0006423235630570685,
+  "nonzero_frac": 0.7376578450202942
+ },
+ {
+  "step": 7,
+  "checkpoint": "after_layer_3",
+  "exact_equal": false,
+  "max_absdiff": 0.25,
+  "mean_absdiff": 0.0037570324557071383,
+  "nonzero_frac": 0.7454861402511597
+ },
+ {
+  "step": 7,
+  "checkpoint": "after_layer_7",
+  "exact_equal": false,
+  "max_absdiff": 0.1875,
+  "mean_absdiff": 0.006879197928885168,
+  "nonzero_frac": 0.7758838534355164
+ }
+]

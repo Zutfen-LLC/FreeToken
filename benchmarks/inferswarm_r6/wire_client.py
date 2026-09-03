@@ -22,6 +22,17 @@ from freetoken.research.r4_wire import (
 WIRE_PROTOCOL_ID = "inferswarm.r4.boundary-wire/1"
 ROW_WIDTH = 3840
 
+# #71 localization: optional sender-side boundary byte capture. When armed,
+# every transmitted payload's exact bytes + sha256 + header identity are
+# recorded (diagnostic only; the payload itself is unchanged).
+_boundary_byte_log: list[dict] | None = None
+
+
+def arm_boundary_byte_log() -> list[dict]:
+    global _boundary_byte_log
+    _boundary_byte_log = []
+    return _boundary_byte_log
+
 
 class RemoteLastStageClient:
     """Wire client for the dense chain's remote last stage."""
@@ -71,7 +82,7 @@ class RemoteLastStageClient:
         raise RuntimeError("RemoteLastStageClient is request/response only")
 
     def _boundary(
-        self, *, operation: str, position: int, hidden
+        self, *, operation: str, position: int, hidden, capture_step: int | None = None
     ) -> dict[str, Any]:
         import torch
 
@@ -98,6 +109,23 @@ class RemoteLastStageClient:
             "payload_len": len(payload),
             "payload_sha256": payload_checksum(payload),
         }
+        if capture_step is not None:
+            # #71 diagnostic attribution only; r4_wire tolerates extra header
+            # fields (REQUIRED_REQUEST_FIELDS is a subset check).
+            header["capture_step"] = int(capture_step)
+        if _boundary_byte_log is not None:
+            _boundary_byte_log.append(
+                {
+                    "schema": "inferswarm.r6_localization.boundary-send/1",
+                    "operation": operation,
+                    "position": int(position),
+                    "token_count": token_count,
+                    "payload_len": len(payload),
+                    "payload_sha256": header["payload_sha256"],
+                    "wire_protocol": WIRE_PROTOCOL_ID,
+                    "payload_bytes": bytes(payload),
+                }
+            )
         send_exact(self._sock, encode_frame(header, payload))
         response, _ = recv_frame(self._sock, self._identity)
         if response.get("op") != "TOKEN_RESULT":
@@ -111,6 +139,7 @@ class RemoteLastStageClient:
                 operation="prefill",
                 position=int(message["position"]),
                 hidden=message["hidden"],
+                capture_step=message.get("capture_step"),
             )
             return {"op": "TOKEN_RESULT", "token_id": response["token_id"]}
         if op == "DECODE":

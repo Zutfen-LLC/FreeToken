@@ -395,10 +395,19 @@ def materialize_dense_state(
     return loaded, fusion_source_peak_live_bytes
 
 
-def execute_dense_layer_sequence(layers, hidden: torch.Tensor) -> torch.Tensor:
-    """Shared ordered decoder execution used by staged and single roles."""
-    for layer in layers:
+def execute_dense_layer_sequence(
+    layers, hidden: torch.Tensor, *, after_layer_hook=None
+) -> torch.Tensor:
+    """Shared ordered decoder execution used by staged and single roles.
+
+    ``after_layer_hook(local_index, hidden)`` (optional, #71 localization
+    seam) fires after each layer's forward when a capture is armed; it is
+    diagnostics-only and must never mutate ``hidden``.
+    """
+    for index, layer in enumerate(layers):
         hidden = layer.forward(hidden)
+        if after_layer_hook is not None:
+            after_layer_hook(index, hidden)
     return hidden
 
 
@@ -517,6 +526,11 @@ class GemmaDenseStage:
     # instance (including minimal stubs built via object.__new__ in tests).
     _softcap_mode = "inplace"
     _phase_probe = None
+    # #71 localization seam: optional CaptureSink. None (default) keeps the
+    # execution path bit-identical to the pre-#71 code.
+    _capture_sink: Any = None
+    _capture_step: int | None = None
+    _capture_after_layers: frozenset = frozenset()
 
     def __init__(self, *, role: str, model_path: str, adapter_data: dict) -> None:
         _alias = {"a": "first", "b": "last"}
@@ -792,11 +806,46 @@ class GemmaDenseStage:
 
     # -- execution -----------------------------------------------------
 
+    def _emit(
+        self, checkpoint: str, tensor, *, global_layer: int | None = None,
+        extra: dict | None = None,
+    ) -> None:
+        """#71 localization checkpoint emission (no-op without an armed sink)."""
+        sink = self._capture_sink
+        if sink is None or self._capture_step is None:
+            return
+        rows = int(tensor.shape[0]) if tensor.dim() >= 1 else 0
+        sink.emit(
+            checkpoint=checkpoint,
+            step=int(self._capture_step),
+            global_layer=global_layer,
+            position_range=[0, rows],
+            source_device=str(self.device),
+            tensor=tensor,
+            extra=extra,
+        )
+
     def embed(self, input_ids: torch.Tensor) -> torch.Tensor:
         return self.block.embed_tokens.forward(input_ids)
 
     def forward_layers(self, hidden, residual=None):
-        return execute_dense_layer_sequence(self.block.layers, hidden), None
+        hook = None
+        if self._capture_sink is not None and self._capture_after_layers:
+            global_ids = self.block.global_layer_ids
+
+            def _after(local_index, h):
+                g = global_ids[local_index]
+                if g in self._capture_after_layers:
+                    self._emit(f"after_layer_{g}", h, global_layer=g)
+
+            hook = _after
+
+        return (
+            execute_dense_layer_sequence(
+                self.block.layers, hidden, after_layer_hook=hook
+            ),
+            None,
+        )
 
     def finalize(self, hidden, residual=None):
         final = self.block.norm.forward(hidden)
@@ -817,6 +866,7 @@ class GemmaDenseStage:
                 logits = softcap_legacy(logits, cap, probe=self._phase_probe)
             else:
                 raise ValueError(f"unknown softcap mode: {self._softcap_mode!r}")
+        self._emit("bf16_logits", logits)
         return logits
 
     def final_row_logits(self, final: torch.Tensor) -> torch.Tensor:
@@ -829,6 +879,11 @@ class GemmaDenseStage:
         # 262,144 and is a pure allocation-lifetime waste: the R6 control
         # consumes only the last row).
         return self.full_bf16_logits(final)[-1].float()
+
+    def final_row_logits_with_capture(self, final: torch.Tensor) -> torch.Tensor:
+        row = self.final_row_logits(final)
+        self._emit("final_row_fp32", row)
+        return row
 
     def lm_head_logits(self, final: torch.Tensor) -> torch.Tensor:
         # Legacy whole-tensor promotion [sequence, vocab] FP32.  Retained
@@ -862,12 +917,15 @@ class GemmaDenseStage:
             with self.ctx.forward_batch(batch):
                 _notify(self._phase_probe, "embedding_complete")
                 hidden = self.embed(batch.input_ids)
+                self._emit("embedding_output", hidden)
                 hidden, _ = self.forward_layers(hidden)
                 _notify(self._phase_probe, "layers_complete")
                 if self.role == "single":
                     final = self.finalize(hidden, None)
                     _notify(self._phase_probe, "final_norm_complete")
-                    logits = self.final_row_logits(final)
+                    self._emit("after_layer_47", hidden, global_layer=47)
+                    self._emit("final_norm", final)
+                    logits = self.final_row_logits_with_capture(final)
                     _notify(self._phase_probe, "lm_head_gemm_complete")
             if self.role == "single":
                 _notify(self._phase_probe, "final_row_fp32_complete")
@@ -876,15 +934,26 @@ class GemmaDenseStage:
                 if self._logit_capture is not None:
                     self._logit_capture.capture(logits)
                 return token, logits.detach()
+            self._emit("boundary_send_hidden", hidden)
             return hidden, None
         hidden = hidden_or_ids
+        # #71: the received boundary tensor, after deserialization + device
+        # placement, BEFORE this stage's layers execute (receiver side of the
+        # boundary sender/receiver byte-identity proof).
+        self._emit("boundary_recv_hidden", hidden)
         batch = self._prepare(start=start, token_count=hidden.shape[0], phase="prefill")
         with self.ctx.forward_batch(batch):
             hidden, _ = self.forward_layers(hidden)
             if self.role != "last":
+                # stage output == boundary payload: capture as the SENDER side
+                # of this stage's outgoing boundary (coarse layer checkpoints
+                # after global 15/31 fire inside forward_layers' hook).
+                self._emit("boundary_send_hidden", hidden)
                 return hidden, None
             final = self.finalize(hidden, None)
-            logits = self.final_row_logits(final)
+            self._emit("after_layer_47", hidden, global_layer=47)
+            self._emit("final_norm", final)
+            logits = self.final_row_logits_with_capture(final)
         token = int(torch.argmax(logits, dim=-1).item())
         if self._logit_capture is not None:
             self._logit_capture.capture(logits)
@@ -905,7 +974,7 @@ class GemmaDenseStage:
                 if self.role == "single":
                     final = self.finalize(hidden, None)
                     _notify(self._phase_probe, "final_norm_complete")
-                    logits = self.final_row_logits(final)
+                    logits = self.final_row_logits_with_capture(final)
                     _notify(self._phase_probe, "lm_head_gemm_complete")
             if self.role == "single":
                 token = int(torch.argmax(logits, dim=-1).item())
@@ -920,7 +989,7 @@ class GemmaDenseStage:
             if self.role != "last":
                 return hidden, None
             final = self.finalize(hidden, None)
-            logits = self.final_row_logits(final)
+            logits = self.final_row_logits_with_capture(final)
         token = int(torch.argmax(logits, dim=-1).item())
         if self._logit_capture is not None:
             self._logit_capture.capture(logits)

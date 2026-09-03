@@ -14,6 +14,7 @@ Research-internal: not a public daemon API.  Fail-closed; no retries.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import socket
@@ -54,6 +55,9 @@ def serve(
     ready_file: str | None = None,
     capture_logits: bool = False,
     allow_producer: str | None = None,
+    localization_capture: bool = False,
+    localization_out_dir: str | None = None,
+    localization_after_layers: str | None = None,
 ) -> None:
     os.environ["CUDA_VISIBLE_DEVICES"] = gpu_uuid
     import torch
@@ -117,6 +121,26 @@ def serve(
     )
     if capture_logits:
         runtime._logit_capture = LogitCapture()
+
+    # #71 localization arm: semantic capture sink + received-payload byte
+    # log. Explicit diagnostic mode; the canonical serving semantics are
+    # unchanged (captures are host copies taken at the frozen points).
+    localization_sink = None
+    localization_rx_log: list[dict] | None = None
+    localization_after = frozenset()
+    if localization_capture:
+        from benchmarks.inferswarm_r6_localization.capture import CaptureSink
+
+        localization_sink = CaptureSink(
+            role="last", gpu_uuid=gpu_uuid, keep_tensors=True
+        )
+        runtime._capture_sink = localization_sink
+        localization_rx_log = []
+        if localization_after_layers:
+            localization_after = frozenset(
+                int(x) for x in localization_after_layers.split(",") if x != ""
+            )
+            runtime._capture_after_layers = localization_after
 
     buffer_bytes = MAX_TOKEN_COUNT * ROW_WIDTH * 2
     host_u8 = torch.empty(buffer_bytes, dtype=torch.uint8)
@@ -195,6 +219,20 @@ def serve(
                 .reshape(token_count, ROW_WIDTH)
                 .to(device="cuda:0", non_blocking=False)
             )
+            if localization_rx_log is not None:
+                localization_rx_log.append(
+                    {
+                        "schema": "inferswarm.r6_localization.boundary-recv/1",
+                        "operation": header["operation"],
+                        "position": int(header["position"]),
+                        "token_count": token_count,
+                        "payload_len": len(payload),
+                        "payload_sha256": payload_checksum(payload),
+                        "payload_bytes": bytes(payload),
+                    }
+                )
+                if header.get("capture_step") is not None:
+                    runtime._capture_step = int(header["capture_step"])
             if header["operation"] == "prefill":
                 token, _logits = runtime.prefill(
                     None, hidden, int(header["position"])
@@ -203,6 +241,8 @@ def serve(
                 if token_count != 1:
                     raise WireError("decode boundary requires exactly one token")
                 token, _logits = runtime.decode(hidden, int(header["position"]))
+            if localization_rx_log is not None:
+                runtime._capture_step = None
             stats["boundaries_served"] += 1
             stats["activation_bytes_rx"] += len(payload)
             response = {
@@ -221,6 +261,30 @@ def serve(
             del hidden
     finally:
         try:
+            if localization_sink is not None:
+                localization_sink.save(
+                    localization_out_dir or "/tmp/r6-localization",
+                    "last-final",
+                )
+            if localization_rx_log is not None:
+                rx_out = Path(
+                    os.environ.get(
+                        "R6_LOCALIZATION_RX_LOG", "/tmp/r6-localization-rx.json"
+                    )
+                )
+                entries = []
+                for record in localization_rx_log:
+                    entry = {k: v for k, v in record.items()
+                             if k != "payload_bytes"}
+                    raw = record["payload_bytes"]
+                    entry["payload_hex_sha256"] = hashlib.sha256(raw).hexdigest()
+                    bin_path = rx_out.with_name(
+                        f"boundary2-recv-{record['operation']}-p{record['position']}.bin"
+                    )
+                    bin_path.write_bytes(raw)
+                    entry["payload_bin"] = bin_path.name
+                    entries.append(entry)
+                rx_out.write_text(json.dumps(entries))
             capture_payload = None
             if runtime._logit_capture is not None:
                 capture_payload = {
@@ -269,6 +333,14 @@ def main(argv=None) -> int:
                         help="explicit evidence-arm override: record this "
                         "exact running producer instead of the plan's frozen "
                         "producer (never valid for a canonical run)")
+    parser.add_argument("--localization-capture", action="store_true",
+                        help="#71 diagnostic arm: semantic tensor capture at "
+                        "the frozen checkpoints (receiver-side boundary "
+                        "proof included)")
+    parser.add_argument("--localization-out-dir", default=None)
+    parser.add_argument("--localization-after-layers", default="",
+                        help="comma-separated global layer IDs for extra "
+                        "after-layer checkpoints (bisection)")
     args = parser.parse_args(argv)
     serve(
         listen_host=args.listen_host,
@@ -280,6 +352,9 @@ def main(argv=None) -> int:
         ready_file=args.ready_file,
         capture_logits=bool(args.capture_logits),
         allow_producer=args.allow_producer,
+        localization_capture=bool(args.localization_capture),
+        localization_out_dir=args.localization_out_dir,
+        localization_after_layers=args.localization_after_layers,
     )
     return 0
 

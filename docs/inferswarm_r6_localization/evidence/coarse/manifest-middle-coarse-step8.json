@@ -1,0 +1,237 @@
+{
+  "bundle": "captures-middle-coarse-step8.pt",
+  "bundle_bytes": 1987652,
+  "bundle_sha256": "4ee4c296ce1df589ff60f35a60a5dc6e726909424e4c09a7283c503083092076",
+  "host": "inferswarm01",
+  "platform": "Linux-6.12.105+deb13-amd64-x86_64-with-glibc2.41",
+  "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+  "record_count": 9,
+  "records": [
+    {
+      "byte_count": 199680,
+      "captured_at_unix_ns": 1788471364264025390,
+      "checkpoint": "boundary_recv_hidden",
+      "dtype": "bfloat16",
+      "global_layer": null,
+      "gpu_uuid": "GPU-d5c05739-96c1-7e49-89b6-bf54c2121c55",
+      "host": "inferswarm01",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        26
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "middle",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "d0e0e8a5404b221f8f3b3bbf22d9074dab9d3c634ddb80841a80405dc2769887",
+      "shape": [
+        26,
+        3840
+      ],
+      "source_device": "cuda:0",
+      "step": 0
+    },
+    {
+      "byte_count": 199680,
+      "captured_at_unix_ns": 1788471368823023853,
+      "checkpoint": "after_layer_31",
+      "dtype": "bfloat16",
+      "global_layer": 31,
+      "gpu_uuid": "GPU-d5c05739-96c1-7e49-89b6-bf54c2121c55",
+      "host": "inferswarm01",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        26
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "middle",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "b9fc0b671fc40a486029d237ad648dc1753d1cb95cc87c59e78e58ed45643542",
+      "shape": [
+        26,
+        3840
+      ],
+      "source_device": "cuda:0",
+      "step": 0
+    },
+    {
+      "byte_count": 199680,
+      "captured_at_unix_ns": 1788471368824676873,
+      "checkpoint": "boundary_send_hidden",
+      "dtype": "bfloat16",
+      "global_layer": null,
+      "gpu_uuid": "GPU-d5c05739-96c1-7e49-89b6-bf54c2121c55",
+      "host": "inferswarm01",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        26
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "middle",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "b9fc0b671fc40a486029d237ad648dc1753d1cb95cc87c59e78e58ed45643542",
+      "shape": [
+        26,
+        3840
+      ],
+      "source_device": "cuda:0",
+      "step": 0
+    },
+    {
+      "byte_count": 207360,
+      "captured_at_unix_ns": 1788471371012687561,
+      "checkpoint": "boundary_recv_hidden",
+      "dtype": "bfloat16",
+      "global_layer": null,
+      "gpu_uuid": "GPU-d5c05739-96c1-7e49-89b6-bf54c2121c55",
+      "host": "inferswarm01",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        27
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "middle",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "623d203d5ba1014e10d0528fe11a8076214f7894a4b6710d4667b98009fcf446",
+      "shape": [
+        27,
+        3840
+      ],
+      "source_device": "cuda:0",
+      "step": 1
+    },
+    {
+      "byte_count": 207360,
+      "captured_at_unix_ns": 1788471371049237592,
+      "checkpoint": "after_layer_31",
+      "dtype": "bfloat16",
+      "global_layer": 31,
+      "gpu_uuid": "GPU-d5c05739-96c1-7e49-89b6-bf54c2121c55",
+      "host": "inferswarm01",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        27
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "middle",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "dad1a3efe1d17635b24a6364d3dc4d2df73d9a82f4d4b61d21b1e2fd2f42e812",
+      "shape": [
+        27,
+        3840
+      ],
+      "source_device": "cuda:0",
+      "step": 1
+    },
+    {
+      "byte_count": 207360,
+      "captured_at_unix_ns": 1788471371051470027,
+      "checkpoint": "boundary_send_hidden",
+      "dtype": "bfloat16",
+      "global_layer": null,
+      "gpu_uuid": "GPU-d5c05739-96c1-7e49-89b6-bf54c2121c55",
+      "host": "inferswarm01",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        27
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "middle",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "dad1a3efe1d17635b24a6364d3dc4d2df73d9a82f4d4b61d21b1e2fd2f42e812",
+      "shape": [
+        27,
+        3840
+      ],
+      "source_device": "cuda:0",
+      "step": 1
+    },
+    {
+      "byte_count": 253440,
+      "captured_at_unix_ns": 1788471371925310523,
+      "checkpoint": "boundary_recv_hidden",
+      "dtype": "bfloat16",
+      "global_layer": null,
+      "gpu_uuid": "GPU-d5c05739-96c1-7e49-89b6-bf54c2121c55",
+      "host": "inferswarm01",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        33
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "middle",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "23c94735cb817421d254d3db55fb85cf8a20212f4f418f72a14e4cf999b25d3d",
+      "shape": [
+        33,
+        3840
+      ],
+      "source_device": "cuda:0",
+      "step": 7
+    },
+    {
+      "byte_count": 253440,
+      "captured_at_unix_ns": 1788471371967562180,
+      "checkpoint": "after_layer_31",
+      "dtype": "bfloat16",
+      "global_layer": 31,
+      "gpu_uuid": "GPU-d5c05739-96c1-7e49-89b6-bf54c2121c55",
+      "host": "inferswarm01",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        33
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "middle",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "54dea311a47d77df9b6d69d5c05d282493f7161e1b13be1b3d6915683dbba7fd",
+      "shape": [
+        33,
+        3840
+      ],
+      "source_device": "cuda:0",
+      "step": 7
+    },
+    {
+      "byte_count": 253440,
+      "captured_at_unix_ns": 1788471371970588060,
+      "checkpoint": "boundary_send_hidden",
+      "dtype": "bfloat16",
+      "global_layer": null,
+      "gpu_uuid": "GPU-d5c05739-96c1-7e49-89b6-bf54c2121c55",
+      "host": "inferswarm01",
+      "inf_count": 0,
+      "nan_count": 0,
+      "position_range": [
+        0,
+        33
+      ],
+      "producer_sha": "2032a13c9cd57bd8471e04708be1d3f742f13cc7",
+      "role": "middle",
+      "schema": "inferswarm.r6_localization.capture/1",
+      "sha256": "54dea311a47d77df9b6d69d5c05d282493f7161e1b13be1b3d6915683dbba7fd",
+      "shape": [
+        33,
+        3840
+      ],
+      "source_device": "cuda:0",
+      "step": 7
+    }
+  ],
+  "schema": "inferswarm.r6_localization.manifest/1"
+}

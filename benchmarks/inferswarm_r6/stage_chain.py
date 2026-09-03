@@ -96,6 +96,9 @@ def _stage_entry(*, role, adapter_data, model_path, connection):
         runtime = GemmaDenseStage(
             role=role, model_path=model_path, adapter_data=dict(adapter_data)
         )
+        capture_sink = None
+        capture_out_dir = None
+        capture_tag = None
         connection.send(
             {
                 "op": "READY",
@@ -106,19 +109,60 @@ def _stage_entry(*, role, adapter_data, model_path, connection):
         while True:
             message = connection.recv()
             op = message["op"]
-            if op == "PREFILL":
+            if op == "ARM_CAPTURE":
+                # #71 localization: arm the semantic capture sink. Explicit
+                # diagnostic op; never part of canonical serving semantics.
+                from benchmarks.inferswarm_r6_localization.capture import (
+                    CaptureSink,
+                )
+
+                capture_out_dir = message["out_dir"]
+                capture_tag = message["tag"]
+                gpu_uuid = message.get("gpu_uuid")
+                capture_sink = CaptureSink(
+                    role=role, gpu_uuid=gpu_uuid, keep_tensors=True
+                )
+                runtime._capture_sink = capture_sink
+                runtime._capture_after_layers = frozenset(
+                    int(x) for x in message.get("after_layers", [])
+                )
+                connection.send({"op": "ACK"})
+            elif op == "SET_CAPTURE_STEPS":
+                # steps that fire captures (int list); None disables emission
+                steps = message["steps"]
+                runtime._capture_step = steps
+                runtime._capture_after_layers = frozenset(
+                    int(x) for x in message.get("after_layers", [])
+                )
+                connection.send({"op": "ACK"})
+            elif op == "SAVE_CAPTURE":
+                if capture_sink is None or capture_out_dir is None:
+                    raise RuntimeError("SAVE_CAPTURE without ARM_CAPTURE")
+                manifest = capture_sink.save(
+                    capture_out_dir, f"{capture_tag}-{message['suffix']}"
+                )
+                connection.send({"op": "ACK", "manifest": manifest})
+            elif op == "PREFILL":
                 if role != "first" and message.get("hidden") is not None:
                     message["hidden"] = message["hidden"].to(
                         device="cuda:0", dtype=torch.bfloat16
                     )
                 if role == "first":
+                    if message.get("capture_step") is not None:
+                        runtime._capture_step = int(message["capture_step"])
                     hidden, _ = runtime.prefill(
                         message["token_ids"], None, message["position"]
                     )
+                    if message.get("capture_step") is not None:
+                        runtime._capture_step = None
                     connection.send({"op": "BOUNDARY_PAYLOAD",
                                      "hidden": hidden.cpu()})
                 else:
+                    if message.get("capture_step") is not None:
+                        runtime._capture_step = int(message["capture_step"])
                     out = runtime.prefill(None, message["hidden"], message["position"])
+                    if message.get("capture_step") is not None:
+                        runtime._capture_step = None
                     if role == "last":
                         connection.send({"op": "TOKEN_RESULT", "token_id": out[0]})
                     else:
