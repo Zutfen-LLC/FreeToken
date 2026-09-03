@@ -4,10 +4,15 @@ import glob
 import json
 import os
 import re
+import struct
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
-from typing import Iterable, Iterator
+from pathlib import Path
+from typing import Any
 
 import torch
+
 from freetoken.utils import div_ceil, download_hf_weight
 
 SPLIT_DIM_0 = (".q_proj", ".k_proj", ".v_proj", ".gate_proj", ".up_proj")
@@ -65,6 +70,274 @@ def drop_page_cache(path: str) -> None:
         pass
 
 
+def drop_page_cache_range(path: str, offset: int, length: int) -> None:
+    """Best-effort eviction advisory for one closed safetensors data range."""
+    try:
+        fd = os.open(path, os.O_RDONLY)
+        try:
+            os.posix_fadvise(fd, offset, length, os.POSIX_FADV_DONTNEED)
+        finally:
+            os.close(fd)
+    except OSError:
+        pass
+
+
+@dataclass(frozen=True)
+class SafetensorRecord:
+    """Header-derived location and shape for one safetensors tensor."""
+
+    key: str
+    path: str
+    dtype: str
+    shape: tuple[int, ...]
+    byte_count: int
+    file_offset: int
+
+
+def _safetensors_header(path: Path) -> tuple[int, dict[str, Any]]:
+    with path.open("rb") as stream:
+        raw_length = stream.read(8)
+        if len(raw_length) != 8:
+            raise ValueError(f"invalid safetensors header in {path}")
+        header_length = struct.unpack("<Q", raw_length)[0]
+        raw_header = stream.read(header_length)
+        if len(raw_header) != header_length:
+            raise ValueError(f"truncated safetensors header in {path}")
+    header = json.loads(raw_header)
+    header.pop("__metadata__", None)
+    return 8 + header_length, header
+
+
+class BoundedSafetensorsReader:
+    """Fail-closed, explicitly-scoped safetensors access.
+
+    A source tensor is valid only inside ``open_tensor`` (or the explicitly
+    byte-bounded ``open_group``).  On context exit its storage is invalidated,
+    every mapping is closed, and only then is the mapped file range advised
+    ``DONTNEED``.  This prevents a single large shard from remaining mapped
+    while a complete accelerator model is materialized.
+    """
+
+    def __init__(
+        self,
+        model_path: str | os.PathLike[str],
+        allowed_keys: Iterable[str],
+        *,
+        page_cache_advisor: Callable[[str, int, int], None] | None = None,
+    ) -> None:
+        root = Path(model_path)
+        if not root.is_dir():
+            root = Path(download_hf_weight(str(model_path)))
+        self.root = root
+        self.allowed_keys = frozenset(allowed_keys)
+        self._page_cache_advisor = page_cache_advisor or drop_page_cache_range
+        self._records = self._resolve_records()
+
+        missing = self.allowed_keys - set(self._records)
+        if missing:
+            raise ValueError(
+                f"allowed keys absent from checkpoint: {sorted(missing)[:3]}"
+            )
+        # Keep no metadata for unplanned tensors.  Resolution above inspects
+        # headers only; tensor data is never fetched during construction.
+        self._records = {key: self._records[key] for key in self.allowed_keys}
+        self.selected_bytes = sum(
+            record.byte_count for record in self._records.values()
+        )
+        self.fetched_keys: list[str] = []
+        self.fetched_bytes = 0
+        self.largest_raw_tensor_bytes = 0
+        self.host_staging_current_bytes = 0
+        self.host_staging_peak_live_tensor_bytes = 0
+        self.active_mapping_count = 0
+        self.mapping_open_count = 0
+        self.mapping_close_count = 0
+        self.page_cache_advisory_calls = 0
+
+    def _resolve_records(self) -> dict[str, SafetensorRecord]:
+        index_path = self.root / "model.safetensors.index.json"
+        records: dict[str, SafetensorRecord] = {}
+        if index_path.exists():
+            weight_map = json.loads(index_path.read_text(encoding="utf-8"))[
+                "weight_map"
+            ]
+            missing = self.allowed_keys - set(weight_map)
+            if missing:
+                raise ValueError(
+                    f"allowed keys absent from checkpoint: {sorted(missing)[:3]}"
+                )
+            by_path: dict[Path, set[str]] = {}
+            root_resolved = self.root.resolve()
+            for key in self.allowed_keys:
+                path = (self.root / weight_map[key]).resolve()
+                if root_resolved not in path.parents and path != root_resolved:
+                    raise ValueError(
+                        f"checkpoint shard escapes model root: {weight_map[key]!r}"
+                    )
+                by_path.setdefault(path, set()).add(key)
+        else:
+            files = sorted(
+                path
+                for path in self.root.glob("*.safetensors")
+                if not path.name.endswith("consolidated.safetensors")
+            )
+            if not files:
+                files = sorted(self.root.glob("*.safetensors"))
+            if not files:
+                raise ValueError(f"no safetensors shards under {self.root}")
+            by_path = {}
+            unresolved = set(self.allowed_keys)
+            seen_allowed: set[str] = set()
+            for path in files:
+                _, header = _safetensors_header(path)
+                present_allowed = self.allowed_keys & set(header)
+                duplicate = present_allowed & seen_allowed
+                if duplicate:
+                    raise ValueError(f"duplicate checkpoint key {min(duplicate)!r}")
+                seen_allowed |= present_allowed
+                selected = unresolved & present_allowed
+                if selected:
+                    by_path[path.resolve()] = selected
+                    unresolved -= selected
+
+        for path, keys in by_path.items():
+            if not path.is_file():
+                raise ValueError(f"checkpoint shard does not exist: {path}")
+            data_start, header = _safetensors_header(path)
+            absent = keys - set(header)
+            if absent:
+                raise ValueError(
+                    f"index keys absent from shard {path.name}: {sorted(absent)[:3]}"
+                )
+            for key in keys:
+                info = header[key]
+                start, end = (int(value) for value in info["data_offsets"])
+                if start < 0 or end < start:
+                    raise ValueError(f"invalid data offsets for {key!r}")
+                records[key] = SafetensorRecord(
+                    key=key,
+                    path=str(path),
+                    dtype=str(info["dtype"]),
+                    shape=tuple(int(dim) for dim in info["shape"]),
+                    byte_count=end - start,
+                    file_offset=data_start + start,
+                )
+        return records
+
+    def record(self, key: str) -> SafetensorRecord:
+        if key not in self.allowed_keys:
+            raise RuntimeError(f"bounded reader rejected unplanned key {key!r}")
+        return self._records[key]
+
+    def _begin_tensor(self, key: str, tensor: torch.Tensor) -> int:
+        if key in self.fetched_keys:
+            raise RuntimeError(f"bounded reader rejected duplicate fetch {key!r}")
+        record = self.record(key)
+        byte_count = tensor.numel() * tensor.element_size()
+        if tuple(tensor.shape) != record.shape or byte_count != record.byte_count:
+            raise RuntimeError(f"checkpoint tensor metadata changed for {key!r}")
+        self.fetched_keys.append(key)
+        self.fetched_bytes += byte_count
+        self.largest_raw_tensor_bytes = max(self.largest_raw_tensor_bytes, byte_count)
+        self.host_staging_current_bytes += byte_count
+        self.host_staging_peak_live_tensor_bytes = max(
+            self.host_staging_peak_live_tensor_bytes,
+            self.host_staging_current_bytes,
+        )
+        return byte_count
+
+    def _invalidate(self, tensor: torch.Tensor, byte_count: int) -> None:
+        # ``with ... as tensor`` does not delete the caller's local binding.
+        # Replacing its storage makes the declared context boundary mechanical:
+        # a retained reference cannot keep the checkpoint mmap alive.
+        tensor.set_(torch.empty(0, dtype=tensor.dtype, device="cpu"))
+        self.host_staging_current_bytes -= byte_count
+
+    @contextmanager
+    def open_tensor(self, key: str) -> Iterator[torch.Tensor]:
+        """Open exactly one planned tensor until the caller completes transfer."""
+        import safetensors
+
+        record = self.record(key)
+        byte_count = 0
+        opened = False
+        try:
+            with safetensors.safe_open(
+                record.path, framework="pt", device="cpu"
+            ) as handle:
+                opened = True
+                self.mapping_open_count += 1
+                self.active_mapping_count += 1
+                tensor = handle.get_tensor(key)
+                byte_count = self._begin_tensor(key, tensor)
+                try:
+                    yield tensor
+                finally:
+                    self._invalidate(tensor, byte_count)
+                    del tensor
+        finally:
+            if opened:
+                self.active_mapping_count -= 1
+                self.mapping_close_count += 1
+                self._page_cache_advisor(
+                    record.path, record.file_offset, record.byte_count
+                )
+                self.page_cache_advisory_calls += 1
+
+    @contextmanager
+    def open_group(
+        self, keys: Iterable[str], *, max_live_bytes: int
+    ) -> Iterator[dict[str, torch.Tensor]]:
+        """Open an explicitly bounded simultaneous tensor group."""
+        import safetensors
+
+        group = tuple(keys)
+        if not group or len(group) != len(set(group)):
+            raise ValueError("bounded tensor group must contain unique keys")
+        records = [self.record(key) for key in group]
+        declared_bytes = sum(record.byte_count for record in records)
+        if declared_bytes > max_live_bytes:
+            raise ValueError(
+                f"tensor group requires {declared_bytes} bytes, exceeds bound {max_live_bytes}"
+            )
+        tensors: dict[str, torch.Tensor] = {}
+        byte_counts: dict[str, int] = {}
+        paths = {record.path for record in records}
+        self.mapping_open_count += len(paths)
+        self.active_mapping_count += len(paths)
+        try:
+            with ExitStack() as stack:
+                handles = {
+                    path: stack.enter_context(
+                        safetensors.safe_open(path, framework="pt", device="cpu")
+                    )
+                    for path in paths
+                }
+                for key, record in zip(group, records):
+                    tensor = handles[record.path].get_tensor(key)
+                    byte_counts[key] = self._begin_tensor(key, tensor)
+                    tensors[key] = tensor
+                try:
+                    yield tensors
+                finally:
+                    for key, tensor in tensors.items():
+                        self._invalidate(tensor, byte_counts[key])
+                    tensors.clear()
+        finally:
+            self.active_mapping_count -= len(paths)
+            self.mapping_close_count += len(paths)
+            for record in records:
+                self._page_cache_advisor(
+                    record.path, record.file_offset, record.byte_count
+                )
+                self.page_cache_advisory_calls += 1
+
+    def assert_all_fetched(self) -> None:
+        missing = sorted(self.allowed_keys - set(self.fetched_keys))
+        if missing:
+            raise RuntimeError(f"planned keys never fetched: {missing[:5]}")
+
+
 def iter_root_safetensor_files_from_index(
     model_path: str,
     *,
@@ -102,7 +375,7 @@ def iter_root_safetensor_files_from_index(
 
 def _merge_info(key: str, rules: dict[str, MergeRule]) -> tuple[str, MergeRule] | None:
     for suffix, rule in rules.items():
-        if key.endswith(suffix + ".weight") or key.endswith(suffix) or key.count(suffix):
+        if key.endswith((suffix + ".weight", suffix)) or suffix in key:
             return key.replace(suffix, rule.fused_suffix), rule
     return None
 
@@ -144,7 +417,10 @@ def iter_merged_tensors(
 # Quant scales consumed with their ``weight_packed`` (or unused: the input scales are
 # for W4A4 activation quant, which FreeToken does not run).
 CT_SCALE_SUFFIXES = (
-    ".weight_scale", ".weight_global_scale", ".input_global_scale", ".input_scale",
+    ".weight_scale",
+    ".weight_global_scale",
+    ".input_global_scale",
+    ".input_scale",
 )
 
 
@@ -171,7 +447,7 @@ class ShardReader:
             self._map = {}
             for file in iter_weight_files(model_path):
                 with safetensors.safe_open(file, framework="pt", device="cpu") as f:
-                    for name in f.keys():
+                    for name in f:
                         self._map[name] = file
         self._device = str(device)
         self._handles: dict[str, object] = {}
@@ -188,7 +464,9 @@ class ShardReader:
         file = self._map[name]
         h = self._handles.get(file)
         if h is None:
-            h = safetensors.safe_open(file, framework="pt", device=self._device).__enter__()
+            h = safetensors.safe_open(
+                file, framework="pt", device=self._device
+            ).__enter__()
             self._handles[file] = h
         return h.get_tensor(name)
 
@@ -196,7 +474,7 @@ class ShardReader:
         for h in self._handles.values():
             try:
                 h.__exit__(None, None, None)
-            except Exception:  # noqa: BLE001 -- best-effort handle cleanup
+            except Exception:  # noqa: BLE001, S110 -- best-effort cleanup
                 pass
         self._handles.clear()
 
@@ -211,7 +489,9 @@ def nvfp4_parts_ct(f, raw_base: str) -> tuple[torch.Tensor, torch.Tensor, torch.
     return w, s, g
 
 
-def ct_nvfp4_fuse(base: str, parts_tuple: tuple, buf: dict, groups: dict[str, tuple[str, ...]]):
+def ct_nvfp4_fuse(
+    base: str, parts_tuple: tuple, buf: dict, groups: dict[str, tuple[str, ...]]
+):
     """Buffer a native NVFP4 fusion part ``(w, s, g)``; emit the concatenated native parts
     (``.weight``/``.weight_scale``/``.weight_global``, output-dim concat with each part
     keeping its own scales, so the fused FP4 weight is exact) once complete, ``[]`` while
@@ -236,7 +516,9 @@ def ct_nvfp4_fuse(base: str, parts_tuple: tuple, buf: dict, groups: dict[str, tu
     return None
 
 
-def ct_bf16_fuse(base: str, tensor: torch.Tensor, buf: dict, groups: dict[str, tuple[str, ...]]):
+def ct_bf16_fuse(
+    base: str, tensor: torch.Tensor, buf: dict, groups: dict[str, tuple[str, ...]]
+):
     """Buffer a bf16 fusion part; emit the concatenated ``.weight`` once complete, ``[]``
     while incomplete, ``None`` if ``base`` is not a part of any group in ``groups``."""
     for fused_suffix, parts in groups.items():
@@ -248,11 +530,18 @@ def ct_bf16_fuse(base: str, tensor: torch.Tensor, buf: dict, groups: dict[str, t
                 if len(slots) < len(parts):
                     return []
                 del buf[key]
-                return [(key + ".weight", torch.cat([slots[i] for i in range(len(parts))], dim=0))]
+                return [
+                    (
+                        key + ".weight",
+                        torch.cat([slots[i] for i in range(len(parts))], dim=0),
+                    )
+                ]
     return None
 
 
-def _expert_stack_info(key: str, expert_pattern: re.Pattern[str]) -> tuple[str, int] | None:
+def _expert_stack_info(
+    key: str, expert_pattern: re.Pattern[str]
+) -> tuple[str, int] | None:
     match = expert_pattern.match(key)
     if match is None:
         return None
@@ -382,7 +671,9 @@ def stream_moe_expert_sources(
     """
     from freetoken.moe.host_banks import LayerCompletionTracker, PinPipeline
 
-    banks: dict[str, list] = {  # name -> per-layer [bank obj (HostBank/_PlainBank) or None]
+    banks: dict[
+        str, list
+    ] = {  # name -> per-layer [bank obj (HostBank/_PlainBank) or None]
         "gate_up": [None] * config.num_layers,
         "down": [None] * config.num_layers,
     }
@@ -430,11 +721,14 @@ def stream_moe_expert_sources(
 
 
 __all__ = [
+    "BoundedSafetensorsReader",
     "MergeRule",
-    "iter_root_safetensor_files_from_index",
-    "iter_weight_files",
+    "SafetensorRecord",
+    "drop_page_cache_range",
     "iter_merged_tensors",
+    "iter_root_safetensor_files_from_index",
     "iter_stacked_experts",
+    "iter_weight_files",
     "shard_tensor",
     "stream_moe_expert_sources",
 ]
