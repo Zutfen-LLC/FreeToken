@@ -90,6 +90,7 @@ class ChainEpochRuntime:
                 self._closed = False
                 self.reclamation_report = {}
 
+        self.execution_plan_digest = None  # set by realize_dense_chain
         self._chain = _Chain()
         ready_reports = {
             ready.get("role"): ready.get("runtime_report", {})
@@ -123,7 +124,7 @@ class ChainEpochRuntime:
             max_new_tokens=max_new_tokens,
             on_token=on_token,
         )
-        result["plan_digest"] = self.plan_digest
+        result["plan_digest"] = self.execution_plan_digest
         return result
 
     def report(self) -> dict[str, Any]:
@@ -163,6 +164,7 @@ def realize_dense_chain(
     ):
         runtime.observation[field] = execution_plan[field]
     runtime.observation["plan_digest"] = execution_plan["digest"]
+    runtime.execution_plan_digest = execution_plan["digest"]
     return runtime
 
 
