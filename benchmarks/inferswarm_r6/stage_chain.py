@@ -107,27 +107,30 @@ def _stage_entry(*, role, adapter_data, model_path, connection):
                     hidden, _ = runtime.prefill(
                         message["token_ids"], None, message["position"]
                     )
-                    connection.send({"op": "BOUNDARY_PAYLOAD", "hidden": hidden})
+                    connection.send({"op": "BOUNDARY_PAYLOAD",
+                                     "hidden": hidden.cpu()})
                 else:
                     out = runtime.prefill(None, message["hidden"], message["position"])
                     if role == "last":
                         connection.send({"op": "TOKEN_RESULT", "token_id": out[0]})
                     else:
                         connection.send(
-                            {"op": "BOUNDARY_PAYLOAD", "hidden": out[0]}
+                            {"op": "BOUNDARY_PAYLOAD", "hidden": out[0].cpu()}
                         )
             elif op == "DECODE":
                 if role == "first":
                     hidden, _ = runtime.decode(
                         message["token_id"], message["position"]
                     )
-                    connection.send({"op": "BOUNDARY_PAYLOAD", "hidden": hidden})
+                    connection.send({"op": "BOUNDARY_PAYLOAD",
+                                     "hidden": hidden.cpu()})
                 else:
                     out = runtime.decode(message["hidden"], message["position"])
                     if role == "last":
                         connection.send({"op": "TOKEN_RESULT", "token_id": out[0]})
                     else:
-                        connection.send({"op": "BOUNDARY_PAYLOAD", "hidden": out[0]})
+                        connection.send({"op": "BOUNDARY_PAYLOAD",
+                                         "hidden": out[0].cpu()})
             elif op == "REPORT":
                 connection.send({"op": "REPORT", "report": runtime.report()})
             elif op == "RESET":
