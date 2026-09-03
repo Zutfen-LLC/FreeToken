@@ -251,9 +251,11 @@ class GemmaStageChainRuntime:
     ) -> dict[str, Any]:
         started = time.perf_counter_ns()
         for stage in self.stages:
-            stage.send({"op": "RESET"})
-        for stage in self.stages:
-            stage.recv()
+            if hasattr(stage, "request"):
+                stage.request({"op": "RESET"})
+            else:
+                stage.send({"op": "RESET"})
+                stage.recv()
         chunk = 32
         position = 0
         token_id = None
