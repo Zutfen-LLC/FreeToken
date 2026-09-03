@@ -190,29 +190,109 @@ def operator_policy(implementation_commit: str) -> dict[str, Any]:
     )
 
 
+_NODE_BY_UNIT = {
+    "gpu.node-a.0": "node.inferswarm01",
+    "gpu.node-a.1": "node.inferswarm01",
+    "gpu.node-b.0": "node.inferswarm03",
+}
+
+
 def compile_candidate(evaluation, *, chain_plan: dict) -> dict[str, Any]:
-    """Compile the ranked candidate into the frozen dense execution plan.
+    """Compile the evaluated candidate into the complete dense plan body.
 
     ``chain_plan`` is the producer-bound 3-stage participant plan (the
-    same artifact the stage services verify); the compiled execution plan
-    carries its digest so realization cannot silently substitute it.
+    same artifact the stage services verify); the compiled body carries
+    its digest so realization cannot silently substitute it.
     """
-    compiled = {
-        "schema": "inferswarm.r6.execution-plan/1",
-        "status": "FROZEN_BEFORE_R6_CANONICAL_EXECUTION",
+    mapping = evaluation["mapping"]
+    units = list(dict.fromkeys(mapping.values()))
+    participants = list(dict.fromkeys(_NODE_BY_UNIT[u] for u in units))
+    state_placement = []
+    authority = []
+    representations = []
+    stage_specs = [
+        ("stage-1", "slot-stage-1", "embeddings+layers[0,16)"),
+        ("stage-2", "slot-stage-2", "layers[16,32)"),
+        ("stage-3", "slot-stage-3", "layers[32,48)+norm+tied-head"),
+    ]
+    for stage_id, slot, description in stage_specs:
+        unit = mapping[slot]
+        state_placement.extend(
+            [
+                {
+                    "logical_state_id": f"state.{stage_id}.immutable",
+                    "compute_unit_id": unit,
+                    "role": "required_residency",
+                },
+                {
+                    "logical_state_id": f"state.{stage_id}.mutable-kv",
+                    "compute_unit_id": unit,
+                    "role": "mutable_authority",
+                },
+            ]
+        )
+        authority.append(
+            {
+                "logical_state_id": f"state.{stage_id}.mutable-kv",
+                "participant": _NODE_BY_UNIT[unit],
+                "lineage": "r6-dense-replay-prefill",
+            }
+        )
+        representations.append(
+            {
+                "logical_state_id": f"state.{stage_id}.immutable",
+                "representation": "freetoken-dense-selective-bf16",
+            }
+        )
+    geometry = chain_plan.get("boundary_geometry", {})
+    boundaries = []
+    for boundary_id, (from_slot, to_slot) in enumerate(
+        [("slot-stage-1", "slot-stage-2"), ("slot-stage-2", "slot-stage-3")]
+    ):
+        boundaries.append(
+            {
+                "id": f"boundary.{boundary_id}",
+                "from_compute_unit_id": mapping[from_slot],
+                "to_compute_unit_id": mapping[to_slot],
+                "semantic_contract": {
+                    "dtype": geometry.get("dtype", "bfloat16"),
+                    "layout": "plane-major-contiguous",
+                    "planes": geometry.get("planes", 1),
+                    "row_width": geometry.get("row_width", 3840),
+                    "decode_bytes": geometry.get("decode_bytes"),
+                    "prefill_chunk_rows": geometry.get("prefill_chunk_rows"),
+                    "prefill_bytes": geometry.get("prefill_bytes"),
+                },
+            }
+        )
+    accounting = deepcopy(evaluation.get("memory_accounting", {}))
+    accounting["strategy_host_lifecycle"] = {
+        "dense_stream_staging": "no persistent host mirror; per-tensor "
+        "streamed device-ward loads released after each stage realizes",
+        "declared_shared_state_bytes": (
+            chain_plan.get("declared_shared_state", {}).get("bytes")
+        ),
+        "release_after_final_residency": True,
+    }
+    return {
         "strategy_identity": {"id": STRATEGY_ID},
-        "model": {"repository": MODEL_REPOSITORY, "revision": MODEL_REVISION},
-        "shape_id": evaluation.get("shape_id"),
-        "candidate_id": evaluation.get("candidate_id"),
-        "implementation_commit": evaluation.get("implementation_commit"),
+        "model_identity": {"repository": MODEL_REPOSITORY, "revision": MODEL_REVISION},
+        "participants": participants,
+        "compute_units": units,
+        "representations": representations,
+        "backend_choices": [
+            {"participant": p, "backend": "freetoken-dense-stage-native"}
+            for p in participants
+        ],
+        "state_placement": state_placement,
+        "state_authority": authority,
+        "semantic_boundaries": boundaries,
+        "expected_resource_accounting": accounting,
         "strategy_realization": {
             "realization": "r6-dense-three-stage-chain",
             "participant_plan_digest": chain_plan["digest"],
-            "boundary": chain_plan["boundary_geometry"],
         },
-        "slots": evaluation.get("slots"),
     }
-    return compiled
 
 
 __all__ = [
