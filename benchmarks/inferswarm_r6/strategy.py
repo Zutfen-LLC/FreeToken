@@ -30,7 +30,12 @@ NUM_LAYERS = 48
 VOCAB_SIZE = 262144
 FULL_ATTENTION_LAYERS = (5, 11, 17, 23, 29, 35, 41, 47)
 BOUNDARY_PLANES = 2
-PREFILL_CHUNK = 32          # rows per boundary transfer: 32*2*3840*2 = 491520 B
+PREFILL_CHUNK = 64          # rows per boundary transfer: 64*3840*2 = 491520 B.
+                            # 64 (not 32): replay prefills for the canonical
+                            # 26-token prompt + <=8 committed tokens must stay
+                            # SINGLE-chunk — the KV-extend path (chunk 2+) is
+                            # the known-broken incremental append (see
+                            # anomaly-incremental-decode.md).
 DECODER_LAYERS_PER_STAGE_2 = (0, 24)  # candidate A: [0,24) / [24,48)
 ATTN_BACKEND = "triton"     # only backend family supporting SWA AttentionSpec
 

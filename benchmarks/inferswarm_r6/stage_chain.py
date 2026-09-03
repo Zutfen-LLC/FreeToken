@@ -267,7 +267,7 @@ class GemmaStageChainRuntime:
             else:
                 stage.send({"op": "RESET"})
                 stage.recv()
-        chunk = 32
+        chunk = 64  # single-chunk canonical replays; see strategy PREFILL_CHUNK
         position = 0
         token_id = None
         total = len(prompt_token_ids)
