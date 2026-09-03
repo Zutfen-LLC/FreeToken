@@ -1,11 +1,12 @@
 """R6 remote last-stage service (inferswarm03) over the accepted R4 wire.
 
 Serves the LAST stage of a dense Gemma chain: receives framed boundary
-activations (2-plane bf16 hidden state, plane-major-contiguous, row width
-3840), executes the stage's owned decoder layers + final norm + tied
-lm_head, and returns the framed token result.  Reuses the accepted r4_wire
-framing/checksum/identity machinery unchanged; only the boundary contract
-row width and the resident runtime differ (dense Gemma vs. MoE Qwen).
+activations (single-plane bf16 hidden state, plane-major-contiguous, row
+width 3840), executes the stage's owned decoder layers + final norm +
+tied lm_head, and returns the framed token result.  Reuses the accepted
+r4_wire framing/checksum/identity machinery unchanged; only the boundary
+contract row width and the resident runtime differ (dense Gemma vs. MoE
+Qwen).
 
 Research-internal: not a public daemon API.  Fail-closed; no retries.
 """
@@ -51,6 +52,7 @@ def serve(
     gpu_uuid: str,
     diagnostic: bool,
     ready_file: str | None = None,
+    capture_logits: bool = False,
 ) -> None:
     os.environ["CUDA_VISIBLE_DEVICES"] = gpu_uuid
     import torch
@@ -75,7 +77,7 @@ def serve(
             f"last-stage running producer {running_sha!r} != plan's frozen "
             f"producer {plan_producer!r}; canonical execution refuses to proceed"
         )
-    from benchmarks.inferswarm_r6.stage_runtime import GemmaDenseStage
+    from benchmarks.inferswarm_r6.stage_runtime import GemmaDenseStage, LogitCapture
 
     block = plan["blocks"][-1]
     runtime = GemmaDenseStage(
@@ -89,6 +91,8 @@ def serve(
             "declared_shared_state": plan.get("declared_shared_state"),
         },
     )
+    if capture_logits:
+        runtime._logit_capture = LogitCapture()
 
     buffer_bytes = MAX_TOKEN_COUNT * ROW_WIDTH * 2
     host_u8 = torch.empty(buffer_bytes, dtype=torch.uint8)
@@ -192,6 +196,18 @@ def serve(
             del hidden
     finally:
         try:
+            capture_payload = None
+            if runtime._logit_capture is not None:
+                capture_payload = {
+                    "steps_captured": sorted(
+                        runtime._logit_capture.steps.keys()
+                    ),
+                    "nan_inf_count": runtime._logit_capture.nan_inf_count,
+                    "logits_by_step": {
+                        str(step): values
+                        for step, values in runtime._logit_capture.steps.items()
+                    },
+                }
             Path(
                 os.environ.get("R6_LAST_STAGE_FINAL_REPORT", "/tmp/r6-last-stage.json")
             ).write_text(
@@ -201,6 +217,7 @@ def serve(
                         "plan_digest": plan.get("digest"),
                         "producer_freetoken_sha": running_sha,
                         "stats": stats,
+                        "logit_capture": capture_payload,
                         "runtime": runtime.report("P5_post_run"),
                     }
                 )
@@ -219,6 +236,9 @@ def main(argv=None) -> int:
     parser.add_argument("--gpu-uuid", required=True)
     parser.add_argument("--diagnostic", action="store_true")
     parser.add_argument("--ready-file")
+    parser.add_argument("--capture-logits", action="store_true",
+                        help="retain full-vocab last-stage logits per served "
+                        "step in the final report (comparator arm only)")
     args = parser.parse_args(argv)
     serve(
         listen_host=args.listen_host,
@@ -228,6 +248,7 @@ def main(argv=None) -> int:
         gpu_uuid=args.gpu_uuid,
         diagnostic=bool(args.diagnostic),
         ready_file=args.ready_file,
+        capture_logits=bool(args.capture_logits),
     )
     return 0
 

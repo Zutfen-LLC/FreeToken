@@ -1,11 +1,15 @@
 """R6 two-stage dense local coordinator (compute-node side).
 
-Drives stage A (embeddings + layers [0,24)) and stage B (layers [24,48) +
-final norm + tied lm_head) through one process per GPU, with the boundary
-crossing GPU-to-GPU over the accepted R4 wire (semantics identical to the
-accepted R2/R4 boundary: 2-plane bf16, plane-major-contiguous, row width
-3840).  Provides the ``EpochRuntime`` protocol (generate/report/close) so
-the external-Coordinator serving path consumes it unchanged.
+Research artifact retained from the MEASURED_INFEASIBLE 2-stage
+investigation (hardware OOM on the frozen 12 GiB topology, producer
+2c8e381; see legal_candidates()["measured_infeasible"]).  Drives stage A
+(embeddings + layers [0,24)) and stage B (layers [24,48) + final norm +
+tied lm_head) through one process per GPU, with the boundary crossing
+GPU-to-GPU over process pipes (semantics identical to the accepted R2/R4
+boundary: single-plane bf16 hidden state, plane-major-contiguous, row
+width 3840).  Provides the ``EpochRuntime`` protocol (generate/report/
+close) so the external-Coordinator serving path consumes it unchanged.
+Not part of the canonical R6 serving topology.
 """
 
 from __future__ import annotations

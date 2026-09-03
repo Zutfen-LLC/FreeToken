@@ -23,8 +23,42 @@ from freetoken.research.host_reclamation import snapshot_host_memory
 from freetoken.research.r6_dense_census import DenseBlockSpec
 
 HIDDEN_SIZE = 3840
-BOUNDARY_PLANES = 2
+# Dense Gemma boundary carries ONE plane: the residual-stream hidden state
+# (row width 3840, bf16).  Qwen's 2-plane (hidden+residual) boundary was a
+# first-model artifact of its dual-stream blocks — see R6 METHODOLOGY and
+# legal_candidates()["boundary_geometry"].
+BOUNDARY_PLANES = 1
 ATTN_BACKEND = "triton"
+
+
+class LogitCapture:
+    """Optional per-step full-vocab logit capture for the last stage.
+
+    Used by the R6 secondary-comparator diagnostic arm: retains the full
+    float32 logit row at declared committed steps so the frozen
+    max-|logit_ref - logit_dist| < 0.25 comparator can be evaluated
+    offline against the retained reference top-32 records.  Also counts
+    NaN/Inf observations across every captured step (the frozen NaN/Inf
+    policy covers the captured domain).
+    """
+
+    def __init__(self) -> None:
+        self.steps: dict[int, list[float]] = {}
+        self._next_step = 0
+        self.nan_inf_count = 0
+
+    def capture(self, logits) -> None:
+        row = logits.detach().float().cpu()
+        self.nan_inf_count += int(
+            torch.isnan(row).sum().item() + torch.isinf(row).sum().item()
+        )
+        self.steps[self._next_step] = row.tolist()
+        self._next_step += 1
+
+    def reset(self) -> None:
+        self.steps = {}
+        self._next_step = 0
+        self.nan_inf_count = 0
 
 
 def _status() -> dict[str, int]:
@@ -94,6 +128,7 @@ class GemmaDenseStage:
             raise ValueError("role must be first, middle, or last")
         self.role = role
         self.model_path = model_path
+        self._logit_capture: LogitCapture | None = None
         # The parent assigns one GPU per stage process before spawn: the
         # process sees exactly one device, always cuda:0 locally.
         self.device = torch.device("cuda:0")
@@ -361,7 +396,12 @@ class GemmaDenseStage:
         kv_bytes = 0
         for tensor in _iter_pool_tensors(ctx.kv_cache):
             kv_bytes += _tensor_bytes(tensor)
-        kv_layers = sorted(
+        # NOTE on identity: the KV pool is built from the STAGE-LOCAL config
+        # (groups renumbered 0..k-1, order-preserving), so these are
+        # stage-local pool layer indices.  Global identity is retained
+        # separately via ``global_layer_ids``; the two lists correspond
+        # positionally (local i <-> global_layer_ids[i]).
+        kv_local_layer_ids = sorted(
             {
                 layer
                 for group in self.config.kv_cache_group_specs()
@@ -372,7 +412,11 @@ class GemmaDenseStage:
             ctx,
             {
                 "kv_cache_allocated_bytes": kv_bytes,
-                "kv_global_layer_ids": kv_layers,
+                "kv_local_layer_ids": kv_local_layer_ids,
+                "kv_global_layer_ids": [
+                    self.block.global_layer_ids[i]
+                    for i in kv_local_layer_ids
+                ],
                 "total_block_local_state_bytes": kv_bytes,
             },
         )
@@ -435,7 +479,10 @@ class GemmaDenseStage:
                 return hidden, None
             final = self.finalize(hidden, None)
             logits = self.lm_head_logits(final)
-        return int(torch.argmax(logits[-1], dim=-1).item()), logits.detach()
+        token = int(torch.argmax(logits[-1], dim=-1).item())
+        if self._logit_capture is not None:
+            self._logit_capture.capture(logits[-1])
+        return token, logits.detach()
 
     @torch.inference_mode()
     def decode(self, token_or_hidden, position: int):
@@ -458,7 +505,10 @@ class GemmaDenseStage:
                 return hidden, None
             final = self.finalize(hidden, None)
             logits = self.lm_head_logits(final)
-        return int(torch.argmax(logits[-1], dim=-1).item()), logits
+        token = int(torch.argmax(logits[-1], dim=-1).item())
+        if self._logit_capture is not None:
+            self._logit_capture.capture(logits[-1])
+        return token, logits
 
     def logical_state_records(self, used_tokens: int) -> dict:
         """Hash used KV state by global layer (ownership proof)."""

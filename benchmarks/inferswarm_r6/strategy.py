@@ -29,7 +29,9 @@ HIDDEN_SIZE = 3840
 NUM_LAYERS = 48
 VOCAB_SIZE = 262144
 FULL_ATTENTION_LAYERS = (5, 11, 17, 23, 29, 35, 41, 47)
-BOUNDARY_PLANES = 2
+# One boundary plane: the dense Gemma boundary carries only the
+# residual-stream hidden state (see legal_candidates()["boundary_geometry"]).
+BOUNDARY_PLANES = 1
 PREFILL_CHUNK = 64          # rows per boundary transfer: 64*3840*2 = 491520 B.
                             # 64 (not 32): replay prefills for the canonical
                             # 26-token prompt + <=8 committed tokens must stay

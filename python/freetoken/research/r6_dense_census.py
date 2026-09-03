@@ -396,7 +396,6 @@ def load_selective_dense_block(
         raise RuntimeError(
             f"module factory built state outside the plan: {unexpected[:5]}"
         )
-    missing = sorted((allowed | shared_keys) & set(state) - set())
     target = reader or DenseSelectiveTensorReader(model_path, allowed | shared_keys)
 
     loaded: dict[str, Any] = {}

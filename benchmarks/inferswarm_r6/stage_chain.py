@@ -5,7 +5,8 @@ stages, each in its own process with exactly one assigned GPU (possibly on
 different nodes via the R4 wire).  Stage roles: ``first`` (embeddings +
 layers), any number of ``middle`` (layers only), ``last`` (layers + final
 norm + tied lm_head).  Every boundary carries the same frozen geometry
-(2-plane bf16 hidden state, plane-major-contiguous, row width 3840).
+(single-plane bf16 hidden state, plane-major-contiguous, row width 3840 —
+one plane; Qwen's 2-plane boundary was a first-model artifact).
 
 Provides the ``EpochRuntime`` protocol (generate/report/close) so the
 external-Coordinator serving path consumes a dense chain unchanged.
@@ -17,7 +18,10 @@ import time
 from copy import deepcopy
 from typing import Any
 
-from benchmarks.inferswarm_r6.stage_runtime import HIDDEN_SIZE
+from benchmarks.inferswarm_r6.stage_runtime import (
+    BOUNDARY_PLANES,
+    HIDDEN_SIZE,
+)
 
 
 class StageClient:
@@ -311,7 +315,7 @@ class GemmaStageChainRuntime:
             "stages": reports,
             "sessions": deepcopy(self._sessions),
             "boundary_geometry": {
-                "planes": 2,
+                "planes": BOUNDARY_PLANES,
                 "row_width": HIDDEN_SIZE,
                 "dtype": "bfloat16",
                 "layout": "plane-major-contiguous",
