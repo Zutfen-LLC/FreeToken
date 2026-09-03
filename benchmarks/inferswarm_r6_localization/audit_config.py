@@ -36,19 +36,22 @@ LAYER_FIELDS = (
 
 
 def _stage_layer_audit(role: str, spec: dict, full_config, stage_config) -> dict:
+    import torch
     from freetoken.models.gemma4.model import Gemma4DecoderLayer
+    from freetoken.utils import torch_dtype
 
     owned = list(range(spec["start_layer"], spec["end_layer"]))
     # NOTE: audit builds layers under BOTH the full config (global ids, the
     # S-equivalent view) and the stage-local config (local ids, the D view),
-    # then compares semantic properties per owned global layer.
-    global_layers = {}
-    for gid in owned:
-        layer = Gemma4DecoderLayer(full_config, gid)
+    # then compares semantic properties per owned global layer. Modules are
+    # built on meta (no real allocation); only extracted properties survive.
+    def _props(config, layer_id):
+        with torch.device("meta"), torch_dtype(torch.bfloat16):
+            layer = Gemma4DecoderLayer(config, layer_id)
         attn = layer.self_attn
-        global_layers[gid] = {
+        return {
             "attention_group_kind": type(
-                full_config.attention_group_for_layer(gid)
+                config.attention_group_for_layer(layer_id)
             ).__name__,
             "num_kv_heads": attn.num_kv_heads,
             "head_dim": attn.head_dim,
@@ -61,25 +64,10 @@ def _stage_layer_audit(role: str, spec: dict, full_config, stage_config) -> dict
             "is_swa": attn.is_swa,
             "sm_scale": attn.attn_spec.sm_scale,
         }
-    local_view = {}
-    for local_id, gid in enumerate(owned):
-        layer = Gemma4DecoderLayer(stage_config, local_id)
-        attn = layer.self_attn
-        local_view[gid] = {
-            "attention_group_kind": type(
-                stage_config.attention_group_for_layer(local_id)
-            ).__name__,
-            "num_kv_heads": attn.num_kv_heads,
-            "head_dim": attn.head_dim,
-            "sliding_window": attn.attn_spec.sliding_window,
-            "k_eq_v": attn.k_eq_v,
-            "rope_base": getattr(attn.rotary, "base", None),
-            "rope_rotary_dim": getattr(attn.rotary, "rotary_dim", None),
-            "rope_max_position": getattr(attn.rotary, "max_position", None),
-            "rope_scaling": getattr(attn.rotary, "scaling", None),
-            "is_swa": attn.is_swa,
-            "sm_scale": attn.attn_spec.sm_scale,
-        }
+
+    global_layers = {gid: _props(full_config, gid) for gid in owned}
+    local_view = {gid: _props(stage_config, local_id)
+                  for local_id, gid in enumerate(owned)}
     mismatches = {}
     for gid in owned:
         g = global_layers[gid]
@@ -120,8 +108,14 @@ def main(argv=None) -> int:
 
     from dataclasses import replace as _replace
 
+    from freetoken.distributed import set_tp_info, try_get_tp_info
+    from freetoken.layers.rotary import set_rope_device
     from freetoken.models.gemma4.config import parse_config
     from freetoken.utils import cached_load_hf_config
+
+    if try_get_tp_info() is None:
+        set_tp_info(rank=0, size=1)
+    set_rope_device("cpu")  # audit builds modules only; no CUDA needed
 
     full_config = parse_config(cached_load_hf_config(args.model))
 
