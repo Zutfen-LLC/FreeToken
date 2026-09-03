@@ -63,15 +63,18 @@ def main(argv=None) -> int:
         [DenseBlockSpec(0, 48, True, True)],
         declared_shared_state=shared,
     )
-    layer0_prefix = "model.language_model.layers.0."
+    # [0,6): the hybrid SWA/full KV pool requires BOTH group kinds to exist
+    # (full-attn layers are 5, 11, ...), so the probe stage owns layers 0..5;
+    # the probe itself only EXECUTES layer 0 (block.layers[0]).
+    allowed = [
+        k for k in full["blocks"][0]["allowed_tensor_keys"]
+        if any(k.startswith(f"model.language_model.layers.{i}.") for i in range(6))
+        or k == "model.language_model.embed_tokens.weight"
+    ]
     block = {
-        "spec": {"start_layer": 0, "end_layer": 1, "owns_embeddings": True,
+        "spec": {"start_layer": 0, "end_layer": 6, "owns_embeddings": True,
                  "owns_final_norm_head": False},
-        "allowed_tensor_keys": [
-            k for k in full["blocks"][0]["allowed_tensor_keys"]
-            if k.startswith(layer0_prefix)
-            or k == "model.language_model.embed_tokens.weight"
-        ],
+        "allowed_tensor_keys": allowed,
         "owned_checkpoint_bytes": 0,
     }
 
