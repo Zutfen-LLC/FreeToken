@@ -1,7 +1,7 @@
 # R6 Regression Summary
 
 Canonical producer: 44d6c94 (physical run); gate-correction code head:
-59b2e52 (planes/kv-identity/capture-arm + fail-closed reader + composer
+5aaa35c (planes/kv-identity/capture-arm + fail-closed reader + composer
 rewrite + tests + docs).  The correction commits touch the R6 dense
 adapter modules, the torch-free census reader, the evidence composer,
 and docs only; no generic planner/epoch/wire semantic was altered
@@ -24,7 +24,9 @@ and docs only; no generic planner/epoch/wire semantic was altered
 
 - Control-plane selection (xc wire/coordinator/realization
   authority/result identity/seam, planner, r1) + focused R6
-  gate-contract + composer suites: **122 passed, 0 failed**
+  gate-contract + composer suites: **121 passed, 1 skipped, 0 failed**
+  (skip: selective-reader tensor read needs safetensors+torch —
+  exercised on 01 above; 00 is torch-free by design)
   (composer negative controls exercise the retained canonical evidence
   in a tmp copy; coordinator purity unbroken).
 
