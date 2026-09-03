@@ -53,6 +53,7 @@ def serve(
     diagnostic: bool,
     ready_file: str | None = None,
     capture_logits: bool = False,
+    allow_producer: str | None = None,
 ) -> None:
     os.environ["CUDA_VISIBLE_DEVICES"] = gpu_uuid
     import torch
@@ -73,10 +74,33 @@ def serve(
     plan = json.loads(Path(participant_plan).read_text())
     plan_producer = plan.get("provenance", {}).get("r6", {}).get("producer_sha")
     if plan_producer and running_sha != plan_producer:
-        raise RuntimeError(
-            f"last-stage running producer {running_sha!r} != plan's frozen "
-            f"producer {plan_producer!r}; canonical execution refuses to proceed"
-        )
+        if allow_producer and allow_producer == running_sha:
+            # Explicit evidence-arm requalification: a NEW producer runs the
+            # same frozen plan for a focused capture the frozen producer
+            # cannot produce (e.g. secondary-comparator logits).  Never
+            # silent: the mode is recorded in every report this process
+            # emits, and the canonical run never uses this path.
+            producer_check = {
+                "mode": "EXPLICIT_OVERRIDE_EVIDENCE_ARM",
+                "plan_frozen_producer": plan_producer,
+                "running_producer": running_sha,
+                "reason": "focused evidence capture not implemented by the "
+                          "frozen producer; distinct requalification "
+                          "producer recorded honestly",
+            }
+        else:
+            raise RuntimeError(
+                f"last-stage running producer {running_sha!r} != plan's frozen "
+                f"producer {plan_producer!r}; canonical execution refuses to "
+                f"proceed (an evidence arm may pass --allow-producer "
+                f"{running_sha!r} to record an explicit override)"
+            )
+    else:
+        producer_check = {
+            "mode": "PLAN_FROZEN",
+            "plan_frozen_producer": plan_producer,
+            "running_producer": running_sha,
+        }
     from benchmarks.inferswarm_r6.stage_runtime import GemmaDenseStage, LogitCapture
 
     block = plan["blocks"][-1]
@@ -113,6 +137,7 @@ def serve(
                     "diagnostic": diagnostic,
                     "pid": os.getpid(),
                     "producer_freetoken_sha": running_sha,
+                    "producer_check": producer_check,
                     "runtime": runtime.report("P4_ready_for_resident_execution"),
                 }
             )
@@ -216,6 +241,7 @@ def serve(
                         "schema": "inferswarm.r6.last-stage-final-report/1",
                         "plan_digest": plan.get("digest"),
                         "producer_freetoken_sha": running_sha,
+                        "producer_check": producer_check,
                         "stats": stats,
                         "logit_capture": capture_payload,
                         "runtime": runtime.report("P5_post_run"),
@@ -239,6 +265,10 @@ def main(argv=None) -> int:
     parser.add_argument("--capture-logits", action="store_true",
                         help="retain full-vocab last-stage logits per served "
                         "step in the final report (comparator arm only)")
+    parser.add_argument("--allow-producer", default=None,
+                        help="explicit evidence-arm override: record this "
+                        "exact running producer instead of the plan's frozen "
+                        "producer (never valid for a canonical run)")
     args = parser.parse_args(argv)
     serve(
         listen_host=args.listen_host,
@@ -249,6 +279,7 @@ def main(argv=None) -> int:
         diagnostic=bool(args.diagnostic),
         ready_file=args.ready_file,
         capture_logits=bool(args.capture_logits),
+        allow_producer=args.allow_producer,
     )
     return 0
 
