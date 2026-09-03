@@ -37,3 +37,16 @@ decode work (suspect: single-token decode attention metadata or KV append
 interplay with the triton SWA/full hybrid pool over renumbered stage-local
 layers). Not papered over: the canonical evidence records that speculative
 step-1 outputs of the distributed arm are not comparator-valid.
+
+
+## Update (canonical run 1, producer 9d400ec, 2026-09-03)
+
+The first canonical external-Coordinator request produced 7/8 exact
+tokens vs the reference; the 8th diverged precisely when
+prompt(26)+committed(7)=33 first exceeded the 32-row prefill chunk —
+i.e. the same defective KV-extend path (chunk 2+ of a replay prefill
+carries cached_len>0).  Mitigation (strategy-owned, within frozen
+boundary budget): PREFILL_CHUNK raised to 64 rows (491,520 B < 1 MiB
+wire budget) so canonical-scale replays stay single-chunk.  The
+KV-extend defect itself remains open engineering debt; the anomaly
+record and this update are retained unmodified in history.
