@@ -300,7 +300,10 @@ def test_softcap_probe_failure_is_swallowed_and_semantics_unchanged():
     out = softcap_inplace(pre.clone(), cap, probe=probe)
     expected = softcap_legacy(pre.clone(), cap)
     assert torch.equal(out, expected)  # broken diagnostic cannot alter results
-    assert "softcap_div_complete" in probe.phases
+    # the failing phase raised BEFORE being recorded (RecordingProbe), but
+    # execution provably continued through the remaining phases
+    assert "softcap_tanh_complete" in probe.phases
+    assert "softcap_mul_complete" in probe.phases
 
 
 def test_phase_evidence_survives_injected_oom_and_retains_step_metadata():
