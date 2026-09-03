@@ -111,12 +111,17 @@ def main(argv=None) -> int:
             "runtime_capacity_tokens": 64,
         },
     )
-    sink = CaptureSink(role="single", gpu_uuid=gpu_uuid)
-    runtime._capture_sink = sink
-
     capture_steps = set(args.capture_steps)
     after_layers = tuple(
         sorted(set(COARSE_AFTER_LAYERS) | set(int(x) for x in args.capture_layers))
+    )
+    sink = CaptureSink(role="single", gpu_uuid=gpu_uuid)
+    runtime._capture_sink = sink
+    # after-layer hook checkpoints (15/31 via hook; 47 is emitted explicitly
+    # in the single prefill path, so keep it out of the hook set to avoid a
+    # duplicate record).
+    runtime._capture_after_layers = frozenset(
+        ({15, 31} | set(int(x) for x in args.capture_layers)) - {47}
     )
 
     # --- instrumented single-role replay -------------------------------
