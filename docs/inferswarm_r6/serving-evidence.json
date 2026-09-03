@@ -1,0 +1,53 @@
+{
+  "controlled_evidence_collection_override": {
+    "basis": "two-node chain validation run (pre-canonical)",
+    "declared": true,
+    "distinct_from_automatic_selection": true,
+    "reason": "no ranking evidence exists for any dense multi-stage shape; issue #65 permits a controlled evidence-collection override for exactly this case"
+  },
+  "records": [
+    {
+      "confidence": "EXACT_CONTEXT",
+      "evidence_class": "MEASURED_R6_CONTROLLED_CHAIN_VALIDATION",
+      "evidence_identity": "r6-two-node-chain-validation",
+      "freshness": "CURRENT",
+      "id": "r6-chain-validation-ttft",
+      "mapping": {
+        "slot-stage-1": "gpu.node-a.0",
+        "slot-stage-2": "gpu.node-a.1",
+        "slot-stage-3": "gpu.node-b.0"
+      },
+      "measurement_status": "MEASURED",
+      "metric": {
+        "name": "ttft_ms",
+        "statistic": "single-run",
+        "unit": "ms",
+        "value": 11336.626269
+      },
+      "producer_identity": "44d6c94e4fd2ee967451cc959f930883ca3f4a25",
+      "provenance": {
+        "complete_request_wall_ms": 15423.982693,
+        "generated_token_ids": [
+          818,
+          11146,
+          11146,
+          11146,
+          11146,
+          11146,
+          11146,
+          11146
+        ],
+        "source": "/srv/inferswarm/state/r6/validation-run.json"
+      },
+      "required_context": {
+        "model_revision": "707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7",
+        "network_context": "1GbE-LAN-MTU1500-node-a-to-node-b",
+        "runtime_context": "r6-dense-producer:44d6c94e4fd2ee967451cc959f930883ca3f4a25",
+        "workload_geometry": "r6-dense-3stage-chain"
+      },
+      "role": "RANKING_OBJECTIVE",
+      "shape_id": "resident-two-node-three-slot"
+    }
+  ],
+  "schema": "inferswarm.r6.serving-evidence/1"
+}

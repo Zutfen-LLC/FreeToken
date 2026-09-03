@@ -1,0 +1,52 @@
+{
+  "implementation_commit": "44d6c94e4fd2ee967451cc959f930883ca3f4a25",
+  "model": {
+    "checkpoint_sha256": "5a84cb313260ac447237b890387116dfa8682e49a6b44bc585ae8353abbff18d",
+    "repository": "google/gemma-4-12B-it",
+    "representation": "native-bf16-safetensors",
+    "revision": "707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7",
+    "serving_scope": "text-only"
+  },
+  "network": {
+    "available": true,
+    "link_id": "path.node-a-to-node-b.1gbe",
+    "negotiated_mbps": 1000
+  },
+  "network_context": "1GbE-LAN-MTU1500-node-a-to-node-b",
+  "node_a": {
+    "gpus": [
+      {
+        "availability": "AVAILABLE",
+        "index": 0,
+        "name": "NVIDIA GeForce RTX 3060",
+        "pci_bdf": "00000000:02:00.0",
+        "uuid": "GPU-1fc28f83-1d45-926e-54d0-ba1e835ef099",
+        "vram_total_bytes": 12884901888
+      },
+      {
+        "availability": "AVAILABLE",
+        "index": 1,
+        "name": "NVIDIA GeForce RTX 3060",
+        "pci_bdf": "00000000:03:00.0",
+        "uuid": "GPU-d5c05739-96c1-7e49-89b6-bf54c2121c55",
+        "vram_total_bytes": 12884901888
+      }
+    ],
+    "node_id": "node.inferswarm01"
+  },
+  "node_b": {
+    "gpus": [
+      {
+        "availability": "AVAILABLE",
+        "index": 0,
+        "name": "NVIDIA GeForce RTX 3060",
+        "pci_bdf": "00000000:01:00.0",
+        "uuid": "GPU-e1f2f90c-49ab-2689-0cf1-e5d9da520176",
+        "vram_total_bytes": 12884901888
+      }
+    ],
+    "node_id": "node.inferswarm03"
+  },
+  "runtime_context": "r6-dense-producer:44d6c94e4fd2ee967451cc959f930883ca3f4a25",
+  "schema": "inferswarm.r6.environment-freeze/1"
+}

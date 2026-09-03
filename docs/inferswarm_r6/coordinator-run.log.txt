@@ -1,0 +1,2 @@
+{"coordinator_listening": true, "host": "0.0.0.0", "port": 18080, "scope_id": "inferswarm-r6-dense", "instance_id": "ee21f2430369", "variant": "r6-dense"}
+[transformers] PyTorch was not found. Models won't be available and only tokenizers, configuration and file/data utilities can be used.
