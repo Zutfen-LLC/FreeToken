@@ -14,6 +14,7 @@ Research-internal: not a public daemon API.  Fail-closed; no retries.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import socket
@@ -266,11 +267,24 @@ def serve(
                     "last-final",
                 )
             if localization_rx_log is not None:
-                Path(
+                rx_out = Path(
                     os.environ.get(
                         "R6_LOCALIZATION_RX_LOG", "/tmp/r6-localization-rx.json"
                     )
-                ).write_text(json.dumps(localization_rx_log))
+                )
+                entries = []
+                for record in localization_rx_log:
+                    entry = {k: v for k, v in record.items()
+                             if k != "payload_bytes"}
+                    raw = record["payload_bytes"]
+                    entry["payload_hex_sha256"] = hashlib.sha256(raw).hexdigest()
+                    bin_path = rx_out.with_name(
+                        f"boundary2-recv-{record['operation']}-p{record['position']}.bin"
+                    )
+                    bin_path.write_bytes(raw)
+                    entry["payload_bin"] = bin_path.name
+                    entries.append(entry)
+                rx_out.write_text(json.dumps(entries))
             capture_payload = None
             if runtime._logit_capture is not None:
                 capture_payload = {
