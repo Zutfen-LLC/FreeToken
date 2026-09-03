@@ -29,6 +29,131 @@ BOUNDARY_PLANES = 1
 ATTN_BACKEND = "triton"
 
 
+# --- final-logit softcap: frozen legacy vs in-place candidate ----------------
+#
+# Legacy (frozen R6 semantics, out-of-place):
+#     logits = torch.tanh(logits / cap) * cap
+# Candidate (SINGLE_GPU_CONTROL_AMENDMENT-003, in-place; allocation-lifetime
+# change ONLY): the identical elementwise operation order (divide, tanh,
+# multiply) with the identical cap value applied directly into the full
+# [sequence, vocab] BF16 logits tensor, eliminating the transient
+# full-matrix BF16 temporaries the out-of-place expression materializes
+# (one [rows, vocab] temporary per intermediate result).
+#
+# The full BF16 GEMM, the full [sequence, vocab] BF16 materialization, the
+# softcap math, the cap value, and the final-row FP32 promotion are all
+# unchanged; bit-equivalence is proven physically on the real Gemma CUDA
+# path before the production default flips.
+#
+# The optional ``probe`` callback receives phase names (softcap_div_complete,
+# ...) for OOM localization.  Probes are diagnostics only: they never alter
+# semantics, and probe failures are swallowed so a broken diagnostic can
+# never mask or replace the real execution result.
+
+
+def softcap_legacy(logits: torch.Tensor, cap, probe=None) -> torch.Tensor:
+    """Legacy out-of-place softcap: ``torch.tanh(logits / cap) * cap``.
+
+    Retained verbatim as the frozen reference transformation for the
+    equivalence proof and for explicit ``softcap_mode="legacy"`` runs.
+    """
+    try:
+        scaled = logits / cap
+    except Exception:
+        _notify(probe, "softcap_div_failed")
+        raise
+    _notify(probe, "softcap_div_complete")
+    try:
+        activated = torch.tanh(scaled)
+    except Exception:
+        _notify(probe, "softcap_tanh_failed")
+        raise
+    _notify(probe, "softcap_tanh_complete")
+    try:
+        out = activated * cap
+    except Exception:
+        _notify(probe, "softcap_mul_failed")
+        raise
+    _notify(probe, "softcap_mul_complete")
+    return out
+
+
+def softcap_inplace(logits: torch.Tensor, cap, probe=None) -> torch.Tensor:
+    """Candidate in-place softcap: div_/tanh_/mul_ into ``logits``.
+
+    Same elementwise operation order and cap as :func:`softcap_legacy`;
+    differs only in temporary-allocation lifetime (no full-matrix
+    intermediates).  Returns the mutated ``logits`` for expression parity.
+    """
+    try:
+        logits.div_(cap)
+    except Exception:
+        _notify(probe, "softcap_div_failed")
+        raise
+    _notify(probe, "softcap_div_complete")
+    try:
+        logits.tanh_()
+    except Exception:
+        _notify(probe, "softcap_tanh_failed")
+        raise
+    _notify(probe, "softcap_tanh_complete")
+    try:
+        logits.mul_(cap)
+    except Exception:
+        _notify(probe, "softcap_mul_failed")
+        raise
+    _notify(probe, "softcap_mul_complete")
+    return logits
+
+
+def _notify(probe, phase: str) -> None:
+    if probe is None:
+        return
+    try:
+        probe(phase)
+    except Exception:
+        pass
+
+
+def cuda_phase_probe(
+    phase: str,
+    *,
+    step: int | None = None,
+    replay_rows: int | None = None,
+    generated_tokens: int | None = None,
+    device: str = "cuda:0",
+) -> dict:
+    """One named-phase CUDA allocation snapshot for OOM localization.
+
+    Reads only host-side allocator bookkeeping (allocated/reserved/peak)
+    plus ``torch.cuda.mem_get_info`` (free/total); none of these force a
+    device synchronization, so arming the diagnostic does not serialize
+    execution.  ``mem_get_info`` free bytes may transiently lag asynchronous
+    frees and is best-effort; allocation/peak deltas used for attribution
+    are bookkeeping-exact.  Never raises.
+    """
+    record: dict = {"phase": phase}
+    if step is not None:
+        record["step"] = step
+    if replay_rows is not None:
+        record["replay_rows"] = replay_rows
+    if generated_tokens is not None:
+        record["generated_tokens"] = generated_tokens
+    if not torch.cuda.is_available():
+        record["cuda_available"] = False
+        return record
+    try:
+        record["cuda_allocated_bytes"] = int(torch.cuda.memory_allocated(device))
+        record["cuda_reserved_bytes"] = int(torch.cuda.memory_reserved(device))
+        record["cuda_peak_bytes"] = int(torch.cuda.max_memory_allocated(device))
+        free, total = torch.cuda.mem_get_info(device)
+        record["cuda_free_bytes"] = int(free)
+        record["cuda_total_bytes"] = int(total)
+    except Exception as exc:  # noqa: BLE001 - diagnostics must never raise
+        record["probe_error"] = f"{type(exc).__name__}: {exc}"
+    return record
+
+
 class LogitCapture:
     """Optional per-step full-vocab logit capture for the last stage.
 
@@ -396,6 +521,14 @@ class GemmaDenseStage:
         self.role = role
         self.model_path = model_path
         self._logit_capture: LogitCapture | None = None
+        # Softcap transformation seam (SINGLE_GPU_CONTROL_AMENDMENT-003):
+        # "legacy" = frozen out-of-place torch.tanh(logits / cap) * cap;
+        # "inplace" = bit-equivalent div_/tanh_/mul_ with no full-matrix
+        # temporaries (physically proven before becoming the default).
+        self._softcap_mode = "inplace"
+        # Optional per-phase CUDA diagnostic callback (OOM localization);
+        # never alters semantics, exceptions swallowed (see _notify).
+        self._phase_probe = None
         # The parent assigns one GPU per stage process before spawn: the
         # process sees exactly one device, always cuda:0 locally.
         self.device = torch.device("cuda:0")
@@ -681,7 +814,12 @@ class GemmaDenseStage:
         logits = final @ weight.t()
         cap = self.full_config.final_logit_softcapping
         if cap is not None:
-            logits = torch.tanh(logits / cap) * cap
+            if self._softcap_mode == "inplace":
+                logits = softcap_inplace(logits, cap, probe=self._phase_probe)
+            elif self._softcap_mode == "legacy":
+                logits = softcap_legacy(logits, cap, probe=self._phase_probe)
+            else:
+                raise ValueError(f"unknown softcap mode: {self._softcap_mode!r}")
         return logits
 
     def final_row_logits(self, final: torch.Tensor) -> torch.Tensor:
@@ -725,13 +863,19 @@ class GemmaDenseStage:
                 torch.tensor(token_ids, dtype=torch.int32, device=self.device)
             )
             with self.ctx.forward_batch(batch):
+                _notify(self._phase_probe, "embedding_complete")
                 hidden = self.embed(batch.input_ids)
                 hidden, _ = self.forward_layers(hidden)
+                _notify(self._phase_probe, "layers_complete")
                 if self.role == "single":
                     final = self.finalize(hidden, None)
+                    _notify(self._phase_probe, "final_norm_complete")
                     logits = self.final_row_logits(final)
+                    _notify(self._phase_probe, "lm_head_gemm_complete")
             if self.role == "single":
+                _notify(self._phase_probe, "final_row_fp32_complete")
                 token = int(torch.argmax(logits, dim=-1).item())
+                _notify(self._phase_probe, "argmax_complete")
                 if self._logit_capture is not None:
                     self._logit_capture.capture(logits)
                 return token, logits.detach()
@@ -757,11 +901,15 @@ class GemmaDenseStage:
             batch = self._prepare(start=position, token_count=1, phase="decode")
             batch.input_ids.fill_(int(token_id))
             with self.ctx.forward_batch(batch):
+                _notify(self._phase_probe, "embedding_complete")
                 hidden = self.embed(batch.input_ids)
                 hidden, _ = self.forward_layers(hidden)
+                _notify(self._phase_probe, "layers_complete")
                 if self.role == "single":
                     final = self.finalize(hidden, None)
+                    _notify(self._phase_probe, "final_norm_complete")
                     logits = self.final_row_logits(final)
+                    _notify(self._phase_probe, "lm_head_gemm_complete")
             if self.role == "single":
                 token = int(torch.argmax(logits, dim=-1).item())
                 if self._logit_capture is not None:
@@ -915,7 +1063,10 @@ __all__ = [
     "BOUNDARY_PLANES",
     "HIDDEN_SIZE",
     "GemmaDenseStage",
+    "cuda_phase_probe",
     "execute_dense_layer_sequence",
     "materialize_dense_state",
     "semantic_boundaries_for_role",
+    "softcap_inplace",
+    "softcap_legacy",
 ]

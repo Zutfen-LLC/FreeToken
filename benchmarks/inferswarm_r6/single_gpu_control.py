@@ -106,6 +106,35 @@ def _best_effort_partial_report(runtime) -> dict | None:
         return None
 
 
+# Ordered canonical phase names for one replay step of the single-role
+# control.  Used ONLY to name the operation that follows the last completed
+# phase when an OOM interrupts execution (the failing allocation belongs to
+# the next operation, not the last completed one).
+_PHASE_ORDER = (
+    "step_begin",
+    "batch_prepare_complete",
+    "embedding_complete",
+    "layers_complete",
+    "final_norm_complete",
+    "lm_head_gemm_complete",
+    "softcap_div_complete",
+    "softcap_tanh_complete",
+    "softcap_mul_complete",
+    "final_row_fp32_complete",
+    "argmax_complete",
+    "step_complete",
+)
+
+
+def _next_phase_after(phase) -> str | None:
+    if phase not in _PHASE_ORDER:
+        return None
+    index = _PHASE_ORDER.index(phase)
+    if index + 1 < len(_PHASE_ORDER):
+        return _PHASE_ORDER[index + 1]
+    return "next_step_replay"
+
+
 def _git_identity(repo: Path) -> dict[str, Any]:
     sha = subprocess.check_output(
         ["git", "-C", str(repo), "rev-parse", "HEAD"], text=True
@@ -304,6 +333,9 @@ def run_control(args) -> dict[str, Any]:
 
     runtime = None
     loader = None
+    # OOM-localization evidence (prospective tooling; populated inside try).
+    phase_evidence: list[dict[str, Any]] = []
+    failure_evidence: dict[str, Any] | None = None
     try:
         runtime = GemmaDenseStage(
             role="single",
@@ -314,6 +346,22 @@ def run_control(args) -> dict[str, Any]:
                 "runtime_capacity_tokens": RUNTIME_CAPACITY_TOKENS,
             },
         )
+        # OOM-localization instrumentation (prospective evidence tooling; no
+        # semantic change): named-phase CUDA snapshots per canonical replay
+        # step, and a failure record that must survive the OOM path.
+        from benchmarks.inferswarm_r6.stage_runtime import cuda_phase_probe
+
+        def _phase_probe(phase: str) -> None:
+            phase_evidence.append(
+                cuda_phase_probe(
+                    phase,
+                    step=_phase_probe.step,  # type: ignore[attr-defined]
+                    replay_rows=_phase_probe.rows,  # type: ignore[attr-defined]
+                    generated_tokens=_phase_probe.generated,  # type: ignore[attr-defined]
+                )
+            )
+
+        runtime._phase_probe = _phase_probe  # type: ignore[assignment]
         generated: list[int] = []
         captured = {}
         nan_inf_count = 0
@@ -321,15 +369,21 @@ def run_control(args) -> dict[str, Any]:
         for step in range(maximum):
             runtime.reset_session_state()
             replay = prompt + generated
+            _phase_probe.step = step  # type: ignore[attr-defined]
+            _phase_probe.rows = len(replay)  # type: ignore[attr-defined]
+            _phase_probe.generated = len(generated)  # type: ignore[attr-defined]
+            _phase_probe("step_begin")
             token, logits = runtime.prefill(replay, None, 0)
             # prefill() returns the final-row FP32 logits directly (the
             # optimized path); .float() on an already-fp32 tensor is an
             # exact no-op kept for schema stability.
+            _phase_probe("final_row_fp32_cpu_complete")
             row = logits.detach().float().cpu()
             nan_inf_count += int(
                 torch.isnan(row).sum().item() + torch.isinf(row).sum().item()
             )
             free_bytes, _total = torch.cuda.mem_get_info("cuda:0")
+            _phase_probe("step_complete")
             step_memory[str(step)] = {
                 "replay_rows": int(len(replay)),
                 "final_row_fp32_bytes": int(row.numel() * row.element_size()),
@@ -429,6 +483,7 @@ def run_control(args) -> dict[str, Any]:
                 "exact_generated_token_match": exact_match,
                 "nan_inf_count": nan_inf_count,
                 "step_cuda_memory": step_memory,
+                "phase_cuda_memory": phase_evidence,
                 "min_free_cuda_bytes_across_steps": (
                     min(m["cuda_free_bytes"] for m in step_memory.values())
                     if step_memory
@@ -462,13 +517,29 @@ def run_control(args) -> dict[str, Any]:
             }
         )
     except torch.OutOfMemoryError as exc:
+        # Retain the exact named failing phase plus allocator state at the
+        # moment of failure (the last recorded phase completed; the failing
+        # allocation belongs to the phase that follows it).
+        if "phase_evidence" in locals() and phase_evidence:
+            last = dict(phase_evidence[-1])
+            last["next_operation_at_failure"] = _next_phase_after(last.get("phase"))
+            failure_evidence = {
+                "last_phase": last,
+                "phases_recorded": len(phase_evidence),
+            }
         report.update(
             {
                 "status": "SINGLE_GPU_REFERENCE_CAPACITY_BLOCKED",
                 "error": str(exc),
+                "failure_phase_evidence": failure_evidence,
+                "phase_cuda_memory": phase_evidence
+                if "phase_evidence" in locals()
+                else [],
                 "cuda_allocated_bytes": torch.cuda.memory_allocated("cuda:0"),
                 "cuda_peak_bytes": torch.cuda.max_memory_allocated("cuda:0"),
                 "cuda_mem_get_info": list(torch.cuda.mem_get_info("cuda:0")),
+                "partial_loader_evidence": loader
+                or _best_effort_partial_report(runtime),
             }
         )
     except InvalidNumericalEvidenceError as exc:
