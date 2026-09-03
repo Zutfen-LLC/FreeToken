@@ -215,7 +215,7 @@ def _r6_objective(implementation_commit: str, metric: str = "ttft_ms") -> dict:
             "metric": metric,
             "direction": "MAXIMIZE" if maximize else "MINIMIZE",
             "unit": "tok/s" if maximize else "ms",
-            "statistic": "median",
+            "statistic": "single-run",
             "evidence_context": {
                 "model_revision": "707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7",
                 "workload_geometry": "r6-dense-3stage-chain",
