@@ -331,6 +331,18 @@ class DenseSelectiveTensorReader:
             self._weight_map = index["weight_map"]
         elif single.exists():
             self._weight_map = None
+            # Fail closed at construction even without an index: read the
+            # single shard's header (metadata only) and reject any planned
+            # key the checkpoint does not carry.
+            with single.open("rb") as stream:
+                header_len = struct.unpack("<Q", stream.read(8))[0]
+                header = json.loads(stream.read(header_len))
+            header.pop("__metadata__", None)
+            unknown = self.allowed_keys - set(header)
+            if unknown:
+                raise ValueError(
+                    f"allowed keys absent from checkpoint: {sorted(unknown)[:3]}"
+                )
         else:
             raise ValueError(f"no safetensors index or single shard under {self.root}")
         if self._weight_map is not None:

@@ -50,3 +50,23 @@ boundary budget): PREFILL_CHUNK raised to 64 rows (491,520 B < 1 MiB
 wire budget) so canonical-scale replays stay single-chunk.  The
 KV-extend defect itself remains open engineering debt; the anomaly
 record and this update are retained unmodified in history.
+
+
+## Update (gate correction pass, 2026-09-03)
+
+The frozen SECONDARY comparator (max |logit_ref − logit_dist| < 0.25 over
+the reference top-32 domain at steps 0/1/7) was physically captured
+through the canonical distributed dense path during the gate-correction
+pass (evidence arm, explicit-override producer — the frozen producer
+44d6c94 retained no distributed logits; see
+lifecycle/secondary-comparator.json).  Result: per-step max absdiff
+0.25 / 0.50 / 0.515625; aggregate 0.515625 → the frozen threshold is
+EXCEEDED.  NaN/Inf count 0.  Primary 8/8 greedy token equality
+re-confirmed on the same replays.  The threshold was not loosened; the
+corrected result composer reports the gate verdict as FAIL on this
+single check and the maintainer adjudicates whether the drift joins
+this anomaly record as a non-claim.  Plausible shared numerics: the
+distributed chain computes attention through the triton SWA/full hybrid
+with bf16 boundaries while the reference uses eager fp32-path
+attention; exact token argmax survives, tail logits drift by up to
+~0.5.
