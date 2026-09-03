@@ -14,7 +14,7 @@ import json
 import subprocess
 from pathlib import Path
 
-from freetoken.research.n0_model_block import write_json_with_sha
+from freetoken.research.r6_dense_census import write_json_with_sha
 
 MODEL_REVISION = "707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7"
 MODEL_SHA = "5a84cb313260ac447237b890387116dfa8682e49a6b44bc585ae8353abbff18d"
