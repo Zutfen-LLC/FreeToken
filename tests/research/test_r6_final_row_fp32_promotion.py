@@ -87,6 +87,10 @@ def test_final_row_optimized_promotion_bit_identical_to_legacy():
 def test_bit_identity_holds_for_nan_and_inf_inputs():
     # Softcap tanh saturates finite values; push actual NaN/Inf through the
     # GEMM to prove the observation domain (counts) is identical too.
+    # NOTE: a NaN/Inf hidden element propagates through the GEMM to whole
+    # rows, so counts are compared domain-to-domain (full vs full,
+    # row vs row), and bit-identity of the row is proven via raw bytes
+    # (torch.equal treats NaN != NaN).
     stage = _stub_stage(cap=30.0)
     final = _stub_final(4)
     final[1, :] = float("nan")
@@ -95,11 +99,15 @@ def test_bit_identity_holds_for_nan_and_inf_inputs():
     legacy = stage.lm_head_logits(final)
     full = stage.full_bf16_logits(final)
     optimized = stage.final_row_logits(final)
-    assert torch.isnan(legacy).sum().item() == torch.isnan(optimized).sum().item()
-    assert torch.isinf(legacy).sum().item() == torch.isinf(optimized).sum().item()
-    assert torch.equal(legacy[-1].contiguous(), optimized.contiguous())
-    # full-bf16 observation domain must also match the legacy promotion
+    # same-domain observation identity: full BF16 vs full legacy promotion
     assert torch.isnan(full).sum().item() == torch.isnan(legacy).sum().item()
+    assert torch.isinf(full).sum().item() == torch.isinf(legacy).sum().item()
+    # row-domain: the tanh-saturated final row is finite; require exactness
+    assert torch.isinf(optimized).sum().item() == torch.isinf(legacy[-1]).sum().item()
+    assert _sha256(legacy[-1].contiguous()) == _sha256(optimized.contiguous())
+    # and the NaN row (row 1) is identically NaN in the full BF16 tensor
+    # and the legacy full promotion
+    assert torch.isnan(full[1]).all() and torch.isnan(legacy[1]).all()
 
 
 def test_softcap_applies_before_row_selection_in_both_paths():
@@ -189,26 +197,34 @@ def test_optimized_path_full_bf16_gemm_shape_unchanged():
 
 def test_decode_single_row_case_bit_identical():
     # rows=1: whole-tensor promotion and final-row promotion coincide in
-    # ALLOCATION as well as value; both paths must still agree exactly.
+    # ALLOCATION as well as value. The legacy API keeps its historical
+    # [1, vocab] 2-D shape; the optimized helper returns the 1-D row —
+    # the VALUES must be bit-identical.
     stage = _stub_stage(cap=30.0)
     final = _stub_final(1)
     legacy = stage.lm_head_logits(final)
     optimized = stage.final_row_logits(final)
-    assert legacy.shape == optimized.shape == (legacy.shape[-1],)
-    assert torch.equal(legacy.contiguous(), optimized.contiguous())
+    assert legacy.shape == (1, legacy.shape[-1])
+    assert optimized.shape == legacy.shape[-1:]
+    assert legacy.dtype == optimized.dtype == torch.float32
+    assert torch.equal(legacy[-1].contiguous(), optimized.contiguous())
+    assert _sha256(legacy[-1].contiguous()) == _sha256(optimized.contiguous())
 
 
 def test_decode_single_row_case_nan_inf_identical():
+    # A NaN hidden element propagates through the GEMM to the entire row;
+    # both paths must observe the identical (all-NaN) row. Bit-identity
+    # under NaN is proven via raw bytes (torch.equal says NaN != NaN).
     stage = _stub_stage(cap=30.0)
     final = _stub_final(1)
     final[0, 2] = float("nan")
     legacy = stage.lm_head_logits(final)
     optimized = stage.final_row_logits(final)
-    assert torch.isnan(legacy).sum().item() == torch.isnan(optimized).sum().item() == 1
-    assert torch.equal(
-        torch.nan_to_num(legacy, nan=0.0),
-        torch.nan_to_num(optimized, nan=0.0),
-    )
+    nan_legacy = int(torch.isnan(legacy).sum().item())
+    nan_optimized = int(torch.isnan(optimized).sum().item())
+    assert nan_legacy == nan_optimized
+    assert nan_legacy > 0  # propagation actually engaged
+    assert _sha256(legacy[-1].contiguous()) == _sha256(optimized.contiguous())
 
 
 # --------------------------------------------------------------------------
