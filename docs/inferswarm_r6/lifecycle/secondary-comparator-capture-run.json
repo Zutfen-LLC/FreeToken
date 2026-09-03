@@ -1,0 +1,31 @@
+{
+  "capture_steps": [
+    0,
+    1,
+    7
+  ],
+  "chain_side_producer_sha": "3018acf721e897355e362f965f510471bf88d64c",
+  "expected_committed_prefix": [
+    818,
+    6073,
+    529,
+    74413,
+    46515,
+    600,
+    2557,
+    532
+  ],
+  "method": "full replay-prefill per comparator step (single 64-row chunk, position 0, all stages RESET before each replay)",
+  "participant_plan_digest": "sha256:ee845188d3328bdec29bf4b09d71f7ccda0701ff5758cb1d8a70460a40fecfb1",
+  "replayed_tokens_observed": [
+    818,
+    6073,
+    529,
+    74413,
+    46515,
+    600,
+    2557,
+    532
+  ],
+  "schema": "inferswarm.r6.secondary-comparator-capture/1"
+}

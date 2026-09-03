@@ -1,12 +1,25 @@
 {
-  "schema": "inferswarm.r6.result/1",
+  "schema": "inferswarm.r6.result/2",
   "gate": "R6_DENSE_ARCHITECTURE_FALSIFICATION",
-  "implementation_producer_sha": "44d6c94e4fd2ee967451cc959f930883ca3f4a25",
+  "provenance": {
+    "canonical_physical_producer": "44d6c94e4fd2ee967451cc959f930883ca3f4a25",
+    "canonical_last_stage_final_report_producer": "44d6c94e4fd2ee967451cc959f930883ca3f4a25",
+    "secondary_comparator_arm_producer": "3018acf721e897355e362f965f510471bf88d64c",
+    "secondary_comparator_arm_mode": "EXPLICIT_OVERRIDE_EVIDENCE_ARM",
+    "repo_head_at_composition": "3018acf721e897355e362f965f510471bf88d64c",
+    "methodology": "docs/inferswarm_r6/METHODOLOGY.md (original freeze)",
+    "methodology_amendment": "docs/inferswarm_r6/METHODOLOGY-AMENDMENT-001.md"
+  },
   "checks": {
     "environment_producer_matches_run_producer": true,
+    "run_producer_is_canonical": true,
     "model_revision_frozen": true,
     "checkpoint_sha_frozen": true,
     "chain_plan_producer_frozen": true,
+    "methodology_original_retained": true,
+    "methodology_amendment_retained": true,
+    "methodology_amendment_chronology_explicit": true,
+    "chain_plan_uses_amended_geometry": true,
     "canonical_request_retained": true,
     "token_equality_exact": true,
     "reference_token_equality": true,
@@ -18,24 +31,104 @@
     "coordinator_torch_free_evidence": true,
     "stage_coverage_complete_contiguous": true,
     "shared_state_declared_tied_embedding": true,
+    "stage_evidence_present_and_producer_bound": true,
+    "stage_fetch_matches_frozen_plan": true,
+    "stage_selective_load_clean": true,
     "no_unexplained_host_mirror": true,
-    "stage_fetch_matches_plan_placeholder": true
+    "last_stage_stats_consistent_with_sessions": true,
+    "boundary_geometry_single_plane": true,
+    "secondary_logit_comparator_retained": true,
+    "secondary_logit_comparator_threshold": false
   },
-  "failed_checks": [],
+  "failed_checks": [
+    "secondary_logit_comparator_threshold"
+  ],
   "detail": {
     "run_producer": "44d6c94e4fd2ee967451cc959f930883ca3f4a25",
-    "repo_head_at_composition": "e2f54e96c85dfc779c3e8fea745352451cf2aaf9",
+    "repo_head_at_composition": "3018acf721e897355e362f965f510471bf88d64c",
     "distinct_committed_epochs": [
       "research-generation-0:2cd1de3ef3e8"
     ],
     "epoch_states": [
       "RECLAIMED"
     ],
-    "planned_owned_bytes": [
-      9256814624,
-      7278939168,
-      7278946848
-    ]
+    "stages": [
+      {
+        "role": "first",
+        "planned_owned_checkpoint_bytes": 9256814624,
+        "planned_total_with_shared": 9256814624,
+        "observed_fetched_bytes": 9256814624,
+        "role_matches": true,
+        "global_layer_ids_match": true,
+        "unexpected_checkpoint_keys": [],
+        "whole_shard_sentinel_calls": 0,
+        "host_staging_current_bytes": 0,
+        "unexplained_persistent_host_mirror_bytes": 0,
+        "resident_only": true,
+        "resident_device_bytes": 9264678944,
+        "vmstat_delta": {
+          "pgmajfault": 0,
+          "pswpin": 0,
+          "pswpout": 0
+        }
+      },
+      {
+        "role": "middle",
+        "planned_owned_checkpoint_bytes": 7278939168,
+        "planned_total_with_shared": 7278939168,
+        "observed_fetched_bytes": 7278939168,
+        "role_matches": true,
+        "global_layer_ids_match": true,
+        "unexpected_checkpoint_keys": [],
+        "whole_shard_sentinel_calls": 0,
+        "host_staging_current_bytes": 0,
+        "unexplained_persistent_host_mirror_bytes": 0,
+        "resident_only": true,
+        "resident_device_bytes": 7290735648,
+        "vmstat_delta": {
+          "pgmajfault": 0,
+          "pswpin": 0,
+          "pswpout": 0
+        }
+      },
+      {
+        "role": "last",
+        "planned_owned_checkpoint_bytes": 7278946848,
+        "planned_total_with_shared": 9292212768,
+        "observed_fetched_bytes": 9292212768,
+        "role_matches": true,
+        "global_layer_ids_match": true,
+        "unexpected_checkpoint_keys": [],
+        "whole_shard_sentinel_calls": 0,
+        "host_staging_current_bytes": 0,
+        "unexplained_persistent_host_mirror_bytes": 0,
+        "resident_only": true,
+        "resident_device_bytes": 9304009248,
+        "vmstat_delta": {
+          "pswpin": 4,
+          "pswpout": 0,
+          "pgmajfault": 16
+        }
+      }
+    ],
+    "last_stage_stats": {
+      "boundaries_served": 32,
+      "activation_bytes_rx": 3747840,
+      "result_bytes_tx": 10432
+    },
+    "last_stage_rows_expected_from_sessions": 488,
+    "secondary_comparator": {
+      "threshold": 0.25,
+      "per_step_max_absdiff": {
+        "0": 0.25,
+        "1": 0.5,
+        "7": 0.515625
+      },
+      "aggregate_max_absdiff": 0.515625,
+      "nan_inf_count": 0,
+      "domain": "reference top-32 per declared step (retained reference domain; union-domain max is necessarily >= this max)",
+      "passes": false
+    }
   },
   "expected_generated_token_ids": [
     818,
@@ -46,5 +139,7 @@
     600,
     2557,
     532
-  ]
+  ],
+  "verdict": "R6_DENSE_ARCHITECTURE_FALSIFICATION_FAIL",
+  "verdict_note": "Honest fail: the corrected composer does not pass every frozen condition from retained evidence. See failed_checks and detail.secondary_comparator."
 }
