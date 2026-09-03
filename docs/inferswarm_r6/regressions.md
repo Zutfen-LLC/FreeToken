@@ -1,31 +1,45 @@
 # R6 Regression Summary
 
-Producer: 44d6c94 (canonical-run producer); suites re-run at e2f54e9
-(same code under test for all r6 modules; e2f54e9 adds only docs +
-a repo-root conftest that does not alter any tested module).
+Canonical producer: 44d6c94 (physical run); gate-correction code head:
+59b2e52 (planes/kv-identity/capture-arm + fail-closed reader + composer
+rewrite + tests + docs).  The correction commits touch the R6 dense
+adapter modules, the torch-free census reader, the evidence composer,
+and docs only; no generic planner/epoch/wire semantic was altered
+(r4_wire framing untouched).
 
-## inferswarm01 (compute node, torch venv)
+## inferswarm01 (compute node, torch venv, head 59b2e52)
 
-- tests/benchmarks: 563 passed, 0 failed (not slow / not needs_weights).
-- tests/research: 238 passed, 0 failed (same markers), plus
-  tests/research/test_r5a_preflight.py: 4 passed — run separately because
-  that module still uses the legacy top-level `inferswarm_r5a` import
-  (PYTHONPATH=python:benchmarks), which is mutually exclusive in one
-  interpreter with the `benchmarks.inferswarm_*` package imports used by
-  the other research tests (documented historical pitfall; both styles
-  pass in their own invocation).
+- tests/research (benchmarks.* import style, not slow / not
+  needs_weights, r5a preflight excluded): **265 passed, 0 failed**
+  (includes the 17 focused R6 gate-contract tests and the 10 composer
+  negative-control/positive-fixture tests; 1 safetensors-reader test
+  included here — the venv has safetensors).
+- tests/research/test_r5a_preflight.py (legacy top-level import style,
+  own interpreter): **4 passed, 0 failed** (historical dual-import
+  split, documented in prior gates).
+- tests/benchmarks (not slow / not needs_weights): **563 passed,
+  0 failed**.
 
-## inferswarm00 (CPU-only coordinator, torch-free venv)
+## inferswarm00 (CPU-only coordinator, torch-free venv, head 59b2e52)
 
-- tests/research control-plane selection (xc wire/coordinator/realization
-  authority, planner, r1): 72 passed, 0 failed.
-- Out of scope on this host by design: modules importing torch
-  (n0_model_block, r2 local-split, r4/r5a/r5b runtime-adjacent tests)
-  — those ran on 01 above.
+- Control-plane selection (xc wire/coordinator/realization
+  authority/result identity/seam, planner, r1) + focused R6
+  gate-contract + composer suites: **122 passed, 0 failed**
+  (composer negative controls exercise the retained canonical evidence
+  in a tmp copy; coordinator purity unbroken).
 
-## Gemma/FreeToken model tests
+## Gate-correction specific runs
 
-- tests/models/test_gemma4_* included in the 01 runs above (part of
-  tests/benchmarks suite collection set); no Gemma test failures.
+- Corrected composer against retained canonical evidence:
+  **27/28 checks pass**; the single failing check is
+  `secondary_logit_comparator_threshold` (measured aggregate absdiff
+  0.515625 vs frozen 0.25; honest FAIL verdict retained in result.json).
+- Composer negative controls (missing stage-3 report, fetched-byte
+  mismatch, host mirror, unexpected key, missing comparator, threshold
+  violation, NaN/Inf, producer substitution): all fail the composer as
+  designed; positive fixture reproduces 28/28 PASS with distinct
+  provenance identities.
 
-No thresholds were adjusted after observing any result.
+No thresholds were adjusted after observing any result.  The one test
+failure observed during this pass (selective reader single-shard
+fail-closed gap) was fixed in code (59b2e52), not waived.

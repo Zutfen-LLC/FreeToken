@@ -235,6 +235,10 @@ def test_tied_embedding_duplication_requires_declaration(tmp_path):
 
 def test_selective_reader_never_fetches_unplanned_keys(tmp_path):
     pytest.importorskip("safetensors")  # tensor reads; runs on compute hosts
+    try:
+        import torch  # noqa: F401
+    except ModuleNotFoundError:
+        pytest.skip("safetensors 'pt' framework requires torch (compute hosts)")
     ckpt = make_synthetic_checkpoint(tmp_path / "m")
     planned = {
         "model.language_model.embed_tokens.weight",

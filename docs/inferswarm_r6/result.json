@@ -6,7 +6,7 @@
     "canonical_last_stage_final_report_producer": "44d6c94e4fd2ee967451cc959f930883ca3f4a25",
     "secondary_comparator_arm_producer": "3018acf721e897355e362f965f510471bf88d64c",
     "secondary_comparator_arm_mode": "EXPLICIT_OVERRIDE_EVIDENCE_ARM",
-    "repo_head_at_composition": "3018acf721e897355e362f965f510471bf88d64c",
+    "repo_head_at_composition": "59b2e527d338d652ee39861b1cf38773d002971e",
     "methodology": "docs/inferswarm_r6/METHODOLOGY.md (original freeze)",
     "methodology_amendment": "docs/inferswarm_r6/METHODOLOGY-AMENDMENT-001.md"
   },
@@ -45,7 +45,7 @@
   ],
   "detail": {
     "run_producer": "44d6c94e4fd2ee967451cc959f930883ca3f4a25",
-    "repo_head_at_composition": "3018acf721e897355e362f965f510471bf88d64c",
+    "repo_head_at_composition": "59b2e527d338d652ee39861b1cf38773d002971e",
     "distinct_committed_epochs": [
       "research-generation-0:2cd1de3ef3e8"
     ],
