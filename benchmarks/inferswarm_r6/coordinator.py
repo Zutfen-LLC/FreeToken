@@ -189,6 +189,13 @@ def _r6_snapshot(environment: Mapping[str, Any]) -> dict[str, Any]:
             ],
             "links": [
                 {
+                    "id": "path.node-a.local-staging",
+                    "source_memory_resource_id": "gpu.node-a.0.vram",
+                    "target_memory_resource_id": "gpu.node-a.1.vram",
+                    "available": True,
+                    "capabilities": ["freetoken-static-boundary-v1"],
+                },
+                {
                     "id": environment["network"]["link_id"],
                     "source_memory_resource_id": "gpu.node-a.1.vram",
                     "target_memory_resource_id": "gpu.node-b.0.vram",
