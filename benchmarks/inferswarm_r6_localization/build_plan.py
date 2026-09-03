@@ -70,9 +70,13 @@ def main(argv=None) -> int:
         }
     }
     plan["runtime_capacity_tokens"] = 256
+    from freetoken.research.r2_local_split import freeze_plan
+
+    plan = freeze_plan(plan)
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n")
     print(json.dumps({"out": args.out, "producer": producer,
+                      "digest": plan["digest"],
                       "blocks": [b["spec"] for b in plan["blocks"]]}))
     return 0
 
