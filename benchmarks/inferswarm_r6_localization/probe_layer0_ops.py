@@ -137,9 +137,12 @@ def main(argv=None) -> int:
         positions = batch.positions
         q, k = attn._apply_rope(positions, q, k)
         emit("op4_rope", torch.cat([q.flatten(1), k.flatten(1)], dim=1))
+        # mirror Gemma4Attention.forward exactly: reshape to [T, kv_dim]
+        # BEFORE the backend call; the backend views it internally.
+        k2 = k.reshape(T, attn.num_kv_heads * attn.head_dim)
+        v2 = v.reshape(T, attn.num_kv_heads * attn.head_dim)
         o = get_global_ctx().attn_backend.forward(
-            q.contiguous(), k.contiguous().reshape(T, -1).view(T, attn.num_kv_heads, attn.head_dim).contiguous(),
-            v.contiguous().reshape(T, -1).view(T, attn.num_kv_heads, attn.head_dim).contiguous(),
+            q.contiguous(), k2.contiguous(), v2.contiguous(),
             attn.layer_id, batch, attn_spec=attn.attn_spec,
         )
         emit("op5_attention_out", o)
