@@ -172,7 +172,10 @@ def main(argv=None) -> int:
 
                 for stage in stages:
                     stage.request({"op": "RESET"})
-                capture_now = step in (0, 1, 3, 7)
+                # every decision is evidence-bearing in v3: capture_step is
+                # sent on ALL 8 decisions (the last-stage service keys its
+                # retained decision-<i>.f32 rows off this value), while the
+                # 15-envelope capture positions remain the frozen 0/1/3/7.
                 hidden = None
                 response: dict = {}
                 for index, stage in enumerate(stages):
@@ -181,7 +184,7 @@ def main(argv=None) -> int:
                             "op": "PREFILL",
                             "token_ids": replay,
                             "position": 0,
-                            **({"capture_step": step} if capture_now else {}),
+                            "capture_step": step,
                         })
                         hidden = response.get("hidden")
                     else:
@@ -189,7 +192,7 @@ def main(argv=None) -> int:
                             "op": "PREFILL",
                             "hidden": hidden,
                             "position": 0,
-                            **({"capture_step": step} if capture_now else {}),
+                            "capture_step": step,
                         })
                         hidden = response.get("hidden")
                 token = response["token_id"]
