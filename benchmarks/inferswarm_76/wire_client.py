@@ -5,11 +5,12 @@ from __future__ import annotations
 from typing import Any
 
 from freetoken.research.r4_wire import (
-    WIRE_PROTOCOL_ID,
     encode_frame,
     recv_frame,
     send_exact,
 )
+
+WIRE_PROTOCOL_ID = "inferswarm.r4.boundary-wire/1"
 
 
 class I76LastStageClient:
