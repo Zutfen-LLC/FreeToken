@@ -77,7 +77,7 @@ def main(argv=None) -> int:
             raise SystemExit(f"unknown case ids: {sorted(missing)}")
 
     from benchmarks.inferswarm_76.stage_entry import I76StageClient
-    from benchmarks.inferswarm_r6.wire_client import RemoteLastStageClient
+    from benchmarks.inferswarm_76.wire_client import I76LastStageClient
 
     plan = json.loads(Path(args.plan).read_text())
     shared = plan.get("declared_shared_state")
@@ -100,7 +100,7 @@ def main(argv=None) -> int:
                 )
             )
         stages.append(
-            RemoteLastStageClient(
+            I76LastStageClient(
                 host=args.last_stage_host,
                 port=args.last_stage_port,
                 experiment_id=plan["digest"],
