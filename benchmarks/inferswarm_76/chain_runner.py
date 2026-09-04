@@ -188,8 +188,9 @@ def main(argv=None) -> int:
             # persist per-case captures from stages 1-2 and the remote stage
             manifests = {}
             for stage_index, stage in enumerate(stages[:-1]):
-                ack = stage.request({"op": "SAVE_CAPTURE",
-                                     "suffix": args.tag})
+                ack = stage.request(
+                    {"op": "SAVE_CAPTURE",
+                     "suffix": f"{args.tag}-stage{stage_index + 1}"})
                 manifests[f"stage{stage_index + 1}"] = ack["manifest"]
             save_ack = stages[-1].request(
                 {"op": "CASE_SAVE", "tag": args.tag})
