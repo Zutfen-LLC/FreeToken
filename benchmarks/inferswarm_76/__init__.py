@@ -234,9 +234,13 @@ def conservative_case_family(
 def envelopes_from_case_metrics(
     per_checkpoint: dict[str, dict[str, float]],
 ) -> dict[str, str]:
-    """15 frozen envelope strings (exact hex binary64) for one case."""
+    """15 frozen envelope strings (exact hex binary64) for one case.
+
+    Keys may be bare checkpoint ids or "<checkpoint_id>@<position>".
+    """
     by_family: dict[str, list[dict[str, float]]] = {f: [] for f in FAMILIES}
-    for checkpoint_id, metrics in per_checkpoint.items():
+    for key, metrics in per_checkpoint.items():
+        checkpoint_id = key.split("@", 1)[0]
         family = CHECKPOINT_FAMILY_MAP[checkpoint_id][0]
         by_family[family].append(metrics)
     envelopes: dict[str, str] = {}
