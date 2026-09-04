@@ -132,6 +132,14 @@ def main(argv=None) -> int:
         },
     )
 
+    # wrappers bind runtime._emit dynamically (which reads _capture_sink),
+    # so they are installed EXACTLY ONCE (the accepted #76 pattern); per-case
+    # isolation comes from swapping the sink below. Arming per case would
+    # CHAIN wrapper layers and duplicate every capture record.
+    runtime._capture_sink = RowPruningSink(role="single", gpu_uuid=gpu_uuid)
+    runtime._capture_after_layers = frozenset({15, 31})
+    arm_full_capture(runtime, runtime._capture_sink)
+
     results = []
     out_root = Path(args.out_dir)
     out_root.mkdir(parents=True, exist_ok=True)
@@ -141,8 +149,6 @@ def main(argv=None) -> int:
         case_dir.mkdir(parents=True, exist_ok=True)
         runtime._capture_sink = RowPruningSink(role="single", gpu_uuid=gpu_uuid)
         sink = runtime._capture_sink
-        runtime._capture_after_layers = frozenset({15, 31})
-        arm_full_capture(runtime, runtime._capture_sink)
 
         prompt = list(case["token_ids"])
         generated: list[int] = []
