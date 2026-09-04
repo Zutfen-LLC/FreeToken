@@ -30,7 +30,6 @@ from pathlib import Path
 from benchmarks.inferswarm_76 import (
     CAPTURE_POSITIONS,
     GENERATED_TOKENS,
-    load_corpus,
     verify_case_identity,
 )
 
@@ -50,6 +49,8 @@ def main(argv=None) -> int:
     parser.add_argument("--model", required=True)
     parser.add_argument("--plan", required=True)
     parser.add_argument("--corpus", required=True)
+    parser.add_argument("--resolve-corpus", default=None,
+                        help="full calibration corpus for identity-only subsets")
     parser.add_argument("--case-ids", default=None)
     parser.add_argument("--last-stage-host", default="10.0.0.219")
     parser.add_argument("--last-stage-port", type=int, default=18485)
@@ -66,11 +67,8 @@ def main(argv=None) -> int:
         print(json.dumps({"status": "BLOCKED_DIRTY_SOURCE"}))
         return 2
 
-    raw = json.loads(Path(args.corpus).read_text())
-    if isinstance(raw, list):
-        cases = [verify_case_identity(row) for row in raw]
-    else:
-        cases = load_corpus(args.corpus)
+    from benchmarks.inferswarm_76.reference_runner import resolve_cases
+    cases = resolve_cases(args.corpus, args.resolve_corpus)
     if args.case_ids:
         wanted = set(args.case_ids.split(","))
         cases = [c for c in cases if c["case_id"] in wanted]

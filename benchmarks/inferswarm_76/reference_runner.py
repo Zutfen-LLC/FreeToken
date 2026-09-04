@@ -30,9 +30,44 @@ from benchmarks.inferswarm_76 import (
     CAPTURE_POSITIONS,
     GENERATED_TOKENS,
     RUNTIME_CAPACITY_TOKENS,
-    load_corpus,
     verify_case_identity,
 )
+
+
+def verify_subset_row(row: dict) -> dict:
+    """Identity check for a subset-manifest row (no text fields)."""
+    for field in ("case_id", "case_sha256", "prompt_sha256",
+                  "token_ids_sha256"):
+        if field not in row:
+            raise SystemExit(f"subset row missing {field}")
+    return row
+
+
+def resolve_cases(corpus_path: str, resolve_corpus: str | None) -> list[dict]:
+    """Load case rows from a corpus manifest, raw list, or identity-only
+    subset (resolved against the full corpus via hash cross-check)."""
+    raw = json.loads(Path(corpus_path).read_text())
+    if isinstance(raw, list):
+        return [verify_case_identity(row) for row in raw]
+    corpus_cases = raw.get("cases")
+    if corpus_cases and "prompt_text" in corpus_cases[0]:
+        return [verify_case_identity(row) for row in corpus_cases]
+    # identity-only subset manifest (e.g. sentinel-subset.json): rows carry
+    # case_id/case_sha256/prompt_sha256/token_ids_sha256 but no text;
+    # resolve them against the full calibration corpus.
+    if resolve_corpus is None:
+        raise SystemExit("identity-only corpus requires --resolve-corpus")
+    full = json.loads(Path(resolve_corpus).read_text())
+    by_id = {row["case_id"]: verify_case_identity(row) for row in full["cases"]}
+    cases = []
+    for row in corpus_cases:
+        wanted = verify_subset_row(row)
+        resolved = by_id[row["case_id"]]
+        for field in ("case_sha256", "prompt_sha256", "token_ids_sha256"):
+            if wanted[field] != resolved[field]:
+                raise SystemExit(f"{row['case_id']}: subset {field} mismatch")
+        cases.append(resolved)
+    return cases
 
 
 def _producer(repo: Path) -> dict:
@@ -50,6 +85,8 @@ def main(argv=None) -> int:
     parser.add_argument("--model", required=True)
     parser.add_argument("--corpus", required=True,
                         help="JSON file: corpus manifest OR a list of case rows")
+    parser.add_argument("--resolve-corpus", default=None,
+                        help="full calibration corpus for identity-only subsets")
     parser.add_argument("--case-ids", default=None,
                         help="comma-separated subset of case ids to run")
     parser.add_argument("--out-dir", required=True)
@@ -68,11 +105,7 @@ def main(argv=None) -> int:
         print(json.dumps({"status": "BLOCKED_DIRTY_SOURCE"}))
         return 2
 
-    raw = json.loads(Path(args.corpus).read_text())
-    if isinstance(raw, list):
-        cases = [verify_case_identity(row) for row in raw]
-    else:
-        cases = load_corpus(args.corpus)
+    cases = resolve_cases(args.corpus, args.resolve_corpus)
     if args.case_ids:
         wanted = set(args.case_ids.split(","))
         cases = [c for c in cases if c["case_id"] in wanted]
