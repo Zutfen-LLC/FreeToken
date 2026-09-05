@@ -8,10 +8,9 @@ last-stage service. Differences (all evidence-side, no execution math):
   runner sets ``capture_step`` on every decision, so the file index IS
   the decision index) with sha256 + element count + a frozen-rule
   executor proof returned in the TOKEN_RESULT response;
-- ``--allow-producer`` records the #88 frozen producer explicitly (the
-  plan file carries the historical R6 producer; #88 is an authorized
-  execution campaign under a NEW frozen producer derived from the same
-  base).
+- the external `--expected-producer-sha` is checked against a clean running
+  tree before any CUDA initialization; the historical plan producer is retained
+  only as explicit issue-97 override provenance.
 
 The service speaks the same request ops as the #76 service:
   CASE_BEGIN {case_id}     -> swaps in a fresh sink for the case
@@ -60,15 +59,27 @@ def serve(
     gpu_uuid: str,
     diagnostic: bool,
     ready_file: str | None = None,
-    allow_producer: str | None = None,
     out_dir: str,
+    expected_producer_sha: str,
     checkpoint_sha256: str,
     model_revision: str,
 ) -> None:
-    from benchmarks.inferswarm_97 import frozen_subject_record
+    from benchmarks.inferswarm_97 import frozen_subject_record, require_producer_identity
     subject = frozen_subject_record(
         checkpoint_sha256=checkpoint_sha256, model_revision=model_revision
     )
+    repo_root = Path(__file__).resolve().parents[2]
+    producer = require_producer_identity(repo_root, expected_producer_sha)
+    plan = json.loads(Path(participant_plan).read_text())
+    plan_producer = plan.get("provenance", {}).get("r6", {}).get("producer_sha")
+    producer_check = {
+        "mode": "EXPLICIT_OVERRIDE_ISSUE97_EXECUTION" if plan_producer != producer["commit"] else "PLAN_FROZEN",
+        "plan_frozen_producer": plan_producer,
+        "running_producer": producer["commit"],
+        "expected_producer": expected_producer_sha,
+        "reason": "issue #97 externally pinned producer supersedes the historical R6 plan producer" if plan_producer != producer["commit"] else "plan producer matches the externally pinned issue #97 producer",
+    }
+
     os.environ["CUDA_VISIBLE_DEVICES"] = gpu_uuid
     import torch
 
@@ -78,35 +89,6 @@ def serve(
     if try_get_tp_info() is None:
         set_tp_info(rank=0, size=1)
     set_rope_device(torch.device("cuda:0"))
-
-    repo_root = Path(__file__).resolve().parents[2]
-    running_sha = subprocess.check_output(
-        ["git", "-c", f"safe.directory={repo_root}", "-C", str(repo_root),
-         "rev-parse", "HEAD"], text=True,
-    ).strip()
-    plan = json.loads(Path(participant_plan).read_text())
-    plan_producer = plan.get("provenance", {}).get("r6", {}).get("producer_sha")
-    if plan_producer and running_sha != plan_producer:
-        if allow_producer and allow_producer == running_sha:
-            producer_check = {
-                "mode": "EXPLICIT_OVERRIDE_ISSUE97_EXECUTION",
-                "plan_frozen_producer": plan_producer,
-                "running_producer": running_sha,
-                "reason": "issue #97 authorizes execution campaign under a "
-                          "new frozen v4 producer derived from the accepted base",
-            }
-        else:
-            raise RuntimeError(
-                f"last-stage running producer {running_sha!r} != plan's frozen "
-                f"producer {plan_producer!r}; pass --allow-producer "
-                f"{running_sha!r} for the #97 execution campaign"
-            )
-    else:
-        producer_check = {
-            "mode": "PLAN_FROZEN",
-            "plan_frozen_producer": plan_producer,
-            "running_producer": running_sha,
-        }
 
     from benchmarks.inferswarm_76.capture import RowPruningSink, arm_full_capture
     from benchmarks.inferswarm_r6.stage_runtime import GemmaDenseStage
@@ -156,7 +138,7 @@ def serve(
             "gpu_uuid": gpu_uuid,
             "listen": [listen_host, listen_port],
             "pid": os.getpid(),
-            "producer_freetoken_sha": running_sha,
+            "producer_freetoken_sha": producer["commit"],
             "subject": subject,
             "producer_check": producer_check,
             "runtime": runtime.report("P4_ready_for_resident_execution"),
@@ -300,7 +282,7 @@ def serve(
                 "/tmp/i97-last-stage.json")).write_text(json.dumps({
                     "schema": "inferswarm.issue97.last-stage-final-report/1",
                     "plan_digest": plan.get("digest"),
-                    "producer_freetoken_sha": running_sha,
+                    "producer_freetoken_sha": producer["commit"],
                     "subject": subject,
                     "producer_check": producer_check,
                     "stats": stats,
@@ -320,11 +302,11 @@ def main(argv=None) -> int:
     parser.add_argument("--gpu-uuid", required=True)
     parser.add_argument("--diagnostic", action="store_true")
     parser.add_argument("--ready-file")
-    parser.add_argument("--allow-producer", default=None)
     parser.add_argument("--out-dir", required=True,
                         help="root dir for per-case capture bundles + rows")
     parser.add_argument("--checkpoint-sha256", required=True)
     parser.add_argument("--model-revision", required=True)
+    parser.add_argument("--expected-producer-sha", required=True)
     args = parser.parse_args(argv)
     serve(
         listen_host=args.listen_host,
@@ -334,8 +316,8 @@ def main(argv=None) -> int:
         gpu_uuid=args.gpu_uuid,
         diagnostic=args.diagnostic,
         ready_file=args.ready_file,
-        allow_producer=args.allow_producer,
         out_dir=args.out_dir,
+        expected_producer_sha=args.expected_producer_sha,
         checkpoint_sha256=args.checkpoint_sha256,
         model_revision=args.model_revision,
     )

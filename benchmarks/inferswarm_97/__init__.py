@@ -105,15 +105,30 @@ DECISION_DOMAIN_CONSTRUCTION = "reference-top-1024-with-cutoff-ties/1"
 DECISION_DOMAIN_K = 1024
 
 
-def producer_identity(repo: Path) -> dict[str, Any]:
-    """Exact producer/device identity for applicability records."""
+def require_producer_identity(repo: Path, expected_sha: str | None) -> dict[str, Any]:
+    """Fail closed unless this clean tree is the externally frozen producer.
+
+    ``expected_sha`` belongs in InferSwarm's retained execution authority, not
+    in the producer source.  This check intentionally runs before callers
+    import torch or construct a runtime.
+    """
+    if not isinstance(expected_sha, str) or len(expected_sha) != 40 or any(
+        char not in "0123456789abcdef" for char in expected_sha
+    ):
+        raise ValueError("issue #97 requires a 40-character lowercase expected producer SHA")
     sha = subprocess.check_output(
         ["git", "-c", f"safe.directory={repo}", "-C", str(repo),
          "rev-parse", "HEAD"], text=True).strip()
     status = subprocess.check_output(
         ["git", "-c", f"safe.directory={repo}", "-C", str(repo),
          "status", "--porcelain"], text=True)
-    return {"commit": sha, "dirty": bool(status)}
+    if status:
+        raise ValueError("issue #97 producer source is dirty")
+    if sha != expected_sha:
+        raise ValueError(
+            f"issue #97 producer HEAD {sha!r} does not equal expected SHA {expected_sha!r}"
+        )
+    return {"commit": sha, "dirty": False, "expected_commit": expected_sha}
 
 
 def frozen_argmax_row(row: Sequence[float]) -> tuple[int, float]:

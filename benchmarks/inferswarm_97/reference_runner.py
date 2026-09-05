@@ -40,7 +40,7 @@ from benchmarks.inferswarm_97 import (
     executor_rule_proof,
     frozen_subject_record,
     prefix_sha256,
-    producer_identity,
+    require_producer_identity,
     validate_campaign_case_ids,
 )
 
@@ -68,23 +68,20 @@ def main(argv=None) -> int:
     parser.add_argument("--tag", required=True)
     parser.add_argument("--gpu", default="0")
     parser.add_argument("--attempt-id", required=True)
+    parser.add_argument("--expected-producer-sha", required=True)
     parser.add_argument("--checkpoint-sha256", required=True)
     parser.add_argument("--model-revision", required=True)
     args = parser.parse_args(argv)
 
-    import os
-
-    os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
     repo = Path(__file__).resolve().parents[2]
-
-    producer = producer_identity(repo)
-    if producer["dirty"]:
-        print(json.dumps({"status": "BLOCKED_DIRTY_SOURCE"}))
-        return 2
-
+    producer = require_producer_identity(repo, args.expected_producer_sha)
     subject = frozen_subject_record(
         checkpoint_sha256=args.checkpoint_sha256, model_revision=args.model_revision
     )
+
+    import os
+
+    os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
     cases = validate_campaign_case_ids(resolve_cases(args.corpus, args.resolve_corpus))
     if args.case_ids:
         wanted = set(args.case_ids.split(","))
