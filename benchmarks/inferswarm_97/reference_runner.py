@@ -33,13 +33,15 @@ from benchmarks.inferswarm_76 import verify_case_identity
 from benchmarks.inferswarm_76.reference_runner import resolve_cases
 from benchmarks.inferswarm_97 import (
     ARGMAX_TIE_BREAK_IDENTITY,
+    CONTRACT_ID,
     DECISION_DOMAIN_CONSTRUCTION,
     GENERATED_TOKENS,
-    V4_CONTRACT_ID,
     decision_domain_row,
     executor_rule_proof,
+    frozen_subject_record,
     prefix_sha256,
     producer_identity,
+    validate_campaign_case_ids,
 )
 
 
@@ -66,6 +68,8 @@ def main(argv=None) -> int:
     parser.add_argument("--tag", required=True)
     parser.add_argument("--gpu", default="0")
     parser.add_argument("--attempt-id", required=True)
+    parser.add_argument("--checkpoint-sha256", required=True)
+    parser.add_argument("--model-revision", required=True)
     args = parser.parse_args(argv)
 
     import os
@@ -78,7 +82,10 @@ def main(argv=None) -> int:
         print(json.dumps({"status": "BLOCKED_DIRTY_SOURCE"}))
         return 2
 
-    cases = resolve_cases(args.corpus, args.resolve_corpus)
+    subject = frozen_subject_record(
+        checkpoint_sha256=args.checkpoint_sha256, model_revision=args.model_revision
+    )
+    cases = validate_campaign_case_ids(resolve_cases(args.corpus, args.resolve_corpus))
     if args.case_ids:
         wanted = set(args.case_ids.split(","))
         cases = [c for c in cases if c["case_id"] in wanted]
@@ -204,7 +211,8 @@ def main(argv=None) -> int:
         manifest = sink.save(str(case_dir), args.tag)
         summary = {
             "schema": "inferswarm.issue97.v4-reference-case/1",
-            "contract_id": V4_CONTRACT_ID,
+            "contract_id": CONTRACT_ID,
+            "subject": subject,
             "attempt_id": args.attempt_id,
             "case_id": case["case_id"],
             "case_sha256": case["case_sha256"],
@@ -236,7 +244,8 @@ def main(argv=None) -> int:
 
     index = {
         "schema": "inferswarm.issue97.v4-reference-run-index/1",
-        "contract_id": V4_CONTRACT_ID,
+        "contract_id": CONTRACT_ID,
+        "subject": subject,
         "attempt_id": args.attempt_id,
         "producer": producer,
         "gpu_uuid": gpu_uuid,

@@ -53,13 +53,43 @@ from typing import Any, Sequence
 METHODOLOGY_COMMIT = "e12a6e3d5589044bace0c9555c0d364fb57a6229"
 V4_ISSUE = 97
 CONTRACT_ID = "inferswarm.gemma4-prediction-aligned-qualification/1"
-V4_CONTRACT_ID = "inferswarm.issue97.v4-physical-calibration/1"
 
 # Frozen subject (issue #86 §"Qualification subject" == issue #88 §"Qualification subject").
 EXPECTED_CHECKPOINT_SHA256 = (
     "5a84cb313260ac447237b890387116dfa8682e49a6b44bc585ae8353abbff18d"
 )
 MODEL_REVISION = "707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7"
+
+
+def validate_campaign_case_ids(cases: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Reject holdout, historical, and unversioned cases before CUDA work.
+
+    Issue #97 permits only the public c95 statistical corpus and p95 stress
+    pool through the physical runners.  The h95 holdout has a separate,
+    explicitly authorized path and is never accepted here.
+    """
+    checked = list(cases)
+    for case in checked:
+        case_id = case.get("case_id") if isinstance(case, dict) else None
+        if not isinstance(case_id, str) or not case_id.startswith(("c95-", "p95-")):
+            raise ValueError(
+                f"issue #97 calibration accepts only c95-/p95- case IDs, got {case_id!r}"
+            )
+    return checked
+
+
+def frozen_subject_record(*, checkpoint_sha256: str, model_revision: str) -> dict[str, str]:
+    """Validate and serialize the immutable v4 physical subject identity."""
+    if checkpoint_sha256 != EXPECTED_CHECKPOINT_SHA256:
+        raise ValueError("issue #97 checkpoint SHA-256 does not match the frozen subject")
+    if model_revision != MODEL_REVISION:
+        raise ValueError("issue #97 model revision does not match the frozen subject")
+    return {
+        "contract_id": CONTRACT_ID,
+        "methodology_commit": METHODOLOGY_COMMIT,
+        "checkpoint_sha256": EXPECTED_CHECKPOINT_SHA256,
+        "model_revision": MODEL_REVISION,
+    }
 
 GENERATED_TOKENS = 8
 CAPTURE_POSITIONS = (0, 1, 3, 7)
@@ -302,7 +332,7 @@ def build_reference_case_summary(
         raise ValueError("decision rows must be emitted exactly once per index")
     return {
         "schema": "inferswarm.issue97.v4-reference-case/1",
-        "contract_id": V4_CONTRACT_ID,
+        "contract_id": CONTRACT_ID,
         "attempt_id": attempt_id,
         "case_id": case["case_id"],
         "case_sha256": case["case_sha256"],
@@ -367,7 +397,7 @@ def build_chain_case_summary(
             )
     return {
         "schema": "inferswarm.issue97.v4-chain-case/1",
-        "contract_id": V4_CONTRACT_ID,
+        "contract_id": CONTRACT_ID,
         "attempt_id": attempt_id,
         "case_id": case["case_id"],
         "case_sha256": case["case_sha256"],

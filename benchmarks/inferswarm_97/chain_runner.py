@@ -32,20 +32,26 @@ from benchmarks.inferswarm_76 import verify_case_identity
 from benchmarks.inferswarm_76.reference_runner import resolve_cases
 from benchmarks.inferswarm_97 import (
     ARGMAX_TIE_BREAK_IDENTITY,
+    CONTRACT_ID,
     GENERATED_TOKENS,
-    V4_CONTRACT_ID,
     assert_teacher_forcing,
     build_chain_case_summary,
     executor_rule_proof,
+    frozen_subject_record,
     prefix_sha256,
     producer_identity,
+    validate_campaign_case_ids,
 )
 
 
-def _load_reference_case(path: Path, case: dict) -> dict:
+def _load_reference_case(path: Path, case: dict, subject: dict) -> dict:
     reference = json.loads(path.read_text())
     if reference.get("schema") != "inferswarm.issue97.v4-reference-case/1":
         raise SystemExit(f"{path}: not a v4 reference case summary")
+    if reference.get("contract_id") != CONTRACT_ID:
+        raise SystemExit(f"{path}: reference accepted-contract mismatch")
+    if reference.get("subject") != subject:
+        raise SystemExit(f"{path}: reference frozen-subject mismatch")
     for field in ("case_id", "case_sha256", "prompt_sha256",
                   "token_ids_sha256"):
         if reference[field] != case[field]:
@@ -70,6 +76,8 @@ def main(argv=None) -> int:
     parser.add_argument("--out-dir", required=True)
     parser.add_argument("--tag", required=True)
     parser.add_argument("--attempt-id", required=True)
+    parser.add_argument("--checkpoint-sha256", required=True)
+    parser.add_argument("--model-revision", required=True)
     args = parser.parse_args(argv)
 
     import multiprocessing
@@ -80,7 +88,10 @@ def main(argv=None) -> int:
         print(json.dumps({"status": "BLOCKED_DIRTY_SOURCE"}))
         return 2
 
-    cases = resolve_cases(args.corpus, args.resolve_corpus)
+    subject = frozen_subject_record(
+        checkpoint_sha256=args.checkpoint_sha256, model_revision=args.model_revision
+    )
+    cases = validate_campaign_case_ids(resolve_cases(args.corpus, args.resolve_corpus))
     if args.case_ids:
         wanted = set(args.case_ids.split(","))
         cases = [c for c in cases if c["case_id"] in wanted]
@@ -133,7 +144,7 @@ def main(argv=None) -> int:
             case_dir.mkdir(parents=True, exist_ok=True)
             ref_path = (Path(args.reference_dir) / case["case_id"] /
                         f"reference-case-{args.reference_tag}.json")
-            reference = _load_reference_case(ref_path, case)
+            reference = _load_reference_case(ref_path, case, subject)
             ref_decisions = sorted(
                 reference["decisions"], key=lambda d: d["decision_index"])
             forced = list(reference["generated_token_ids"])
@@ -248,6 +259,7 @@ def main(argv=None) -> int:
                 attempt_id=args.attempt_id,
                 wall_seconds=time.perf_counter() - t0,
             )
+            summary["subject"] = subject
             path = case_dir / f"chain-case-{args.tag}.json"
             if path.exists():
                 raise SystemExit(f"refusing to overwrite {path}")
@@ -259,7 +271,8 @@ def main(argv=None) -> int:
 
         index = {
             "schema": "inferswarm.issue97.v4-chain-run-index/1",
-            "contract_id": V4_CONTRACT_ID,
+            "contract_id": CONTRACT_ID,
+            "subject": subject,
             "attempt_id": args.attempt_id,
             "producer": producer,
             "tag": args.tag,

@@ -62,7 +62,13 @@ def serve(
     ready_file: str | None = None,
     allow_producer: str | None = None,
     out_dir: str,
+    checkpoint_sha256: str,
+    model_revision: str,
 ) -> None:
+    from benchmarks.inferswarm_97 import frozen_subject_record
+    subject = frozen_subject_record(
+        checkpoint_sha256=checkpoint_sha256, model_revision=model_revision
+    )
     os.environ["CUDA_VISIBLE_DEVICES"] = gpu_uuid
     import torch
 
@@ -151,6 +157,7 @@ def serve(
             "listen": [listen_host, listen_port],
             "pid": os.getpid(),
             "producer_freetoken_sha": running_sha,
+            "subject": subject,
             "producer_check": producer_check,
             "runtime": runtime.report("P4_ready_for_resident_execution"),
         }))
@@ -294,6 +301,7 @@ def serve(
                     "schema": "inferswarm.issue97.last-stage-final-report/1",
                     "plan_digest": plan.get("digest"),
                     "producer_freetoken_sha": running_sha,
+                    "subject": subject,
                     "producer_check": producer_check,
                     "stats": stats,
                     "runtime": runtime.report("P5_post_run"),
@@ -315,6 +323,8 @@ def main(argv=None) -> int:
     parser.add_argument("--allow-producer", default=None)
     parser.add_argument("--out-dir", required=True,
                         help="root dir for per-case capture bundles + rows")
+    parser.add_argument("--checkpoint-sha256", required=True)
+    parser.add_argument("--model-revision", required=True)
     args = parser.parse_args(argv)
     serve(
         listen_host=args.listen_host,
@@ -326,6 +336,8 @@ def main(argv=None) -> int:
         ready_file=args.ready_file,
         allow_producer=args.allow_producer,
         out_dir=args.out_dir,
+        checkpoint_sha256=args.checkpoint_sha256,
+        model_revision=args.model_revision,
     )
     return 0
 
