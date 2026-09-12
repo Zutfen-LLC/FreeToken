@@ -32,13 +32,16 @@ from freetoken.research.r4_wire import (
 )
 
 WIRE_PROTOCOL_ID = "inferswarm.r4.boundary-wire/1"
-# Remediation #153: the wire service's admitted per-call row capacity is
-# derived from the same frozen boundary contract as the chain's chunk
-# policy (strategy PREFILL_CHUNK), not an independent hand literal — the
-# chain can never send a chunk the service rejects, and neither can drift.
-from benchmarks.inferswarm_r6.stage_chain import admitted_prefill_rows
-
-MAX_TOKEN_COUNT = admitted_prefill_rows()  # strategy PREFILL_CHUNK contract
+# Remediation #153 (corrected to Branch B): the wire service's admitted
+# per-call row capacity is derived from the same frozen boundary contract
+# as the chain's chunk policy (strategy PREFILL_CHUNK), not an independent
+# hand literal — the chain can never send a chunk the service rejects, and
+# neither can drift.  The capacity VALUE is unchanged (64): the frozen
+# boundary geometry (prefill_bytes, activation staging buffers) and the
+# frozen r4.boundary-wire/1 contract both admit at most 64 rows per call.
+# Derivation direction: strategy -> stage_chain -> this service (strategy
+# owns the frozen constant; no module imports this service's capacity).
+from benchmarks.inferswarm_r6.strategy import PREFILL_CHUNK as MAX_TOKEN_COUNT
 ROW_WIDTH = 3840
 BOUNDARY_CONTRACT = {
     "dtype": "bfloat16",

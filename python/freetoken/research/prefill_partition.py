@@ -1,12 +1,22 @@
 """Generic extend-prefill execution-unit partition policy.
 
-Issue #117 Arm-C remediation (InferSwarm #153): when one logical
-extend-prefill unit already fits the execution contract's admitted
-maximum row count, it must execute as ONE semantic backend call rather
-than being subdivided merely because an internal default chunk size is
-smaller.  The #137 corrected intervention demonstrated that splitting a
-legal 53-row unit into ``32 + 21`` is sufficient to destabilize the
-committed token while the single-chunk arm is deterministic.
+Issue #117 Arm-C remediation (InferSwarm #153, corrected classification:
+``BACKEND_REQUIRES_MULTI_CHUNK``).  The admitted capacity is the FROZEN
+boundary contract's per-call row limit (e.g. the R6 dense strategy's
+``PREFILL_CHUNK``).  Semantics:
+
+- a logical unit at or below the admitted capacity must execute as ONE
+  semantic backend call — subdividing a legal unit is policy, not
+  necessity, and the #137 corrected intervention (probe C2) demonstrated
+  that splitting a legal 53-row unit into ``32 + 21`` is sufficient to
+  destabilize the committed token while the single-chunk arm is
+  deterministic;
+- a logical unit ABOVE the admitted capacity partitions deterministically
+  at the capacity — this is REQUIRED, not optional: the frozen boundary
+  geometry and the frozen wire contract both reject a call carrying more
+  than the admitted rows, so e.g. the accepted 65-67-row Arm-C failing
+  units must remain ``64 + remainder`` under any admissible unchanged
+  contract.
 
 This module is deliberately model-opaque and CPU-pure (stdlib only): it
 knows row counts and an admitted capacity, nothing else.  The capacity
@@ -22,12 +32,18 @@ Semantics (frozen by tests/test_issue117_arm_c_remediation.py):
   backend call.
 - ``n > c`` partitions deterministically at the admitted capacity:
   full ``c``-row chunks followed by the remainder — the pre-existing
-  over-limit semantics, unchanged.
+  over-limit semantics, unchanged and contract-required.
 - Zero/negative/non-integer row counts or capacities fail closed.
 - Every returned partition list satisfies the coverage invariants
   (ordered, non-overlapping, complete, each logical row exactly once);
   ``assert_partition_invariants`` re-derives them from the returned
   value so callers and tests can police any partition, not just ours.
+
+NOTE: this policy does NOT remediate the numerical instability of the
+required multi-chunk extend path for over-limit units — that is the
+retained #137 necessary-path finding, and remediation of it requires a
+deeper authority than InferSwarm #153 (see the #153 terminal
+``ISSUE117_ARM_C_REMEDIATION_BLOCKED``).
 """
 
 from __future__ import annotations

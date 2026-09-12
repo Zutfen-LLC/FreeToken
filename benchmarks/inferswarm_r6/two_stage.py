@@ -23,7 +23,12 @@ from benchmarks.inferswarm_r6.stage_runtime import (
     HIDDEN_SIZE,
     GemmaDenseStage,
 )
-from benchmarks.inferswarm_r6.stage_chain import admitted_prefill_rows
+# Remediation #153 (corrected to Branch B): the prefill chunk capacity
+# comes from the frozen boundary contract (strategy PREFILL_CHUNK) via the
+# generic partition policy — the derivation direction is strategy ->
+# runtime modules; the wire service derives from the same constant, and no
+# runtime module imports the wire service.
+from benchmarks.inferswarm_r6.strategy import PREFILL_CHUNK
 from freetoken.research.prefill_partition import plan_prefill_partitions
 
 
@@ -223,19 +228,21 @@ class GemmaTwoStageRuntime:
         self.stage_a.recv()
         self.stage_b.recv()
         # Prefill in chunks bounded by the frozen boundary geometry.
-        # Remediated policy (#153): a logical unit that fits the admitted
-        # capacity is one call; over-limit units partition at the capacity.
-        # (The pre-remediation hand default of 32 subdivided legal units
-        # unnecessarily — the #137-demonstrated instability class.)
+        # Remediated policy (#153, Branch B BACKEND_REQUIRES_MULTI_CHUNK):
+        # a logical unit that fits the admitted capacity is one call;
+        # over-limit units partition at the capacity — REQUIRED by the
+        # frozen 64-row boundary/wire contract, not optional.  (The
+        # pre-remediation hand default of 32 subdivided legal units
+        # unnecessarily — the #137 C2-demonstrated instability class.)
         partitions = plan_prefill_partitions(
-            len(prompt_token_ids), admitted_prefill_rows()
+            len(prompt_token_ids), PREFILL_CHUNK
         )
         position = 0
         token_id = None
         prefill_ns = 0
         total = len(prompt_token_ids)
         for _offset, count in partitions:
-            t = time.perf_counter()
+            t = time.perf_counter_ns()
             hidden, _ = (
                 self.stage_a.request(
                     {
@@ -249,7 +256,7 @@ class GemmaTwoStageRuntime:
             token_id = self.stage_b.request(
                 {"op": "PREFILL", "hidden": hidden, "position": position}
             )["token_id"]
-            prefill_ns += time.perf_counter() - t
+            prefill_ns += time.perf_counter_ns() - t
             position += count
         ttft_ns = time.perf_counter_ns() - started
         generated = []
