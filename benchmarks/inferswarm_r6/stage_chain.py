@@ -23,6 +23,41 @@ from benchmarks.inferswarm_r6.stage_runtime import (
     HIDDEN_SIZE,
 )
 
+# Issue #117 Arm-C remediation (InferSwarm #153, corrected to Branch B
+# BACKEND_REQUIRES_MULTI_CHUNK): prefill chunk policy is derived from the
+# frozen boundary contract's admitted capacity, not from a hand literal at
+# this call site.  ``admitted_prefill_rows()`` reads the frozen strategy
+# constant (PREFILL_CHUNK), so the chain, the wire service, and the
+# strategy can never disagree about how many rows one backend call may
+# legally carry.  UNCHANGED for the accepted failing population: under the
+# frozen 64-row boundary/wire contract, 65-67-row logical units MUST
+# remain multi-chunk (64 + remainder) — the #137-demonstrated instability
+# of that extend path is NOT remediated here (see the #153 record:
+# ISSUE117_ARM_C_REMEDIATION_BLOCKED).
+from freetoken.research.prefill_partition import (
+    admitted_capacity_from_boundary_contract,
+    plan_prefill_partitions,
+)
+
+
+def admitted_prefill_rows() -> int:
+    """The admitted per-call prefill row capacity for this chain runtime.
+
+    Single source: the frozen strategy boundary-geometry constant.  The
+    capacity bounds one legal backend call: a logical unit at or below it
+    is ONE call (never subdivided — the #137 C2-demonstrated unnecessary
+    partition class); a logical unit ABOVE it (e.g. the accepted 65-67-row
+    failing units) is REQUIRED to partition at the capacity by the frozen
+    boundary/wire contract, which admits at most ``PREFILL_CHUNK`` rows
+    per call.  Direct and ordinary invocation paths both pass through
+    ``GemmaStageChainRuntime.generate``, so both consume this same policy.
+    """
+    from benchmarks.inferswarm_r6.strategy import PREFILL_CHUNK
+
+    return admitted_capacity_from_boundary_contract(
+        {"prefill_chunk_rows": PREFILL_CHUNK}
+    )
+
 
 class StageClient:
     """Control pipe to one spawn-isolated local stage process."""
@@ -307,12 +342,20 @@ class GemmaStageChainRuntime:
             else:
                 stage.send({"op": "RESET"})
                 stage.recv()
-        chunk = 64  # single-chunk canonical replays; see strategy PREFILL_CHUNK
+        # Remediated chunk policy (#153, Branch B): one logical prefill
+        # unit that fits the admitted capacity stays ONE backend call;
+        # over-limit inputs partition deterministically at the same
+        # admitted capacity — REQUIRED by the frozen boundary/wire
+        # contract (65-67-row units remain 64 + remainder; their extend
+        # instability is NOT remediated here).  Both properties are
+        # machine-checked in test_issue117_arm_c_remediation.
+        partitions = plan_prefill_partitions(
+            len(prompt_token_ids), admitted_prefill_rows()
+        )
+        total = len(prompt_token_ids)
         position = 0
         token_id = None
-        total = len(prompt_token_ids)
-        while position < total:
-            count = min(chunk, total - position)
+        for _offset, count in partitions:
             _, token_id = self._chain_prefill(
                 prompt_token_ids[position : position + count], position, count
             )

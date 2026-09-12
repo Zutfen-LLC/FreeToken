@@ -23,6 +23,13 @@ from benchmarks.inferswarm_r6.stage_runtime import (
     HIDDEN_SIZE,
     GemmaDenseStage,
 )
+# Remediation #153 (corrected to Branch B): the prefill chunk capacity
+# comes from the frozen boundary contract (strategy PREFILL_CHUNK) via the
+# generic partition policy — the derivation direction is strategy ->
+# runtime modules; the wire service derives from the same constant, and no
+# runtime module imports the wire service.
+from benchmarks.inferswarm_r6.strategy import PREFILL_CHUNK
+from freetoken.research.prefill_partition import plan_prefill_partitions
 
 
 class _StageProcessClient:
@@ -221,13 +228,20 @@ class GemmaTwoStageRuntime:
         self.stage_a.recv()
         self.stage_b.recv()
         # Prefill in chunks bounded by the frozen boundary geometry.
-        chunk = 32
+        # Remediated policy (#153, Branch B BACKEND_REQUIRES_MULTI_CHUNK):
+        # a logical unit that fits the admitted capacity is one call;
+        # over-limit units partition at the capacity — REQUIRED by the
+        # frozen 64-row boundary/wire contract, not optional.  (The
+        # pre-remediation hand default of 32 subdivided legal units
+        # unnecessarily — the #137 C2-demonstrated instability class.)
+        partitions = plan_prefill_partitions(
+            len(prompt_token_ids), PREFILL_CHUNK
+        )
         position = 0
         token_id = None
         prefill_ns = 0
         total = len(prompt_token_ids)
-        while position < total:
-            count = min(chunk, total - position)
+        for _offset, count in partitions:
             t = time.perf_counter_ns()
             hidden, _ = (
                 self.stage_a.request(
