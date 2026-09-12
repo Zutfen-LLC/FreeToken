@@ -23,6 +23,34 @@ from benchmarks.inferswarm_r6.stage_runtime import (
     HIDDEN_SIZE,
 )
 
+# Issue #117 Arm-C remediation (InferSwarm #153): prefill chunk policy is
+# derived from the frozen boundary contract's admitted capacity, not from a
+# hand literal at this call site.  ``admitted_prefill_rows()`` reads the
+# frozen strategy constant (PREFILL_CHUNK), so the chain, the wire service,
+# and the strategy can never disagree about how many rows one backend call
+# may legally carry.
+from freetoken.research.prefill_partition import (
+    admitted_capacity_from_boundary_contract,
+    plan_prefill_partitions,
+)
+
+
+def admitted_prefill_rows() -> int:
+    """The admitted per-call prefill row capacity for this chain runtime.
+
+    Single source: the frozen strategy boundary-geometry constant.  A legal
+    logical unit at or below this capacity must stay ONE backend call
+    (multi-chunk extend-prefill over resident KV is the #137-demonstrated
+    instability; the KV-extend path chunk 2+ is the known-broken incremental
+    append).  Direct and ordinary invocation paths both pass through
+    ``GemmaStageChainRuntime.generate``, so both consume this same policy.
+    """
+    from benchmarks.inferswarm_r6.strategy import PREFILL_CHUNK
+
+    return admitted_capacity_from_boundary_contract(
+        {"prefill_chunk_rows": PREFILL_CHUNK}
+    )
+
 
 class StageClient:
     """Control pipe to one spawn-isolated local stage process."""
@@ -307,12 +335,17 @@ class GemmaStageChainRuntime:
             else:
                 stage.send({"op": "RESET"})
                 stage.recv()
-        chunk = 64  # single-chunk canonical replays; see strategy PREFILL_CHUNK
+        # Remediated chunk policy (#153): one logical prefill unit that fits
+        # the admitted capacity stays ONE backend call; over-limit inputs
+        # partition deterministically at the same admitted capacity.  Both
+        # properties are machine-checked in test_issue117_arm_c_remediation.
+        partitions = plan_prefill_partitions(
+            len(prompt_token_ids), admitted_prefill_rows()
+        )
+        total = len(prompt_token_ids)
         position = 0
         token_id = None
-        total = len(prompt_token_ids)
-        while position < total:
-            count = min(chunk, total - position)
+        for _offset, count in partitions:
             _, token_id = self._chain_prefill(
                 prompt_token_ids[position : position + count], position, count
             )

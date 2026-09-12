@@ -32,7 +32,13 @@ from freetoken.research.r4_wire import (
 )
 
 WIRE_PROTOCOL_ID = "inferswarm.r4.boundary-wire/1"
-MAX_TOKEN_COUNT = 64  # matches strategy PREFILL_CHUNK (single-chunk replays)
+# Remediation #153: the wire service's admitted per-call row capacity is
+# derived from the same frozen boundary contract as the chain's chunk
+# policy (strategy PREFILL_CHUNK), not an independent hand literal — the
+# chain can never send a chunk the service rejects, and neither can drift.
+from benchmarks.inferswarm_r6.stage_chain import admitted_prefill_rows
+
+MAX_TOKEN_COUNT = admitted_prefill_rows()  # strategy PREFILL_CHUNK contract
 ROW_WIDTH = 3840
 BOUNDARY_CONTRACT = {
     "dtype": "bfloat16",

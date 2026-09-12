@@ -23,6 +23,8 @@ from benchmarks.inferswarm_r6.stage_runtime import (
     HIDDEN_SIZE,
     GemmaDenseStage,
 )
+from benchmarks.inferswarm_r6.stage_chain import admitted_prefill_rows
+from freetoken.research.prefill_partition import plan_prefill_partitions
 
 
 class _StageProcessClient:
@@ -221,14 +223,19 @@ class GemmaTwoStageRuntime:
         self.stage_a.recv()
         self.stage_b.recv()
         # Prefill in chunks bounded by the frozen boundary geometry.
-        chunk = 32
+        # Remediated policy (#153): a logical unit that fits the admitted
+        # capacity is one call; over-limit units partition at the capacity.
+        # (The pre-remediation hand default of 32 subdivided legal units
+        # unnecessarily — the #137-demonstrated instability class.)
+        partitions = plan_prefill_partitions(
+            len(prompt_token_ids), admitted_prefill_rows()
+        )
         position = 0
         token_id = None
         prefill_ns = 0
         total = len(prompt_token_ids)
-        while position < total:
-            count = min(chunk, total - position)
-            t = time.perf_counter_ns()
+        for _offset, count in partitions:
+            t = time.perf_counter()
             hidden, _ = (
                 self.stage_a.request(
                     {
@@ -242,7 +249,7 @@ class GemmaTwoStageRuntime:
             token_id = self.stage_b.request(
                 {"op": "PREFILL", "hidden": hidden, "position": position}
             )["token_id"]
-            prefill_ns += time.perf_counter_ns() - t
+            prefill_ns += time.perf_counter() - t
             position += count
         ttft_ns = time.perf_counter_ns() - started
         generated = []
