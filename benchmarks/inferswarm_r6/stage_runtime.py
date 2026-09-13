@@ -526,6 +526,7 @@ class GemmaDenseStage:
     # instance (including minimal stubs built via object.__new__ in tests).
     _softcap_mode = "inplace"
     _phase_probe = None
+    _swa_session_allocated = 0  # SWA ownership frontier (#166); see below
     # #71 localization seam: optional CaptureSink. None (default) keeps the
     # execution path bit-identical to the pre-#71 code.
     _capture_sink: Any = None
@@ -772,6 +773,13 @@ class GemmaDenseStage:
             page_size=1,
             dtype=torch.bfloat16,
             device=self.device,
+            # +1 swa slot for the reserved 0 sentinel (#166): the SWA
+            # ownership lifecycle allocates one swa slot per used position,
+            # and a full-capacity session (max_seq_len positions) must not
+            # fail one slot short of the pool that has always been sized
+            # alongside it.  Same convention the scheduler path uses
+            # (rebuild_from_config: num_pages + 1 for the dummy page).
+            num_swa_tokens=self.max_seq_len + 1,
         )
         ctx.page_table = torch.arange(
             self.max_seq_len, dtype=torch.int32, device=self.device
@@ -895,7 +903,121 @@ class GemmaDenseStage:
     def reset_session_state(self) -> None:
         for tensor in _iter_pool_tensors(self.ctx.kv_cache):
             tensor.zero_()
+        # SWA ownership lifecycle (#166): the zero loop above also zeroes
+        # full_to_swa_index_mapping and _swa_free (they are top-level pool
+        # tensors) -- a zeroed free-list would hand out the reserved
+        # sentinel slot 0 on the next allocation.  Rebuild the allocator
+        # state to pristine AFTER the zeroes so a new session starts from
+        # exactly the __init__ ownership state (no inherited mapping, full
+        # free-list).  Non-SWA pools: no-op.
+        self._reset_swa_session_ownership()
         torch.cuda.synchronize(self.device)
+
+    # -- SWA session-ownership lifecycle (Issue #117 Arm-C remediation,
+    #    InferSwarm #166) ------------------------------------------------
+    #
+    # Phase-0 ownership inventory (mechanically verified; recorded in the
+    # #166 remediation record): the scheduler path owns the full->swa slot
+    # mapping lifecycle -- CacheManager.allocate_paged allocates the full
+    # pages of each chunk AND alloc_swa's their swa slots atomically BEFORE
+    # any store/gather (the attention backend translates the whole
+    # page-table range through the mapping in prepare_metadata),
+    # free_swa_out_of_window / cache_req return slots, and rebuild resets
+    # mapping + free-list together.  The standalone R6 stage path builds
+    # the same HybridSWAKVCache pool but never reaches that lifecycle: no
+    # CacheManager exists, so full_to_swa_index_mapping stayed at the
+    # all-zero sentinel, every SWA-layer KV store raced on swa slot 0, and
+    # every prefix read consumed slot-0 bytes (#157: chunk-2 nondeterminism,
+    # earliest varying boundary L0_kv_slice_post_write).
+    #
+    # This runtime owns ONE single-request session at a time (the page
+    # table is a fixed identity row; drivers call reset_session_state
+    # between sessions), so the correct lifecycle owner is the stage
+    # runtime itself, at the same points the scheduler uses: incremental
+    # allocation covering each chunk's full referenced range BEFORE the
+    # chunk executes, mapping persistence across chunks and decode,
+    # wholesale release on reset (reuse never inherits stale ownership),
+    # and fail-closed exhaustion.  No parallel allocator is built: the
+    # existing pool primitives (alloc_swa / swa_available_size /
+    # _init_swa_paged_state) are reused verbatim, and the incremental
+    # frontier mirrors CacheManager.allocate_paged's per-chunk granularity.
+
+    def _swa_pool(self):
+        pool = self.ctx.kv_cache
+        return pool if getattr(pool, "swa_paged", False) else None
+
+    def _reset_swa_session_ownership(self) -> None:
+        """Release ALL swa ownership of the finished session and start a
+        fresh lifecycle: dense mapping reset to the sentinel, free-list
+        restored whole (the #157-observed pristine __init__ state).  No
+        slot of the previous session can survive into reuse.  Idempotent;
+        no-op for non-SWA pools (a non-SWA execution owns no SWA state)."""
+        pool = self._swa_pool()
+        if pool is None:
+            self._swa_session_allocated = 0
+            return
+        pool._init_swa_paged_state()
+        self._swa_session_allocated = 0
+
+    def _ensure_swa_session_mapping(self, token_count: int, start: int) -> None:
+        """Own a valid non-sentinel full->swa mapping for every position
+        the upcoming chunk's SWA KV operations reference BEFORE the chunk
+        executes: the chunk's own rows ``[start, start+token_count)`` (the
+        SWA-layer stores) AND the whole prefix ``[0, start)`` (the gathers:
+        prepare_metadata translates the full page-table range before the
+        forward runs).
+
+        Ownership is an incremental frontier, exactly like the scheduler's
+        per-chunk allocate_paged -> alloc_swa: each call extends the mapped
+        range [0, allocated) just far enough to cover ``start+token_count``,
+        allocating each position's slot exactly once.  Re-executing an
+        already-covered range is a no-op (idempotent by contract); a gap
+        (start beyond the frontier) or exhaustion fails CLOSED with
+        RuntimeError -- execution never continues with sentinel slot 0.
+        No-op for non-SWA pools."""
+        pool = self._swa_pool()
+        if pool is None:
+            return
+        frontier = getattr(self, "_swa_session_allocated", 0)
+        if start > frontier:
+            raise RuntimeError(
+                f"SWA session ownership gap: chunk starts at {start} but the "
+                f"mapped frontier is {frontier} (positions must advance "
+                f"monotonically from 0 within a session)"
+            )
+        need_end = start + token_count
+        if need_end <= frontier:
+            return  # already owned (idempotent re-execution)
+        grow = need_end - frontier
+        if grow > pool.swa_available_size():
+            raise RuntimeError(
+                f"SWA pool exhausted: session needs {need_end} slots total, "
+                f"{frontier} owned, only {pool.swa_available_size()} free "
+                f"(fail-closed; never continuing on the sentinel slot)"
+            )
+        indices = torch.arange(
+            frontier,
+            need_end,
+            dtype=torch.int64,
+            device=pool.full_to_swa_index_mapping.device,
+        )
+        pool.alloc_swa(indices)
+        self._swa_session_allocated = int(need_end)
+
+    def swa_session_ownership_report(self) -> dict:
+        """Mechanical evidence of the live session's SWA ownership state
+        (consumed by the #166 lifecycle proofs; pure read)."""
+        pool = self._swa_pool()
+        if pool is None:
+            return {"swa_paged": False, "allocated": 0}
+        mapping = pool.full_to_swa_index_mapping
+        live = int((mapping[: pool.full_num_tokens] > 0).sum())
+        return {
+            "swa_paged": True,
+            "allocated": getattr(self, "_swa_session_allocated", 0),
+            "live_mapped_slots": live,
+            "available": pool.swa_available_size(),
+        }
 
     def _prepare(self, *, start: int, token_count: int, phase: str):
         batch = _make_batch(
@@ -907,7 +1029,11 @@ class GemmaDenseStage:
     @torch.inference_mode()
     def prefill(self, token_ids, hidden_or_ids, start: int):
         """Execute one matched prefill over this role's complete ownership."""
+        # SWA ownership BEFORE any SWA KV operation of this chunk: the
+        # gathers (prepare_metadata) run inside _prepare below, so the
+        # mapping must cover [0, start + len(token_ids)/rows) first (#166).
         if self.role in ("first", "single"):
+            self._ensure_swa_session_mapping(len(token_ids), start)
             batch = self._prepare(
                 start=start, token_count=len(token_ids), phase="prefill"
             )
@@ -941,6 +1067,9 @@ class GemmaDenseStage:
         # placement, BEFORE this stage's layers execute (receiver side of the
         # boundary sender/receiver byte-identity proof).
         self._emit("boundary_recv_hidden", hidden)
+        # SWA ownership BEFORE this chunk's gathers/stores (#166; the
+        # received hidden carries this chunk's row count).
+        self._ensure_swa_session_mapping(int(hidden.shape[0]), start)
         batch = self._prepare(start=start, token_count=hidden.shape[0], phase="prefill")
         with self.ctx.forward_batch(batch):
             hidden, _ = self.forward_layers(hidden)
@@ -964,6 +1093,10 @@ class GemmaDenseStage:
         """Execute one matched decode step over this role's ownership."""
         if self.role in ("first", "single"):
             token_id = token_or_hidden
+            # SWA ownership BEFORE the decode step's gathers/stores (#166):
+            # the step reads the whole prefix [0, position] through the
+            # mapping and stores at [position, position+1).
+            self._ensure_swa_session_mapping(1, position)
             batch = self._prepare(start=position, token_count=1, phase="decode")
             batch.input_ids.fill_(int(token_id))
             with self.ctx.forward_batch(batch):
@@ -983,6 +1116,8 @@ class GemmaDenseStage:
                 return token, logits
             return hidden, None
         hidden = token_or_hidden
+        # SWA ownership BEFORE the decode step's gathers/stores (#166).
+        self._ensure_swa_session_mapping(1, position)
         batch = self._prepare(start=position, token_count=1, phase="decode")
         with self.ctx.forward_batch(batch):
             hidden, _ = self.forward_layers(hidden)
